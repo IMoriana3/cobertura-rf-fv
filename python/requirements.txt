@@ -1,0 +1,3 @@
+# El núcleo (zigbee_pv_model.py) usa solo la librería estándar (math, cmath).
+# NetworkX se necesita para el grafo de malla y el análisis de resiliencia.
+networkx>=3.0

@@ -1,0 +1,2422 @@
+{
+  "type": "FeatureCollection",
+  "crs_note": "EPSG:4326",
+  "periodo_filas_routes": 406457,
+  "snapshots": 8053,
+  "calibracion": {
+    "bias_db": -33.63,
+    "sigma_db": 6.82,
+    "n_eff": 0.38,
+    "n_enlaces": 49
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.798052,
+          41.577989
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_057",
+        "etiqueta": "1.10.4",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 0,
+        "rutas": 8013,
+        "rssi_med_dbm": -80,
+        "ack_failures": 1001611,
+        "hop_tipico": 5,
+        "padres_distintos": 21,
+        "padre_dominante": "TCU_SUNNER_ID_063"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.798072,
+          41.577404
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_058",
+        "etiqueta": "1.10.5",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 0,
+        "rutas": 8024,
+        "rssi_med_dbm": -85,
+        "ack_failures": 4575918,
+        "hop_tipico": 2,
+        "padres_distintos": 14,
+        "padre_dominante": "TCU_SUNNER_ID_059"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.798086,
+          41.576963
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_059",
+        "etiqueta": "1.10.6",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 1,
+        "rutas": 5271,
+        "rssi_med_dbm": -75.0,
+        "ack_failures": 714435,
+        "hop_tipico": 2,
+        "padres_distintos": 6,
+        "padre_dominante": "COORD"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.797908,
+          41.577986
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_060",
+        "etiqueta": "1.11.1",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 0,
+        "rutas": 8046,
+        "rssi_med_dbm": -78,
+        "ack_failures": 649410,
+        "hop_tipico": 5,
+        "padres_distintos": 13,
+        "padre_dominante": "TCU_SUNNER_ID_066"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.797928,
+          41.577401
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_061",
+        "etiqueta": "1.11.2",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 0,
+        "rutas": 8043,
+        "rssi_med_dbm": -82,
+        "ack_failures": 2725160,
+        "hop_tipico": 2,
+        "padres_distintos": 14,
+        "padre_dominante": "TCU_SUNNER_ID_068"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.797948,
+          41.576816
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_062",
+        "etiqueta": "1.11.3",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 47,
+        "rutas": 207,
+        "rssi_med_dbm": -68,
+        "ack_failures": 500,
+        "hop_tipico": 2,
+        "padres_distintos": 9,
+        "padre_dominante": "COORD"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.797764,
+          41.577983
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_063",
+        "etiqueta": "1.11.4",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 1,
+        "rutas": 8050,
+        "rssi_med_dbm": -80,
+        "ack_failures": 662950,
+        "hop_tipico": 4,
+        "padres_distintos": 24,
+        "padre_dominante": "TCU_SUNNER_ID_066"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.797784,
+          41.577398
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_064",
+        "etiqueta": "1.11.5",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 0,
+        "rutas": 8051,
+        "rssi_med_dbm": -87,
+        "ack_failures": 1206868,
+        "hop_tipico": 3,
+        "padres_distintos": 12,
+        "padre_dominante": "TCU_SUNNER_ID_067"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.797804,
+          41.576813
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_065",
+        "etiqueta": "1.11.6",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 0,
+        "rutas": 8033,
+        "rssi_med_dbm": -58,
+        "ack_failures": 19701,
+        "hop_tipico": 2,
+        "padres_distintos": 12,
+        "padre_dominante": "TCU_SUNNER_ID_062"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.79762,
+          41.57798
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_066",
+        "etiqueta": "1.12.1",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 3,
+        "rutas": 8052,
+        "rssi_med_dbm": -83.0,
+        "ack_failures": 447905,
+        "hop_tipico": 4,
+        "padres_distintos": 20,
+        "padre_dominante": "TCU_SUNNER_ID_072"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.79764,
+          41.577395
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_067",
+        "etiqueta": "1.12.2",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 1,
+        "rutas": 8052,
+        "rssi_med_dbm": -72,
+        "ack_failures": 350653,
+        "hop_tipico": 3,
+        "padres_distintos": 15,
+        "padre_dominante": "TCU_SUNNER_ID_070"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.79766,
+          41.57681
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_068",
+        "etiqueta": "1.12.3",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 2,
+        "rutas": 5064,
+        "rssi_med_dbm": -71,
+        "ack_failures": 13185,
+        "hop_tipico": 2,
+        "padres_distintos": 9,
+        "padre_dominante": "COORD"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.797476,
+          41.577978
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_069",
+        "etiqueta": "1.12.4",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 0,
+        "rutas": 8053,
+        "rssi_med_dbm": -77,
+        "ack_failures": 254496,
+        "hop_tipico": 5,
+        "padres_distintos": 17,
+        "padre_dominante": "TCU_SUNNER_ID_075"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.797496,
+          41.577393
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_070",
+        "etiqueta": "1.12.5",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 19,
+        "rutas": 8053,
+        "rssi_med_dbm": -83.0,
+        "ack_failures": 107615,
+        "hop_tipico": 3,
+        "padres_distintos": 16,
+        "padre_dominante": "TCU_SUNNER_ID_071"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.797516,
+          41.576808
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_071",
+        "etiqueta": "1.12.6",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 39,
+        "rutas": 5283,
+        "rssi_med_dbm": -78,
+        "ack_failures": 10597,
+        "hop_tipico": 2,
+        "padres_distintos": 11,
+        "padre_dominante": "TCU_SUNNER_ID_062"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.797332,
+          41.577975
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_072",
+        "etiqueta": "1.13.1",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 4,
+        "rutas": 8053,
+        "rssi_med_dbm": -83,
+        "ack_failures": 161423,
+        "hop_tipico": 5,
+        "padres_distintos": 17,
+        "padre_dominante": "TCU_SUNNER_ID_078"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.797352,
+          41.57739
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_073",
+        "etiqueta": "1.13.2",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 0,
+        "rutas": 8053,
+        "rssi_med_dbm": -82,
+        "ack_failures": 64974,
+        "hop_tipico": 4,
+        "padres_distintos": 17,
+        "padre_dominante": "TCU_SUNNER_ID_070"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.797372,
+          41.576805
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_074",
+        "etiqueta": "1.13.3",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 0,
+        "rutas": 8053,
+        "rssi_med_dbm": -63,
+        "ack_failures": 5132,
+        "hop_tipico": 3,
+        "padres_distintos": 11,
+        "padre_dominante": "TCU_SUNNER_ID_068"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.797189,
+          41.577972
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_075",
+        "etiqueta": "1.13.4",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 1,
+        "rutas": 8053,
+        "rssi_med_dbm": -80.0,
+        "ack_failures": 54285,
+        "hop_tipico": 5,
+        "padres_distintos": 21,
+        "padre_dominante": "TCU_SUNNER_ID_078"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.797208,
+          41.577387
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_076",
+        "etiqueta": "1.13.5",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 15,
+        "rutas": 8053,
+        "rssi_med_dbm": -79.0,
+        "ack_failures": 25564,
+        "hop_tipico": 4,
+        "padres_distintos": 22,
+        "padre_dominante": "TCU_SUNNER_ID_070"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.797228,
+          41.576802
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_077",
+        "etiqueta": "1.13.6",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 14,
+        "rutas": 8053,
+        "rssi_med_dbm": -74,
+        "ack_failures": 13617,
+        "hop_tipico": 3,
+        "padres_distintos": 11,
+        "padre_dominante": "TCU_SUNNER_ID_071"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.797045,
+          41.577969
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_078",
+        "etiqueta": "1.14.1",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 7,
+        "rutas": 8053,
+        "rssi_med_dbm": -78.0,
+        "ack_failures": 21561,
+        "hop_tipico": 5,
+        "padres_distintos": 28,
+        "padre_dominante": "TCU_SUNNER_ID_076"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.797065,
+          41.577384
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_079",
+        "etiqueta": "1.14.2",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 1,
+        "rutas": 8053,
+        "rssi_med_dbm": -77.0,
+        "ack_failures": 17459,
+        "hop_tipico": 4,
+        "padres_distintos": 23,
+        "padre_dominante": "TCU_SUNNER_ID_071"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.797085,
+          41.576799
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_080",
+        "etiqueta": "1.14.3",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 13,
+        "rutas": 8053,
+        "rssi_med_dbm": -75,
+        "ack_failures": 15698,
+        "hop_tipico": 3,
+        "padres_distintos": 9,
+        "padre_dominante": "TCU_SUNNER_ID_077"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.796901,
+          41.577967
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_081",
+        "etiqueta": "1.14.4",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 0,
+        "rutas": 8053,
+        "rssi_med_dbm": -78,
+        "ack_failures": 21479,
+        "hop_tipico": 4,
+        "padres_distintos": 22,
+        "padre_dominante": "TCU_SUNNER_ID_079"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.796921,
+          41.577382
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_082",
+        "etiqueta": "1.14.5",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 5,
+        "rutas": 8052,
+        "rssi_med_dbm": -70.0,
+        "ack_failures": 28023,
+        "hop_tipico": 4,
+        "padres_distintos": 24,
+        "padre_dominante": "TCU_SUNNER_ID_076"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.796941,
+          41.576797
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_083",
+        "etiqueta": "1.14.6",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 1,
+        "rutas": 8053,
+        "rssi_med_dbm": -72,
+        "ack_failures": 18753,
+        "hop_tipico": 3,
+        "padres_distintos": 15,
+        "padre_dominante": "TCU_SUNNER_ID_080"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.796757,
+          41.577964
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_084",
+        "etiqueta": "1.15.1",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 0,
+        "rutas": 8053,
+        "rssi_med_dbm": -79,
+        "ack_failures": 17358,
+        "hop_tipico": 5,
+        "padres_distintos": 27,
+        "padre_dominante": "TCU_SUNNER_ID_086"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.796777,
+          41.577379
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_085",
+        "etiqueta": "1.15.2",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 4,
+        "rutas": 8053,
+        "rssi_med_dbm": -76.0,
+        "ack_failures": 53394,
+        "hop_tipico": 5,
+        "padres_distintos": 25,
+        "padre_dominante": "TCU_SUNNER_ID_082"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.796797,
+          41.576794
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_086",
+        "etiqueta": "1.15.3",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 10,
+        "rutas": 8053,
+        "rssi_med_dbm": -70.5,
+        "ack_failures": 11444,
+        "hop_tipico": 3,
+        "padres_distintos": 18,
+        "padre_dominante": "TCU_SUNNER_ID_080"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.796613,
+          41.577961
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_087",
+        "etiqueta": "1.15.4",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 3,
+        "rutas": 8053,
+        "rssi_med_dbm": -81,
+        "ack_failures": 9284,
+        "hop_tipico": 5,
+        "padres_distintos": 27,
+        "padre_dominante": "TCU_SUNNER_ID_086"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.796633,
+          41.577376
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_088",
+        "etiqueta": "1.15.5",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 3,
+        "rutas": 8053,
+        "rssi_med_dbm": -71.0,
+        "ack_failures": 44249,
+        "hop_tipico": 5,
+        "padres_distintos": 26,
+        "padre_dominante": "TCU_SUNNER_ID_085"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.796653,
+          41.576791
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_089",
+        "etiqueta": "1.15.6",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 0,
+        "rutas": 8051,
+        "rssi_med_dbm": -76,
+        "ack_failures": 7941,
+        "hop_tipico": 4,
+        "padres_distintos": 15,
+        "padre_dominante": "TCU_SUNNER_ID_083"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.796474,
+          41.577814
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_090",
+        "etiqueta": "1.16.1",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 2,
+        "rutas": 8049,
+        "rssi_med_dbm": -83.0,
+        "ack_failures": 207636,
+        "hop_tipico": 5,
+        "padres_distintos": 24,
+        "padre_dominante": "TCU_SUNNER_ID_087"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.796489,
+          41.577373
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_091",
+        "etiqueta": "1.16.2",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 0,
+        "rutas": 8051,
+        "rssi_med_dbm": -71,
+        "ack_failures": 64900,
+        "hop_tipico": 6,
+        "padres_distintos": 18,
+        "padre_dominante": "TCU_SUNNER_ID_088"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.796509,
+          41.576788
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_092",
+        "etiqueta": "1.16.3",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 1,
+        "rutas": 8051,
+        "rssi_med_dbm": -76.0,
+        "ack_failures": 8028,
+        "hop_tipico": 4,
+        "padres_distintos": 19,
+        "padre_dominante": "TCU_SUNNER_ID_086"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.79633,
+          41.577811
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_093",
+        "etiqueta": "1.16.4",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 0,
+        "rutas": 8050,
+        "rssi_med_dbm": -79,
+        "ack_failures": 93765,
+        "hop_tipico": 5,
+        "padres_distintos": 28,
+        "padre_dominante": "TCU_SUNNER_ID_092"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.796345,
+          41.57737
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_094",
+        "etiqueta": "1.16.5",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 1,
+        "rutas": 8048,
+        "rssi_med_dbm": -81,
+        "ack_failures": 42000,
+        "hop_tipico": 5,
+        "padres_distintos": 29,
+        "padre_dominante": "TCU_SUNNER_ID_088"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.796365,
+          41.576786
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_095",
+        "etiqueta": "1.16.6",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 2,
+        "rutas": 8051,
+        "rssi_med_dbm": -84,
+        "ack_failures": 9823,
+        "hop_tipico": 4,
+        "padres_distintos": 16,
+        "padre_dominante": "TCU_SUNNER_ID_086"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.796187,
+          41.577809
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_096",
+        "etiqueta": "1.17.1",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 1,
+        "rutas": 8051,
+        "rssi_med_dbm": -81,
+        "ack_failures": 51705,
+        "hop_tipico": 5,
+        "padres_distintos": 30,
+        "padre_dominante": "TCU_SUNNER_ID_090"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.796202,
+          41.577368
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_097",
+        "etiqueta": "1.17.2",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 5,
+        "rutas": 8049,
+        "rssi_med_dbm": -77,
+        "ack_failures": 29469,
+        "hop_tipico": 5,
+        "padres_distintos": 28,
+        "padre_dominante": "TCU_SUNNER_ID_062"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.796221,
+          41.576783
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_098",
+        "etiqueta": "1.17.3",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 1,
+        "rutas": 8050,
+        "rssi_med_dbm": -73,
+        "ack_failures": 11609,
+        "hop_tipico": 5,
+        "padres_distintos": 14,
+        "padre_dominante": "TCU_SUNNER_ID_071"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.796043,
+          41.577806
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_099",
+        "etiqueta": "1.17.4",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 0,
+        "rutas": 8042,
+        "rssi_med_dbm": -73,
+        "ack_failures": 83183,
+        "hop_tipico": 5,
+        "padres_distintos": 23,
+        "padre_dominante": "TCU_SUNNER_ID_097"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.796058,
+          41.577365
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_100",
+        "etiqueta": "1.17.5",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 0,
+        "rutas": 8036,
+        "rssi_med_dbm": -79,
+        "ack_failures": 69061,
+        "hop_tipico": 6,
+        "padres_distintos": 22,
+        "padre_dominante": "TCU_SUNNER_ID_094"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.796078,
+          41.57678
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_101",
+        "etiqueta": "1.17.6",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 1,
+        "rutas": 8049,
+        "rssi_med_dbm": -73,
+        "ack_failures": 9823,
+        "hop_tipico": 5,
+        "padres_distintos": 12,
+        "padre_dominante": "TCU_SUNNER_ID_095"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.795899,
+          41.577803
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_102",
+        "etiqueta": "1.18.1",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 0,
+        "rutas": 7907,
+        "rssi_med_dbm": -75,
+        "ack_failures": 97754,
+        "hop_tipico": 5,
+        "padres_distintos": 18,
+        "padre_dominante": "TCU_SUNNER_ID_097"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.795914,
+          41.577362
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_103",
+        "etiqueta": "1.18.2",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 0,
+        "rutas": 8026,
+        "rssi_med_dbm": -76.0,
+        "ack_failures": 98765,
+        "hop_tipico": 5,
+        "padres_distintos": 27,
+        "padre_dominante": "TCU_SUNNER_ID_097"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.795934,
+          41.576777
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_104",
+        "etiqueta": "1.18.3",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 0,
+        "rutas": 8050,
+        "rssi_med_dbm": -70.0,
+        "ack_failures": 15180,
+        "hop_tipico": 5,
+        "padres_distintos": 11,
+        "padre_dominante": "TCU_SUNNER_ID_098"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.795755,
+          41.5778
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_105",
+        "etiqueta": "1.18.4",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 0,
+        "rutas": 7876,
+        "rssi_med_dbm": -81.0,
+        "ack_failures": 108196,
+        "hop_tipico": 5,
+        "padres_distintos": 21,
+        "padre_dominante": "TCU_SUNNER_ID_096"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.79577,
+          41.577359
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_106",
+        "etiqueta": "1.18.5",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 1,
+        "rutas": 7796,
+        "rssi_med_dbm": -77,
+        "ack_failures": 153609,
+        "hop_tipico": 5,
+        "padres_distintos": 19,
+        "padre_dominante": "TCU_SUNNER_ID_097"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.79579,
+          41.576774
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_107",
+        "etiqueta": "1.18.6",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 0,
+        "rutas": 8048,
+        "rssi_med_dbm": -76,
+        "ack_failures": 54533,
+        "hop_tipico": 5,
+        "padres_distintos": 8,
+        "padre_dominante": "TCU_SUNNER_ID_101"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.79564,
+          41.576955
+        ]
+      },
+      "properties": {
+        "id": "TCU_SUNNER_ID_108",
+        "etiqueta": "1.18.7",
+        "role": "TCU",
+        "is_spof": false,
+        "descendientes": 0,
+        "rutas": 7277,
+        "rssi_med_dbm": -77,
+        "ack_failures": 185028,
+        "hop_tipico": 4,
+        "padres_distintos": 12,
+        "padre_dominante": "TCU_SUNNER_ID_106"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.7971664444444444,
+          41.57721566666667
+        ]
+      },
+      "properties": {
+        "id": "COORD",
+        "role": "COORD",
+        "is_spof": true,
+        "nota": "posicion aprox. (centroide de 1os saltos)"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.7971664444444444,
+            41.57721566666667
+          ],
+          [
+            -0.797948,
+            41.576816
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "COORD",
+        "destino": "TCU_SUNNER_ID_062",
+        "distancia_m": 78.7,
+        "rssi_medido_dbm": null,
+        "freq": 249746
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.7971664444444444,
+            41.57721566666667
+          ],
+          [
+            -0.79766,
+            41.57681
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "COORD",
+        "destino": "TCU_SUNNER_ID_068",
+        "distancia_m": 61.0,
+        "rssi_medido_dbm": null,
+        "freq": 66656
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.797516,
+            41.576808
+          ],
+          [
+            -0.797496,
+            41.577393
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_071",
+        "destino": "TCU_SUNNER_ID_070",
+        "distancia_m": 65.1,
+        "rssi_medido_dbm": -83.0,
+        "freq": 78488
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.797496,
+            41.577393
+          ],
+          [
+            -0.797208,
+            41.577387
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_070",
+        "destino": "TCU_SUNNER_ID_076",
+        "distancia_m": 24.0,
+        "rssi_medido_dbm": -79.0,
+        "freq": 57581
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.797208,
+            41.577387
+          ],
+          [
+            -0.797045,
+            41.577969
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_076",
+        "destino": "TCU_SUNNER_ID_078",
+        "distancia_m": 66.1,
+        "rssi_medido_dbm": -78.0,
+        "freq": 26693
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.797045,
+            41.577969
+          ],
+          [
+            -0.797332,
+            41.577975
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_078",
+        "destino": "TCU_SUNNER_ID_072",
+        "distancia_m": 23.9,
+        "rssi_medido_dbm": -83,
+        "freq": 14453
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.797189,
+            41.577972
+          ],
+          [
+            -0.797476,
+            41.577978
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_075",
+        "destino": "TCU_SUNNER_ID_069",
+        "distancia_m": 23.9,
+        "rssi_medido_dbm": -77,
+        "freq": 6681
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.797332,
+            41.577975
+          ],
+          [
+            -0.79762,
+            41.57798
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_072",
+        "destino": "TCU_SUNNER_ID_066",
+        "distancia_m": 24.0,
+        "rssi_medido_dbm": -83.0,
+        "freq": 7728
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.79762,
+            41.57798
+          ],
+          [
+            -0.797908,
+            41.577986
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_066",
+        "destino": "TCU_SUNNER_ID_060",
+        "distancia_m": 24.0,
+        "rssi_medido_dbm": -78,
+        "freq": 5613
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.797764,
+            41.577983
+          ],
+          [
+            -0.798052,
+            41.577989
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_063",
+        "destino": "TCU_SUNNER_ID_057",
+        "distancia_m": 24.0,
+        "rssi_medido_dbm": -80,
+        "freq": 2100
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.7971664444444444,
+            41.57721566666667
+          ],
+          [
+            -0.798086,
+            41.576963
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "COORD",
+        "destino": "TCU_SUNNER_ID_059",
+        "distancia_m": 81.5,
+        "rssi_medido_dbm": null,
+        "freq": 8908
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.798086,
+            41.576963
+          ],
+          [
+            -0.798072,
+            41.577404
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_059",
+        "destino": "TCU_SUNNER_ID_058",
+        "distancia_m": 49.1,
+        "rssi_medido_dbm": -85,
+        "freq": 3140
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.79766,
+            41.57681
+          ],
+          [
+            -0.797928,
+            41.577401
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_068",
+        "destino": "TCU_SUNNER_ID_061",
+        "distancia_m": 69.4,
+        "rssi_medido_dbm": -82,
+        "freq": 4281
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.79762,
+            41.57798
+          ],
+          [
+            -0.797764,
+            41.577983
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_066",
+        "destino": "TCU_SUNNER_ID_063",
+        "distancia_m": 12.0,
+        "rssi_medido_dbm": -80,
+        "freq": 3867
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.79764,
+            41.577395
+          ],
+          [
+            -0.797784,
+            41.577398
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_067",
+        "destino": "TCU_SUNNER_ID_064",
+        "distancia_m": 12.0,
+        "rssi_medido_dbm": -87,
+        "freq": 5113
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.797948,
+            41.576816
+          ],
+          [
+            -0.797804,
+            41.576813
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_062",
+        "destino": "TCU_SUNNER_ID_065",
+        "distancia_m": 12.0,
+        "rssi_medido_dbm": -58,
+        "freq": 33450
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.797496,
+            41.577393
+          ],
+          [
+            -0.79764,
+            41.577395
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_070",
+        "destino": "TCU_SUNNER_ID_067",
+        "distancia_m": 12.0,
+        "rssi_medido_dbm": -72,
+        "freq": 6937
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.797948,
+            41.576816
+          ],
+          [
+            -0.797516,
+            41.576808
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_062",
+        "destino": "TCU_SUNNER_ID_071",
+        "distancia_m": 35.9,
+        "rssi_medido_dbm": -78,
+        "freq": 108456
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.797496,
+            41.577393
+          ],
+          [
+            -0.797352,
+            41.57739
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_070",
+        "destino": "TCU_SUNNER_ID_073",
+        "distancia_m": 12.0,
+        "rssi_medido_dbm": -82,
+        "freq": 7997
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.79766,
+            41.57681
+          ],
+          [
+            -0.797372,
+            41.576805
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_068",
+        "destino": "TCU_SUNNER_ID_074",
+        "distancia_m": 24.0,
+        "rssi_medido_dbm": -63,
+        "freq": 17537
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.797045,
+            41.577969
+          ],
+          [
+            -0.797189,
+            41.577972
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_078",
+        "destino": "TCU_SUNNER_ID_075",
+        "distancia_m": 12.0,
+        "rssi_medido_dbm": -80.0,
+        "freq": 6339
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.797516,
+            41.576808
+          ],
+          [
+            -0.797228,
+            41.576802
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_071",
+        "destino": "TCU_SUNNER_ID_077",
+        "distancia_m": 24.0,
+        "rssi_medido_dbm": -74,
+        "freq": 25234
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.797516,
+            41.576808
+          ],
+          [
+            -0.797065,
+            41.577384
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_071",
+        "destino": "TCU_SUNNER_ID_079",
+        "distancia_m": 74.2,
+        "rssi_medido_dbm": -77.0,
+        "freq": 6747
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.797228,
+            41.576802
+          ],
+          [
+            -0.797085,
+            41.576799
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_077",
+        "destino": "TCU_SUNNER_ID_080",
+        "distancia_m": 11.9,
+        "rssi_medido_dbm": -75,
+        "freq": 43309
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.797085,
+            41.576799
+          ],
+          [
+            -0.796941,
+            41.576797
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_080",
+        "destino": "TCU_SUNNER_ID_083",
+        "distancia_m": 12.0,
+        "rssi_medido_dbm": -72,
+        "freq": 37563
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.797085,
+            41.576799
+          ],
+          [
+            -0.796797,
+            41.576794
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_080",
+        "destino": "TCU_SUNNER_ID_086",
+        "distancia_m": 24.0,
+        "rssi_medido_dbm": -70.5,
+        "freq": 34194
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.796797,
+            41.576794
+          ],
+          [
+            -0.796613,
+            41.577961
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_086",
+        "destino": "TCU_SUNNER_ID_087",
+        "distancia_m": 130.7,
+        "rssi_medido_dbm": -81,
+        "freq": 18943
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.797065,
+            41.577384
+          ],
+          [
+            -0.796901,
+            41.577967
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_079",
+        "destino": "TCU_SUNNER_ID_081",
+        "distancia_m": 66.2,
+        "rssi_medido_dbm": -78,
+        "freq": 2976
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.797208,
+            41.577387
+          ],
+          [
+            -0.796921,
+            41.577382
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_076",
+        "destino": "TCU_SUNNER_ID_082",
+        "distancia_m": 23.9,
+        "rssi_medido_dbm": -70.0,
+        "freq": 30031
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.796797,
+            41.576794
+          ],
+          [
+            -0.796757,
+            41.577964
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_086",
+        "destino": "TCU_SUNNER_ID_084",
+        "distancia_m": 130.1,
+        "rssi_medido_dbm": -79,
+        "freq": 6126
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.796921,
+            41.577382
+          ],
+          [
+            -0.796777,
+            41.577379
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_082",
+        "destino": "TCU_SUNNER_ID_085",
+        "distancia_m": 12.0,
+        "rssi_medido_dbm": -76.0,
+        "freq": 26948
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.796777,
+            41.577379
+          ],
+          [
+            -0.796633,
+            41.577376
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_085",
+        "destino": "TCU_SUNNER_ID_088",
+        "distancia_m": 12.0,
+        "rssi_medido_dbm": -71.0,
+        "freq": 23564
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.796941,
+            41.576797
+          ],
+          [
+            -0.796653,
+            41.576791
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_083",
+        "destino": "TCU_SUNNER_ID_089",
+        "distancia_m": 24.0,
+        "rssi_medido_dbm": -76,
+        "freq": 2848
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.796613,
+            41.577961
+          ],
+          [
+            -0.796474,
+            41.577814
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_087",
+        "destino": "TCU_SUNNER_ID_090",
+        "distancia_m": 20.0,
+        "rssi_medido_dbm": -83.0,
+        "freq": 19663
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.796633,
+            41.577376
+          ],
+          [
+            -0.796489,
+            41.577373
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_088",
+        "destino": "TCU_SUNNER_ID_091",
+        "distancia_m": 12.0,
+        "rssi_medido_dbm": -71,
+        "freq": 4892
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.796797,
+            41.576794
+          ],
+          [
+            -0.796509,
+            41.576788
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_086",
+        "destino": "TCU_SUNNER_ID_092",
+        "distancia_m": 24.0,
+        "rssi_medido_dbm": -76.0,
+        "freq": 15297
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.796509,
+            41.576788
+          ],
+          [
+            -0.79633,
+            41.577811
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_092",
+        "destino": "TCU_SUNNER_ID_093",
+        "distancia_m": 114.7,
+        "rssi_medido_dbm": -79,
+        "freq": 6075
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.796474,
+            41.577814
+          ],
+          [
+            -0.796187,
+            41.577809
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_090",
+        "destino": "TCU_SUNNER_ID_096",
+        "distancia_m": 23.9,
+        "rssi_medido_dbm": -81,
+        "freq": 13650
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.796633,
+            41.577376
+          ],
+          [
+            -0.796345,
+            41.57737
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_088",
+        "destino": "TCU_SUNNER_ID_094",
+        "distancia_m": 24.0,
+        "rssi_medido_dbm": -81,
+        "freq": 15344
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.796797,
+            41.576794
+          ],
+          [
+            -0.796365,
+            41.576786
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_086",
+        "destino": "TCU_SUNNER_ID_095",
+        "distancia_m": 35.9,
+        "rssi_medido_dbm": -84,
+        "freq": 16715
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.797948,
+            41.576816
+          ],
+          [
+            -0.796202,
+            41.577368
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_062",
+        "destino": "TCU_SUNNER_ID_097",
+        "distancia_m": 157.7,
+        "rssi_medido_dbm": -77,
+        "freq": 13774
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.797516,
+            41.576808
+          ],
+          [
+            -0.796221,
+            41.576783
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_071",
+        "destino": "TCU_SUNNER_ID_098",
+        "distancia_m": 107.8,
+        "rssi_medido_dbm": -73,
+        "freq": 9325
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.796202,
+            41.577368
+          ],
+          [
+            -0.796043,
+            41.577806
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_097",
+        "destino": "TCU_SUNNER_ID_099",
+        "distancia_m": 50.5,
+        "rssi_medido_dbm": -73,
+        "freq": 3559
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.796345,
+            41.57737
+          ],
+          [
+            -0.796058,
+            41.577365
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_094",
+        "destino": "TCU_SUNNER_ID_100",
+        "distancia_m": 23.9,
+        "rssi_medido_dbm": -79,
+        "freq": 5567
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.796365,
+            41.576786
+          ],
+          [
+            -0.796078,
+            41.57678
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_095",
+        "destino": "TCU_SUNNER_ID_101",
+        "distancia_m": 23.9,
+        "rssi_medido_dbm": -73,
+        "freq": 9861
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.796202,
+            41.577368
+          ],
+          [
+            -0.795899,
+            41.577803
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_097",
+        "destino": "TCU_SUNNER_ID_102",
+        "distancia_m": 54.5,
+        "rssi_medido_dbm": -75,
+        "freq": 4403
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.796202,
+            41.577368
+          ],
+          [
+            -0.795914,
+            41.577362
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_097",
+        "destino": "TCU_SUNNER_ID_103",
+        "distancia_m": 24.0,
+        "rssi_medido_dbm": -76.0,
+        "freq": 4291
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.796221,
+            41.576783
+          ],
+          [
+            -0.795934,
+            41.576777
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_098",
+        "destino": "TCU_SUNNER_ID_104",
+        "distancia_m": 23.9,
+        "rssi_medido_dbm": -70.0,
+        "freq": 3193
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.796187,
+            41.577809
+          ],
+          [
+            -0.795755,
+            41.5778
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_096",
+        "destino": "TCU_SUNNER_ID_105",
+        "distancia_m": 35.9,
+        "rssi_medido_dbm": -81.0,
+        "freq": 4165
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.796202,
+            41.577368
+          ],
+          [
+            -0.79577,
+            41.577359
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_097",
+        "destino": "TCU_SUNNER_ID_106",
+        "distancia_m": 35.9,
+        "rssi_medido_dbm": -77,
+        "freq": 3302
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.796078,
+            41.57678
+          ],
+          [
+            -0.79579,
+            41.576774
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_101",
+        "destino": "TCU_SUNNER_ID_107",
+        "distancia_m": 24.0,
+        "rssi_medido_dbm": -76,
+        "freq": 3612
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -0.79577,
+            41.577359
+          ],
+          [
+            -0.79564,
+            41.576955
+          ]
+        ]
+      },
+      "properties": {
+        "origen": "TCU_SUNNER_ID_106",
+        "destino": "TCU_SUNNER_ID_108",
+        "distancia_m": 46.2,
+        "rssi_medido_dbm": -77,
+        "freq": 2539
+      }
+    }
+  ]
+}

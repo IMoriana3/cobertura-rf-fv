@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bifila · 6 filas, antena en filas pares</title>
+<style>
+  :root{ --bg:#0d1017; --card:#141925; --line:#243044; --ink:#e8ecf2; --muted:#9aa4b1; --cyan:#39d0ff; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:16px}
+  .wrap{max-width:940px;margin:0 auto}
+  h1{font-size:18px;font-weight:600;margin:0 0 2px}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 12px}
+  #cv{width:100%;height:58vh;min-height:360px;display:block;background:#0b0e14;border-radius:12px;
+      cursor:grab;touch-action:none}
+  #cv:active{cursor:grabbing}
+  .lg{font-size:12.5px;color:var(--muted);margin-top:6px}
+  .sw{display:inline-block;width:10px;height:10px;border-radius:50%;vertical-align:middle;margin:0 4px 0 12px}
+  .bar{display:inline-block;width:60px;height:9px;border-radius:5px;vertical-align:middle;margin:0 4px 0 12px;
+       background:linear-gradient(90deg,#d83a3a,#e0a72c,#3a9d57)}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-top:12px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 22px}
+  @media(max-width:560px){.grid{grid-template-columns:1fr}}
+  label{font-size:13px;color:var(--muted)}
+  input[type=range]{width:100%;accent-color:var(--cyan)}
+  .val{color:var(--cyan);font-variant-numeric:tabular-nums;font-weight:600}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-top:8px}
+  .seg button{background:transparent;color:var(--muted);border:0;padding:7px 13px;font-size:13px;cursor:pointer}
+  .seg button.on{background:var(--cyan);color:#04222e;font-weight:600}
+  .note{font-size:13.5px;margin-top:12px;min-height:22px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Bifila · 6 filas, antena en filas pares</h1>
+  <p class="sub">Tres seguidores bifila (6 filas). La antena va solo en las filas pares, así que cada enlace cruza la fila intermedia. Coloreado por margen real. Gira con el ratón/dedo.</p>
+
+  <canvas id="cv"></canvas>
+  <div class="lg">
+    <span class="sw" style="background:#39d0ff"></span>antena / patrón
+    <span class="bar"></span>margen del enlace (sin enlace → holgado)
+  </div>
+
+  <div class="panel">
+    <div class="grid">
+      <div><label>Inclinación: <span class="val" id="vTilt">30°</span></label>
+        <input id="tilt" type="range" min="-55" max="55" step="1" value="30"></div>
+      <div><label>Caída de la antena bajo la viga: <span class="val" id="vDrop">0.15 m · antena 1.35 m</span></label>
+        <input id="drop" type="range" min="0" max="1.5" step="0.01" value="0.15"></div>
+      <div><label>Distancia entre filas: <span class="val" id="vPitch">6.0 m</span></label>
+        <input id="pitch" type="range" min="3" max="15" step="0.5" value="6"></div>
+      <div><label>Altura de la viga de torsión: <span class="val" id="vHtube">1.50 m</span></label>
+        <input id="htube" type="range" min="0.8" max="3" step="0.05" value="1.5"></div>
+      <div><label>Altura de módulo: <span class="val" id="vChord">2.38 m</span></label>
+        <input id="chord" type="range" min="0.8" max="5" step="0.01" value="2.382"></div>
+    </div>
+    <div><label>Suelo:</label>
+      <div class="seg" id="seg">
+        <button data-g="pec" class="on">Conductor perfecto</button>
+        <button data-g="real">Tierra real (húmeda)</button>
+      </div>
+    </div>
+    <div style="margin-top:8px"><label>Radio:</label>
+      <div class="seg" id="segr">
+        <button data-p="8">XBee RR (+8 dBm)</button>
+        <button data-p="19" class="on">XBee-PRO RR (+19 dBm)</button>
+      </div>
+    </div>
+    <p class="note" id="note"></p>
+  </div>
+</div>
+
+<script>
+const cv=document.getElementById("cv"), ctx=cv.getContext("2d"), $=id=>document.getElementById(id);
+
+/* ---- parámetros ajustables ---- */
+let P=6, HTUBE=1.5, CHORD=2.382, CX=2.5*P;
+const NROWS=6, L=16, M0=0.25, LAM=0.1224, PRV=1.25, CY=0, CZ=1.0;
+const GANT=3.0, SENS=-103; let PTX=19;
+let ground="pec";
+function readParams(){P=+$("pitch").value; HTUBE=+$("htube").value; CHORD=+$("chord").value; CX=2.5*P;}
+const rowsX=()=>{const a=[];for(let i=0;i<NROWS;i++)a.push(i*P);return a;};   // 6 filas equiespaciadas
+const antX =()=>[P,3*P,5*P];                                                  // antena solo en filas pares (2,4,6)
+
+const dip=t=>{const s=Math.sin(t);return Math.abs(s)<1e-6?0:Math.abs(Math.cos(Math.PI/2*Math.cos(t))/s);};
+const lowerEdge=b=> HTUBE+M0*Math.cos(b*Math.PI/180)-(CHORD/2)*Math.abs(Math.sin(b*Math.PI/180));
+
+/* ---- complejos + reflexión + dos rayos + filo de cuchillo ---- */
+const cx_=(r,i)=>({re:r,im:i||0});
+const cAdd=(a,b)=>cx_(a.re+b.re,a.im+b.im), cSub=(a,b)=>cx_(a.re-b.re,a.im-b.im);
+const cMul=(a,b)=>cx_(a.re*b.re-a.im*b.im,a.re*b.im+a.im*b.re), cAbs=a=>Math.hypot(a.re,a.im);
+const cDiv=(a,b)=>{const d=b.re*b.re+b.im*b.im;return cx_((a.re*b.re+a.im*b.im)/d,(a.im*b.re-a.re*b.im)/d);};
+const cSqrt=z=>{const r=Math.hypot(z.re,z.im),re=Math.sqrt((r+z.re)/2);let im=Math.sqrt((r-z.re)/2);if(z.im<0)im=-im;return cx_(re,im);};
+const cExp=z=>{const e=Math.exp(z.re);return cx_(e*Math.cos(z.im),e*Math.sin(z.im));};
+function reflV(graze){const eps=cx_(15,-60*LAM*5e-3),s=Math.sin(graze),c2=Math.cos(graze)**2,root=cSqrt(cSub(eps,cx_(c2,0))),es=cx_(eps.re*s,eps.im*s);return cDiv(cSub(es,root),cAdd(es,root));}
+function pat(t,hA){const k=2*Math.PI/LAM, delta=2*k*hA*Math.cos(t);
+  let f; if(ground==="pec"){f=2*Math.abs(Math.cos(delta/2));}
+  else{const G=reflV(Math.PI/2-t); f=cAbs(cAdd(cx_(1,0),cMul(G,cExp(cx_(0,-delta)))));}
+  return dip(t)*f;}
+function twoRayPL(d,ht,hr){
+  const dlos=Math.hypot(d,ht-hr), dref=Math.hypot(d,ht+hr), th=Math.atan2(ht+hr,d), dphi=2*Math.PI*(dref-dlos)/LAM;
+  const G = ground==="pec" ? cx_(1,0) : reflV(th);
+  const ex=cExp(cx_(0,-dphi)), refl=cx_((G.re*ex.re-G.im*ex.im)/dref,(G.re*ex.im+G.im*ex.re)/dref);
+  return -20*Math.log10((LAM/(4*Math.PI))*cAbs(cAdd(cx_(1/dlos,0),refl)));
+}
+const knife=v=> v<=-0.78?0:6.9+20*Math.log10(Math.sqrt((v-0.1)**2+1)+v-0.1);
+function linkMargin(beta,hA){
+  const d=2*P;                                  // las antenas están en filas pares -> 2 pasos
+  const pl2=twoRayPL(d,hA,hA);
+  const zEdge=lowerEdge(beta);                  // fila intermedia, en el punto medio (d1=d2=P)
+  const v=(hA-zEdge)*Math.sqrt(2*(P+P)/(LAM*P*P));
+  const Ld=knife(v);
+  return (PTX+2*GANT-(pl2+Ld))-SENS;
+}
+
+/* ---- color por margen ---- */
+const hx=h=>[1,3,5].map(i=>parseInt(h.substr(i,2),16));
+function lerp(a,b,t){t=Math.max(0,Math.min(1,t));const A=hx(a),B=hx(b);return `rgb(${A.map((v,i)=>Math.round(v+(B[i]-v)*t)).join(",")})`;}
+function colorFor(m){if(m>=25)return "#3a9d57";if(m>=8)return lerp("#e0a72c","#3a9d57",(m-8)/17);if(m>=0)return lerp("#d83a3a","#e0a72c",m/8);return "#d83a3a";}
+
+/* ---- cámara ---- */
+let yaw=0.62, pitch=1.02, zoom=1;
+let scale=20, offX=0, offY=0;
+function raw(p){const x=p[0]-CX,y=p[1]-CY,z=p[2]-CZ,cy=Math.cos(yaw),sy=Math.sin(yaw),cp=Math.cos(pitch),sp=Math.sin(pitch);
+  const X1=x*cy+y*sy,Y1=-x*sy+y*cy,Z1=z;return {u:X1,v:Z1*cp-Y1*sp,d:Y1*cp+Z1*sp};}
+const scr=p=>{const r=raw(p);return {x:offX+scale*r.u, y:offY-scale*r.v, d:r.d};};
+function poly(pts,close){ctx.beginPath();pts.forEach((p,i)=>{const s=scr(p);i?ctx.lineTo(s.x,s.y):ctx.moveTo(s.x,s.y);});if(close)ctx.closePath();}
+
+/* ---- geometría ---- */
+function moduleQuad(xt,beta){const b=beta*Math.PI/180,cb=Math.cos(b),sb=Math.sin(b),Cx=xt+M0*sb,Cz=HTUBE+M0*cb,ex=(CHORD/2)*cb,ez=(CHORD/2)*sb;
+  const lo=[Cx+ex,Cz-ez],hi=[Cx-ex,Cz+ez];return [[hi[0],-L/2,hi[1]],[lo[0],-L/2,lo[1]],[lo[0],L/2,lo[1]],[hi[0],L/2,hi[1]]];}
+const modules=beta=>rowsX().map(x=>moduleQuad(x,beta));
+function donutGrid(cx,hA){const NT=96,NP=20,grid=[];
+  for(let i=0;i<NT;i++){const t=i/(NT-1)*Math.PI/2,r=pat(t,hA)*PRV,st=Math.sin(t),ct=Math.cos(t),row=[];
+    for(let j=0;j<NP;j++){const p=j/(NP-1)*2*Math.PI;row.push([cx+r*st*Math.cos(p),r*st*Math.sin(p),hA+r*ct]);}grid.push(row);}
+  return {grid,NT,NP};}
+
+function fitAndClear(beta){
+  const dpr=window.devicePixelRatio||1, W=cv.clientWidth, H=cv.clientHeight;
+  if(cv.width!==W*dpr||cv.height!==H*dpr){cv.width=W*dpr;cv.height=H*dpr;}
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  const X1=5*P, mg=Math.max(3,0.08*X1);
+  const frame=[[-mg,-10,0],[X1+mg,-10,0],[X1+mg,10,0],[-mg,10,0]];
+  modules(beta).forEach(q=>q.forEach(p=>frame.push(p)));
+  antX().forEach(c=>{frame.push([c,0,HTUBE+2.6]);});
+  let uMin=1e9,uMax=-1e9,vMin=1e9,vMax=-1e9;
+  frame.forEach(p=>{const r=raw(p);uMin=Math.min(uMin,r.u);uMax=Math.max(uMax,r.u);vMin=Math.min(vMin,r.v);vMax=Math.max(vMax,r.v);});
+  scale=zoom*Math.min(W*0.92/(uMax-uMin), H*0.86/(vMax-vMin));
+  offX=W/2 - scale*(uMin+uMax)/2; offY=H/2 + scale*(vMin+vMax)/2;
+  ctx.clearRect(0,0,W,H); ctx.fillStyle="#0b0e14"; ctx.fillRect(0,0,W,H);
+}
+
+function draw(){
+  readParams();
+  const beta=+$("tilt").value, drop=+$("drop").value, hA=Math.max(0.15,HTUBE-drop);
+  const X1=5*P, mg=Math.max(3,0.08*X1);
+  fitAndClear(beta);
+  // suelo
+  poly([[-mg,-10,0],[X1+mg,-10,0],[X1+mg,10,0],[-mg,10,0]],true);
+  ctx.fillStyle="rgba(58,52,40,0.55)"; ctx.fill(); ctx.strokeStyle="rgba(120,130,150,0.16)"; ctx.lineWidth=1; ctx.stroke();
+  // pilotes
+  ctx.strokeStyle="#565d68"; ctx.lineWidth=2;
+  rowsX().forEach(c=>{poly([[c,-L/3,0],[c,-L/3,HTUBE]]);ctx.stroke();poly([[c,L/3,0],[c,L/3,HTUBE]]);ctx.stroke();});
+  // eje de transmisión central de cada seguidor bifila (une las dos filas del par)
+  ctx.strokeStyle="rgba(170,180,194,0.45)"; ctx.lineWidth=2;
+  [0,2,4].forEach(k=>{poly([[k*P,0,HTUBE],[(k+1)*P,0,HTUBE]]);ctx.stroke();});
+  // módulos (orden por profundidad)
+  const ms=modules(beta).map(q=>({q,d:q.reduce((s,p)=>s+scr(p).d,0)/4})); ms.sort((a,b)=>b.d-a.d);
+  ms.forEach(o=>{poly(o.q,true);ctx.fillStyle="rgba(36,90,154,0.9)";ctx.fill();ctx.strokeStyle="#15324f";ctx.lineWidth=1;ctx.stroke();});
+  // vigas de torsión (una por fila)
+  ctx.strokeStyle="#b9c3d0"; ctx.lineWidth=3;
+  rowsX().forEach(c=>{poly([[c,-L/2,HTUBE],[c,L/2,HTUBE]]);ctx.stroke();});
+  // patrones (solo filas pares)
+  function wire(cx,col){const {grid,NT,NP}=donutGrid(cx,hA);ctx.strokeStyle=col;ctx.lineWidth=1;
+    for(let j=0;j<NP;j++){ctx.beginPath();for(let i=0;i<NT;i++){const s=scr(grid[i][j]);i?ctx.lineTo(s.x,s.y):ctx.moveTo(s.x,s.y);}ctx.stroke();}
+    for(let i=0;i<NT;i+=12){ctx.beginPath();for(let j=0;j<NP;j++){const s=scr(grid[i][j]);j?ctx.lineTo(s.x,s.y):ctx.moveTo(s.x,s.y);}ctx.stroke();}}
+  antX().forEach((c)=>wire(c, "rgba(57,208,255,0.28)"));
+  // antenas (látigo hacia el suelo) en filas pares
+  antX().forEach((c,i)=>{
+    ctx.strokeStyle="#5f6b78"; ctx.lineWidth=2; poly([[c,0,HTUBE],[c,0,hA]]); ctx.stroke();
+    ctx.strokeStyle="#39d0ff"; ctx.lineWidth=3; poly([[c,0,hA],[c,0,Math.max(0.05,hA-0.5)]]); ctx.stroke();
+    const s=scr([c,0,hA]);ctx.fillStyle="#39d0ff";ctx.beginPath();ctx.arc(s.x,s.y,4,0,7);ctx.fill();
+    ctx.font="600 12px sans-serif";ctx.fillText("Ant "+(i+1), s.x+7, s.y+4);});
+  // enlaces entre antenas consecutivas (cruzan la fila intermedia)
+  const m=linkMargin(beta,hA), col=colorFor(m), A=antX();
+  ctx.strokeStyle=col; ctx.lineWidth=4; ctx.setLineDash(m<8?[6,5]:[]);
+  for(let i=0;i<A.length-1;i++){poly([[A[i],0,hA],[A[i+1],0,hA]]);ctx.stroke();}
+  ctx.setLineDash([]);
+  const sm=scr([2*P,0,hA]); ctx.fillStyle=col; ctx.font="700 13px sans-serif"; ctx.fillText(m.toFixed(1)+" dB", sm.x-16, sm.y-10);
+}
+
+function update(){
+  readParams();
+  const beta=+$("tilt").value, drop=+$("drop").value, hA=Math.max(0.15,HTUBE-drop);
+  $("vTilt").textContent=beta+"°"; $("vDrop").textContent=drop.toFixed(2)+" m · antena "+hA.toFixed(2)+" m";
+  $("vPitch").textContent=P.toFixed(1)+" m"; $("vHtube").textContent=HTUBE.toFixed(2)+" m"; $("vChord").textContent=CHORD.toFixed(2)+" m";
+  const m=linkMargin(beta,hA);
+  const estado = m<0?"sin enlace":(m<8?"al límite":(m<25?"justo":"holgado"));
+  $("note").innerHTML = `Enlace entre antenas (${(2*P).toFixed(1)} m, cruza la fila intermedia): <b style="color:${colorFor(m)}">${m.toFixed(1)} dB</b> (${estado}) — Tx ${PTX} dBm · Rx ${SENS} dBm · antena ${GANT} dBi; dos rayos + difracción sobre ${ground==="pec"?"suelo perfecto":"tierra real"}.`;
+  draw();
+}
+
+/* ---- interacción ---- */
+let raf=null; const redraw=()=>{ if(!raf) raf=requestAnimationFrame(()=>{raf=null;draw();}); };
+let drag=false, px=0, py=0;
+cv.addEventListener("pointerdown",e=>{drag=true;px=e.clientX;py=e.clientY;});
+cv.addEventListener("pointermove",e=>{ if(!drag)return; yaw+=(e.clientX-px)*0.01; pitch+=(e.clientY-py)*0.01;
+  pitch=Math.max(0.12,Math.min(1.45,pitch)); px=e.clientX; py=e.clientY; redraw();});
+window.addEventListener("pointerup",()=>drag=false);
+cv.addEventListener("wheel",e=>{e.preventDefault();zoom*=e.deltaY<0?1.08:0.93;zoom=Math.max(0.4,Math.min(3,zoom));redraw();},{passive:false});
+$("seg").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;ground=b.dataset.g;[...$("seg").children].forEach(x=>x.classList.toggle("on",x===b));update();});
+$("segr").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;PTX=+b.dataset.p;[...$("segr").children].forEach(x=>x.classList.toggle("on",x===b));update();});
+["tilt","drop","pitch","htube","chord"].forEach(id=>$(id).addEventListener("input",update));
+window.addEventListener("resize",redraw);
+update();
+</script>
+</body>
+</html>

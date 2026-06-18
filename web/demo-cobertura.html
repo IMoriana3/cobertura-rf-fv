@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cobertura Zigbee · vista en planta</title>
+<style>
+  :root { --ink:#15181d; --muted:#5b6470; --line:#e3e6ea; --accent:#185FA5; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+         color:var(--ink); background:#f4f6f8; padding:18px; }
+  .wrap { max-width:880px; margin:0 auto; }
+  h1 { font-size:19px; font-weight:600; margin:0 0 2px; }
+  .sub { color:var(--muted); font-size:13px; margin:0 0 14px; }
+  .plot-card { background:#0f1318; border-radius:12px; padding:10px; }
+  canvas { width:100%; height:auto; display:block; border-radius:8px; cursor:grab; touch-action:none; }
+  canvas:active { cursor:grabbing; }
+  .legend { display:flex; align-items:center; gap:10px; margin-top:8px; color:#aeb6c0; font-size:12px; }
+  .bar { flex:1; height:10px; border-radius:5px;
+         background:linear-gradient(90deg,#d83a3a,#e0a72c,#3a9d57); }
+  .panel { background:#fff; border:1px solid var(--line); border-radius:12px; padding:16px; margin-top:14px; }
+  .ctrls { display:grid; grid-template-columns:1fr 1fr; gap:14px 22px; }
+  @media (max-width:520px){ .ctrls{ grid-template-columns:1fr; } }
+  .ctrl label { display:flex; justify-content:space-between; font-size:13px; color:var(--muted); margin-bottom:5px; }
+  .ctrl b { color:var(--ink); font-variant-numeric:tabular-nums; }
+  input[type=range]{ width:100%; accent-color:var(--accent); }
+  .hint { color:var(--muted); font-size:12.5px; margin-top:12px; }
+  .read { margin-top:12px; font-size:14px; }
+  .read b { color:var(--accent); font-variant-numeric:tabular-nums; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Cobertura Zigbee · vista en planta</h1>
+  <p class="sub">Mismo modelo físico que el núcleo (dos rayos + difracción por filas). Arrastra el nodo Tx; mueve la inclinación para ver el apantallamiento dinámico.</p>
+
+  <div class="plot-card">
+    <canvas id="plot" width="840" height="440"></canvas>
+    <div class="legend">
+      <span>sin enlace</span><div class="bar"></div><span>margen alto</span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="ctrls">
+      <div class="ctrl"><label>Inclinación seguidores <b id="vTilt">30°</b></label>
+        <input id="tilt" type="range" min="0" max="55" value="30"></div>
+      <div class="ctrl"><label>Paso entre filas <b id="vPitch">7.0 m</b></label>
+        <input id="pitch" type="range" min="4" max="14" step="0.5" value="7"></div>
+      <div class="ctrl"><label>Altura de antena <b id="vH">1.5 m</b></label>
+        <input id="h" type="range" min="0.5" max="3" step="0.1" value="1.5"></div>
+      <div class="ctrl"><label>Margen mínimo de enlace <b id="vThr">8 dB</b></label>
+        <input id="thr" type="range" min="4" max="30" value="8"></div>
+    </div>
+    <p class="read">Área con enlace al Tx: <b id="cov">—</b></p>
+    <p class="hint">Verde = margen holgado · rojo = sin enlace. A inclinación alta la cobertura se estrecha en pasillos: ahí es donde hacen falta routers intermedios.</p>
+  </div>
+</div>
+
+<script>
+/* --- núcleo RF embebido (idéntico a zigbee_pv_model.js) --- */
+(function(g){"use strict";const C=299792458;
+const cx=(r,i)=>({re:r,im:i||0}),cAdd=(a,b)=>cx(a.re+b.re,a.im+b.im),cSub=(a,b)=>cx(a.re-b.re,a.im-b.im),
+cMul=(a,b)=>cx(a.re*b.re-a.im*b.im,a.re*b.im+a.im*b.re),cScale=(a,s)=>cx(a.re*s,a.im*s),cAbs=a=>Math.hypot(a.re,a.im);
+function cDiv(a,b){const d=b.re*b.re+b.im*b.im;return cx((a.re*b.re+a.im*b.im)/d,(a.im*b.re-a.re*b.im)/d);}
+function cSqrt(z){const r=Math.hypot(z.re,z.im),re=Math.sqrt((r+z.re)/2);let im=Math.sqrt((r-z.re)/2);if(z.im<0)im=-im;return cx(re,im);}
+function cExp(z){const e=Math.exp(z.re);return cx(e*Math.cos(z.im),e*Math.sin(z.im));}
+const wl=f=>C/(f||2.45e9);
+function refl(th,er,sg,f,p){const lam=wl(f),eps=cx(er,-60*lam*sg),s=Math.sin(th),c2=Math.cos(th)**2,root=cSqrt(cSub(eps,cx(c2,0)));
+  if((p||"v").startsWith("v")){const es=cScale(eps,s);return cDiv(cSub(es,root),cAdd(es,root));}return cDiv(cSub(cx(s,0),root),cAdd(cx(s,0),root));}
+function twoRay(d,ht,hr,f,er,sg,p){d=Math.max(d,1e-3);const lam=wl(f),dl=Math.hypot(d,ht-hr),dr=Math.hypot(d,ht+hr),
+  th=Math.atan2(ht+hr,d),G=refl(th,er,sg,f,p),dphi=2*Math.PI*(dr-dl)/lam,
+  fld=cAdd(cx(1/dl,0),cScale(cMul(G,cExp(cx(0,-dphi))),1/dr));return -20*Math.log10((lam/(4*Math.PI))*cAbs(fld));}
+function knife(v){return v<=-0.78?0:6.9+20*Math.log10(Math.sqrt((v-0.1)**2+1)+v-0.1);}
+function vp(h,d1,d2,f){return h*Math.sqrt(2*(d1+d2)/(wl(f)*d1*d2));}
+function diff(D,te,re_,obs,f,dep,md){dep=dep||0;md=md||3;if(!obs||!obs.length||dep>=md||D<=0)return 0;
+  let bv=-1e9,bi=-1;for(let i=0;i<obs.length;i++){const[x,t]=obs[i];if(x<=0||x>=D)continue;const lo=te+(re_-te)*(x/D),v=vp(t-lo,x,D-x,f);if(v>bv){bv=v;bi=i;}}
+  if(bi<0||bv<=-0.78)return 0;const[x0,t0]=obs[bi];let L=knife(bv);
+  L+=diff(x0,te,t0,obs.filter(o=>o[0]<x0),f,dep+1,md);L+=diff(D-x0,t0,re_,obs.filter(o=>o[0]>x0).map(o=>[o[0]-x0,o[1]]),f,dep+1,md);return L;}
+const rowTop=(gr,ah,ch,tl)=>gr+ah+(ch/2)*Math.sin(Math.abs(tl)*Math.PI/180);
+function erf(x){const t=1/(1+0.3275911*Math.abs(x)),y=1-(((((1.061405429*t-1.453152027)*t)+1.421413741)*t-0.284496736)*t+0.254829592)*t*Math.exp(-x*x);return x>=0?y:-y;}
+const params=()=>({fHz:2.45e9,ptxDbm:18,gtxDbi:2.1,grxDbi:2.1,rxSensDbm:-101,sigmaDb:6,epsR:15,sigmaGround:5e-3,pol:"v",lModDb:0});
+function predict(tx,rx,p,ter,obs){p=p||params();const d=Math.hypot(rx.x-tx.x,rx.y-tx.y),pl2=twoRay(d,tx.h,rx.h,p.fHz,p.epsR,p.sigmaGround,p.pol);
+  let pd=0;const pts=(ter||[]).concat(obs||[]);if(pts.length)pd=diff(d,tx.ground+tx.h,rx.ground+rx.h,pts,p.fHz);
+  const prx=p.ptxDbm+p.gtxDbi+p.grxDbi-(pl2+pd+p.lModDb);return{marginDb:prx-p.rxSensDbm};}
+g.ZigbeePV={predictLink:predict,rowTopElev:rowTop,defaultParams:params};
+})(window);
+
+/* --- demo de cobertura --- */
+const cv=document.getElementById("plot"),ctx=cv.getContext("2d");
+const W_M=420, H_M=H_M_calc(), CELL=12, CHORD=2.38;     // dominio en metros, celda en px
+function H_M_calc(){return 220;}
+const sx=cv.width/W_M, sy=cv.height/H_M;                 // metros -> px
+let tx={mx:60,my:H_M/2};                                 // posición del Tx en metros
+const el=id=>document.getElementById(id);
+const state=()=>({tilt:+el("tilt").value,pitch:+el("pitch").value,h:+el("h").value,thr:+el("thr").value});
+
+function colorFor(m,thr){
+  if(m<thr-12) return "#7a1d1d";
+  if(m<thr)    return lerp("#7a1d1d","#e0a72c",(m-(thr-12))/12);
+  if(m<thr+22) return lerp("#e0a72c","#3a9d57",(m-thr)/22);
+  return "#3a9d57";
+}
+function lerp(a,b,t){t=Math.max(0,Math.min(1,t));const A=hx(a),B=hx(b);
+  return `rgb(${A.map((v,i)=>Math.round(v+(B[i]-v)*t)).join(",")})`;}
+const hx=h=>[1,3,5].map(i=>parseInt(h.substr(i,2),16));
+
+function obstaclesAlong(txm,rxm,pitch,tilt,h){
+  const D=Math.hypot(rxm.mx-txm.mx,rxm.my-txm.my); if(D<0.5)return[];
+  const obs=[],lo=Math.ceil(Math.min(txm.mx,rxm.mx)/pitch),hi=Math.floor(Math.max(txm.mx,rxm.mx)/pitch);
+  for(let k=lo;k<=hi;k++){const rx=k*pitch,t=(rx-txm.mx)/(rxm.mx-txm.mx);
+    if(t>0.001&&t<0.999)obs.push([t*D,ZigbeePV.rowTopElev(0,h,CHORD,tilt)]);}
+  return obs;
+}
+
+let raf=null;
+function recompute(){
+  const s=state(),p=ZigbeePV.defaultParams();
+  let covered=0,total=0;
+  for(let py=0;py<cv.height;py+=CELL){
+    for(let px=0;px<cv.width;px+=CELL){
+      const mx=(px+CELL/2)/sx, my=(py+CELL/2)/sy;
+      const obs=obstaclesAlong(tx,{mx,my},s.pitch,s.tilt,s.h);
+      const m=ZigbeePV.predictLink({x:tx.mx,y:tx.my,ground:0,h:s.h},{x:mx,y:my,ground:0,h:s.h},p,null,obs).marginDb;
+      ctx.fillStyle=colorFor(m,s.thr); ctx.fillRect(px,py,CELL,CELL);
+      total++; if(m>=s.thr)covered++;
+    }
+  }
+  // filas de seguidores
+  ctx.strokeStyle="rgba(180,200,220,.18)"; ctx.lineWidth=1;
+  for(let k=0;k*s.pitch<=W_M;k++){const x=k*s.pitch*sx; ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,cv.height);ctx.stroke();}
+  // nodo Tx
+  const px=tx.mx*sx,py=tx.my*sy;
+  ctx.fillStyle="#ffffff"; ctx.strokeStyle="#185FA5"; ctx.lineWidth=3;
+  ctx.beginPath();ctx.arc(px,py,8,0,2*Math.PI);ctx.fill();ctx.stroke();
+  ctx.fillStyle="#fff";ctx.font="600 13px sans-serif";ctx.fillText("Tx",px+12,py+4);
+  el("cov").textContent=(100*covered/total).toFixed(0)+" %";
+}
+function schedule(){ if(!raf) raf=requestAnimationFrame(()=>{raf=null;recompute();}); }
+
+["tilt","pitch","h","thr"].forEach(id=>el(id).addEventListener("input",()=>{
+  el("vTilt").textContent=el("tilt").value+"°";
+  el("vPitch").textContent=(+el("pitch").value).toFixed(1)+" m";
+  el("vH").textContent=(+el("h").value).toFixed(1)+" m";
+  el("vThr").textContent=el("thr").value+" dB";
+  schedule();
+}));
+
+function setTxFromEvent(e){
+  const r=cv.getBoundingClientRect(),cxp=(e.touches?e.touches[0]:e);
+  tx.mx=Math.max(0,Math.min(W_M,(cxp.clientX-r.left)/r.width*W_M));
+  tx.my=Math.max(0,Math.min(H_M,(cxp.clientY-r.top)/r.height*H_M));
+  schedule();
+}
+let drag=false;
+cv.addEventListener("pointerdown",e=>{drag=true;setTxFromEvent(e);});
+cv.addEventListener("pointermove",e=>{if(drag)setTxFromEvent(e);});
+window.addEventListener("pointerup",()=>{drag=false;});
+
+recompute();
+</script>
+</body>
+</html>
