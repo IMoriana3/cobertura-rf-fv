@@ -9,7 +9,8 @@
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);
        font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:16px}
-  .wrap{max-width:940px;margin:0 auto}
+  /* Página de lienzo: el 3D es el contenido, así que sin tope de ancho — que use el monitor entero. */
+  .wrap{margin:0 auto}
   h1{font-size:18px;font-weight:600;margin:0 0 2px}
   .sub{color:var(--muted);font-size:13px;margin:0 0 12px}
   #cv{width:100%;height:58vh;min-height:360px;display:block;background:#0b0e14;border-radius:12px;
@@ -22,6 +23,9 @@
   .panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-top:12px}
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 22px}
   @media(max-width:560px){.grid{grid-template-columns:1fr}}
+  /* Sin tope, dos deslizadores a pantalla completa quedan absurdos de largos: más columnas. */
+  @media(min-width:1500px){.grid{grid-template-columns:repeat(3,1fr)}}
+  @media(min-width:2100px){.grid{grid-template-columns:repeat(4,1fr)}}
   label{font-size:13px;color:var(--muted)}
   input[type=range]{width:100%;accent-color:var(--cyan)}
   .val{color:var(--cyan);font-variant-numeric:tabular-nums;font-weight:600}
