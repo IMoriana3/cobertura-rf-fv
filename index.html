@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Bifila · 6 filas, antena en filas pares</title>
+<link rel="icon" href="favicon.svg">
 <style>
   :root{ --bg:#0d1017; --card:#141925; --line:#243044; --ink:#e8ecf2; --muted:#9aa4b1; --cyan:#39d0ff; }
   *{box-sizing:border-box}
@@ -13,9 +14,14 @@
   .wrap{margin:0 auto}
   h1{font-size:18px;font-weight:600;margin:0 0 2px}
   .sub{color:var(--muted);font-size:13px;margin:0 0 12px}
-  #cv{width:100%;height:58vh;min-height:360px;display:block;background:#0b0e14;border-radius:12px;
-      cursor:grab;touch-action:none}
+  /* El visor: el canvas WebGL con la capa de etiquetas encima (proyectadas del 3D). */
+  #view{position:relative;width:100%;height:58vh;min-height:360px;border-radius:12px;overflow:hidden;background:#0b0e14}
+  #cv{width:100%;height:100%;display:block;cursor:grab;touch-action:none}
   #cv:active{cursor:grabbing}
+  #labels{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+  #labels div{position:absolute;transform:translate(-50%,-50%);font:600 12px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+              white-space:nowrap;text-shadow:0 1px 3px rgba(0,0,0,.85);letter-spacing:.2px}
+  #fallback{position:absolute;inset:0;display:none;place-items:center;padding:24px;text-align:center;color:var(--muted);font-size:14px}
   .lg{font-size:12.5px;color:var(--muted);margin-top:6px}
   .sw{display:inline-block;width:10px;height:10px;border-radius:50%;vertical-align:middle;margin:0 4px 0 12px}
   .bar{display:inline-block;width:60px;height:9px;border-radius:5px;vertical-align:middle;margin:0 4px 0 12px;
@@ -32,15 +38,23 @@
   .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-top:8px}
   .seg button{background:transparent;color:var(--muted);border:0;padding:7px 13px;font-size:13px;cursor:pointer}
   .seg button.on{background:var(--cyan);color:#04222e;font-weight:600}
+  .row{display:flex;flex-wrap:wrap;gap:8px 26px;align-items:flex-end}
+  .row>div{min-width:0}
+  .chk{font-size:13px;color:var(--muted);display:inline-flex;align-items:center;gap:6px;margin-top:14px;cursor:pointer}
+  .chk input{accent-color:var(--cyan)}
   .note{font-size:13.5px;margin-top:12px;min-height:22px}
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>Bifila · 6 filas, antena en filas pares</h1>
-  <p class="sub">Tres seguidores bifila (6 filas). La antena va solo en las filas pares, así que cada enlace cruza la fila intermedia. Coloreado por margen real. Gira con el ratón/dedo.</p>
+  <p class="sub">Tres seguidores bifila (6 filas) con el <b>modelo real de la casa</b> (<code>seguidor.js</code>, el mismo que el gemelo digital y Cobertura 3D). La antena va solo en las filas pares, así que cada enlace cruza la fila intermedia. Coloreado por margen real. Gira con el ratón/dedo, rueda para acercarte.</p>
 
-  <canvas id="cv"></canvas>
+  <div id="view">
+    <canvas id="cv"></canvas>
+    <div id="labels"></div>
+    <div id="fallback">Este visor necesita WebGL. Ábrelo en un navegador con aceleración gráfica activada.</div>
+  </div>
   <div class="lg">
     <span class="sw" style="background:#39d0ff"></span>antena / patrón
     <span class="bar"></span>margen del enlace (sin enlace → holgado)
@@ -50,8 +64,8 @@
     <div class="grid">
       <div><label>Inclinación: <span class="val" id="vTilt">30°</span></label>
         <input id="tilt" type="range" min="-55" max="55" step="1" value="30"></div>
-      <div><label>Caída de la antena bajo la viga: <span class="val" id="vDrop">0.15 m · antena 1.35 m</span></label>
-        <input id="drop" type="range" min="0" max="1.5" step="0.01" value="0.15"></div>
+      <div><label>Caída de la antena bajo la viga <span id="dropCat"></span>: <span class="val" id="vDrop">0.72 m · antena 0.78 m</span></label>
+        <input id="drop" type="range" min="0.25" max="1.5" step="0.01" value="0.72"></div>
       <div><label>Distancia entre filas: <span class="val" id="vPitch">6.0 m</span></label>
         <input id="pitch" type="range" min="3" max="15" step="0.5" value="6"></div>
       <div><label>Altura de la viga de torsión: <span class="val" id="vHtube">1.50 m</span></label>
@@ -59,33 +73,65 @@
       <div><label>Altura de módulo: <span class="val" id="vChord">2.38 m</span></label>
         <input id="chord" type="range" min="0.8" max="5" step="0.01" value="2.382"></div>
     </div>
-    <div><label>Suelo:</label>
-      <div class="seg" id="seg">
-        <button data-g="pec" class="on">Conductor perfecto</button>
-        <button data-g="real">Tierra real (húmeda)</button>
+    <div class="row">
+      <div><label>Suelo:</label>
+        <div class="seg" id="seg">
+          <button data-g="pec" class="on">Conductor perfecto</button>
+          <button data-g="real">Tierra real (húmeda)</button>
+        </div>
       </div>
-    </div>
-    <div style="margin-top:8px"><label>Radio:</label>
-      <div class="seg" id="segr">
-        <button data-p="8">XBee RR (+8 dBm)</button>
-        <button data-p="19" class="on">XBee-PRO RR (+19 dBm)</button>
+      <div><label>Radio:</label>
+        <div class="seg" id="segr">
+          <button data-p="8">XBee RR (+8 dBm)</button>
+          <button data-p="19" class="on">XBee-PRO RR (+19 dBm)</button>
+        </div>
       </div>
+      <div><label>Tramo dibujado (módulos por ala):</label>
+        <div class="seg" id="segm">
+          <button data-m="7" class="on">7 · 16,6 m</button>
+          <button data-m="14">14 · 32,7 m</button>
+          <button data-m="28">28 · 64,7 m (fila real)</button>
+        </div>
+      </div>
+      <div><label>Encuadre:</label>
+        <div class="seg" id="segv">
+          <button data-v="campo" class="on">Conjunto</button>
+          <button data-v="antena">Antena</button>
+          <button data-v="motor">Accionamiento</button>
+        </div>
+      </div>
+      <div><label class="chk"><input type="checkbox" id="pat" checked> Patrón de la antena</label></div>
     </div>
     <p class="note" id="note"></p>
   </div>
 </div>
 
+<script src="lib/three.min.js"></script>
+<script src="lib/OrbitControls.js"></script>
+<script src="seguidor.js"></script>
 <script>
-const cv=document.getElementById("cv"), ctx=cv.getContext("2d"), $=id=>document.getElementById(id);
+const $=id=>document.getElementById(id);
 
-/* ---- parámetros ajustables ---- */
-let P=6, HTUBE=1.5, CHORD=2.382, CX=2.5*P;
-const NROWS=6, L=16, M0=0.25, LAM=0.1224, PRV=1.25, CY=0, CZ=1.0;
+/* ============================================================================
+ * NÚCLEO RF — sin cambios respecto a la versión de canvas 2D, con UNA salvedad
+ * declarada: la cota `M0` (cara del módulo sobre el eje del tubo) ya no es un
+ * 0,25 inventado aquí, sino `Seguidor.DIMS.off` (0,14), la cota canónica del
+ * modelo. Es lo que obliga a que el dibujo y la difracción hablen del MISMO
+ * seguidor: si el render usa la cota del modelo y la física otra, la imagen
+ * miente sobre el obstáculo que está apantallando el enlace.
+ * ==========================================================================*/
+const D=Seguidor.DIMS;
+let P=6, HTUBE=1.5, CHORD=D.modH, MODS=7;
+const NROWS=6, M0=D.off, LAM=0.1224, PRV=1.25;
 const GANT=3.0, SENS=-103; let PTX=19;
-let ground="pec";
-function readParams(){P=+$("pitch").value; HTUBE=+$("htube").value; CHORD=+$("chord").value; CX=2.5*P;}
+let ground="pec", showPat=true;
+/* Caída de catálogo: el coax sale de la TCU (0,225 m bajo el eje del tubo) y
+   cuelga los `antHang` del modelo. Es el valor de partida del deslizador. */
+const DROP0=0.225+D.antHang;
+function readParams(){P=+$("pitch").value; HTUBE=+$("htube").value; CHORD=+$("chord").value;}
 const rowsX=()=>{const a=[];for(let i=0;i<NROWS;i++)a.push(i*P);return a;};   // 6 filas equiespaciadas
-const antX =()=>[P,3*P,5*P];                                                  // antena solo en filas pares (2,4,6)
+const ANTROWS=[1,3,5];                                                        // antena solo en filas pares (2,4,6)
+const antX =()=>ANTROWS.map(i=>i*P);
 
 const dip=t=>{const s=Math.sin(t);return Math.abs(s)<1e-6?0:Math.abs(Math.cos(Math.PI/2*Math.cos(t))/s);};
 const lowerEdge=b=> HTUBE+M0*Math.cos(b*Math.PI/180)-(CHORD/2)*Math.abs(Math.sin(b*Math.PI/180));
@@ -123,101 +169,429 @@ const hx=h=>[1,3,5].map(i=>parseInt(h.substr(i,2),16));
 function lerp(a,b,t){t=Math.max(0,Math.min(1,t));const A=hx(a),B=hx(b);return `rgb(${A.map((v,i)=>Math.round(v+(B[i]-v)*t)).join(",")})`;}
 function colorFor(m){if(m>=25)return "#3a9d57";if(m>=8)return lerp("#e0a72c","#3a9d57",(m-8)/17);if(m>=0)return lerp("#d83a3a","#e0a72c",m/8);return "#d83a3a";}
 
-/* ---- cámara ---- */
-let yaw=0.62, pitch=1.02, zoom=1;
-let scale=20, offX=0, offY=0;
-function raw(p){const x=p[0]-CX,y=p[1]-CY,z=p[2]-CZ,cy=Math.cos(yaw),sy=Math.sin(yaw),cp=Math.cos(pitch),sp=Math.sin(pitch);
-  const X1=x*cy+y*sy,Y1=-x*sy+y*cy,Z1=z;return {u:X1,v:Z1*cp-Y1*sp,d:Y1*cp+Z1*sp};}
-const scr=p=>{const r=raw(p);return {x:offX+scale*r.u, y:offY-scale*r.v, d:r.d};};
-function poly(pts,close){ctx.beginPath();pts.forEach((p,i)=>{const s=scr(p);i?ctx.lineTo(s.x,s.y):ctx.moveTo(s.x,s.y);});if(close)ctx.closePath();}
+/* ============================================================================
+ * ESCENA 3D — el seguidor NO se dibuja aquí: se pide a `seguidor.js`, la fuente
+ * única de cotas/piezas/materiales que comparten el gemelo digital, Cobertura 3D
+ * y el simulador de backtracking. Este fichero solo lo COLOCA (bifila, paso de
+ * filas, altura de viga) y le cuelga lo que es suyo: la antena, su patrón y el
+ * enlace coloreado por margen.
+ *
+ * Marco de la escena:  X = a través de las filas (paso)   Y = arriba   Z = a lo
+ * largo del tubo. El modelo nace con +X a lo largo del tubo, así que cada fila
+ * lleva un `yaw` de 90°: modelo (x,y,z) → escena (z, y, −x).
+ * ==========================================================================*/
+const cv=$("cv"), labelBox=$("labels");
+let renderer,scene,camera,controls,sun,groundMesh,fieldG;
+let rows=[], pairs=[], chordTargets=[], links=null, labels=[];
+let webgl=true;
 
-/* ---- geometría ---- */
-function moduleQuad(xt,beta){const b=beta*Math.PI/180,cb=Math.cos(b),sb=Math.sin(b),Cx=xt+M0*sb,Cz=HTUBE+M0*cb,ex=(CHORD/2)*cb,ez=(CHORD/2)*sb;
-  const lo=[Cx+ex,Cz-ez],hi=[Cx-ex,Cz+ez];return [[hi[0],-L/2,hi[1]],[lo[0],-L/2,lo[1]],[lo[0],L/2,lo[1]],[hi[0],L/2,hi[1]]];}
-const modules=beta=>rowsX().map(x=>moduleQuad(x,beta));
-function donutGrid(cx,hA){const NT=96,NP=20,grid=[];
-  for(let i=0;i<NT;i++){const t=i/(NT-1)*Math.PI/2,r=pat(t,hA)*PRV,st=Math.sin(t),ct=Math.cos(t),row=[];
-    for(let j=0;j<NP;j++){const p=j/(NP-1)*2*Math.PI;row.push([cx+r*st*Math.cos(p),r*st*Math.sin(p),hA+r*ct]);}grid.push(row);}
-  return {grid,NT,NP};}
+try{
+  renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true});
+}catch(e){ webgl=false; }
+if(!webgl || !renderer.getContext()){ webgl=false; $("fallback").style.display="grid"; }
 
-function fitAndClear(beta){
-  const dpr=window.devicePixelRatio||1, W=cv.clientWidth, H=cv.clientHeight;
-  if(cv.width!==W*dpr||cv.height!==H*dpr){cv.width=W*dpr;cv.height=H*dpr;}
-  ctx.setTransform(dpr,0,0,dpr,0,0);
-  const X1=5*P, mg=Math.max(3,0.08*X1);
-  const frame=[[-mg,-10,0],[X1+mg,-10,0],[X1+mg,10,0],[-mg,10,0]];
-  modules(beta).forEach(q=>q.forEach(p=>frame.push(p)));
-  antX().forEach(c=>{frame.push([c,0,HTUBE+2.6]);});
-  let uMin=1e9,uMax=-1e9,vMin=1e9,vMax=-1e9;
-  frame.forEach(p=>{const r=raw(p);uMin=Math.min(uMin,r.u);uMax=Math.max(uMax,r.u);vMin=Math.min(vMin,r.v);vMax=Math.max(vMax,r.v);});
-  scale=zoom*Math.min(W*0.92/(uMax-uMin), H*0.86/(vMax-vMin));
-  offX=W/2 - scale*(uMin+uMax)/2; offY=H/2 + scale*(vMin+vMax)/2;
-  ctx.clearRect(0,0,W,H); ctx.fillStyle="#0b0e14"; ctx.fillRect(0,0,W,H);
+/* --------------------------- texturas de ambiente --------------------------- */
+function gradTex(stops){
+  const c=document.createElement("canvas"); c.width=4; c.height=256; const x=c.getContext("2d");
+  const g=x.createLinearGradient(0,0,0,256);
+  stops.forEach(s=>g.addColorStop(s[0],s[1]));
+  x.fillStyle=g; x.fillRect(0,0,4,256);
+  const t=new THREE.CanvasTexture(c); t.encoding=THREE.sRGBEncoding; t.needsUpdate=true; return t;
+}
+function earthTex(){
+  const N=256, c=document.createElement("canvas"); c.width=c.height=N; const x=c.getContext("2d");
+  x.fillStyle="#6b6350"; x.fillRect(0,0,N,N);
+  for(let i=0;i<5200;i++){
+    const r=1+Math.random()*4.5, L=34+Math.random()*22, h=36+Math.random()*16, s=12+Math.random()*16;
+    x.fillStyle="hsl("+h+","+s+"%,"+L+"%)";
+    x.beginPath(); x.arc(Math.random()*N,Math.random()*N,r,0,7); x.fill();
+  }
+  for(let i=0;i<900;i++){          // mata rala: la planta no es un plató
+    const L=24+Math.random()*12;
+    x.fillStyle="hsl("+(72+Math.random()*22)+",22%,"+L+"%)";
+    x.beginPath(); x.arc(Math.random()*N,Math.random()*N,0.8+Math.random()*2.2,0,7); x.fill();
+  }
+  const t=new THREE.CanvasTexture(c);
+  t.encoding=THREE.sRGBEncoding;
+  t.wrapS=t.wrapT=THREE.RepeatWrapping; t.anisotropy=8;
+  return t;
 }
 
-function draw(){
-  readParams();
+const SUNDIR=new THREE.Vector3(-0.42,0.62,0.66).normalize();
+
+function initScene(){
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+  renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+  renderer.outputEncoding=THREE.sRGBEncoding;
+  renderer.toneMapping=THREE.ACESFilmicToneMapping; renderer.toneMappingExposure=1.05;
+
+  scene=new THREE.Scene();
+  scene.fog=new THREE.Fog(0x97a9b4,120,900);   // bruma del horizonte: disuelve el borde del suelo
+
+  // cielo: esfera invertida con degradado (sin ficheros externos, la página sigue siendo offline)
+  const skyMat=new THREE.MeshBasicMaterial({
+    map:gradTex([[0,"#0d243c"],[0.28,"#2b5478"],[0.44,"#7ea0b8"],[0.499,"#97a9b4"],[0.52,"#5e5b4c"],[1,"#1d1f19"]]),
+    side:THREE.BackSide, depthWrite:false, fog:false, toneMapped:false });
+  const sky=new THREE.Mesh(new THREE.SphereGeometry(1500,32,20),skyMat);
+  scene.add(sky);
+
+  // entorno para los metales: sin envmap, `metalness` alta renderiza NEGRO
+  const pmrem=new THREE.PMREMGenerator(renderer);
+  const envScene=new THREE.Scene();
+  envScene.add(new THREE.Mesh(new THREE.SphereGeometry(1500,24,16),skyMat.clone()));
+  const sunBlob=new THREE.Mesh(new THREE.SphereGeometry(190,14,10),
+                               new THREE.MeshBasicMaterial({color:0xfff0d0}));
+  sunBlob.position.copy(SUNDIR).multiplyScalar(1100); envScene.add(sunBlob);
+  scene.environment=pmrem.fromScene(envScene,0.03,1,3000).texture;
+  pmrem.dispose();
+
+  scene.add(new THREE.HemisphereLight(0x9dc0e6,0x33301f,0.42));
+  sun=new THREE.DirectionalLight(0xfff1d8,1.45);
+  sun.castShadow=true;
+  sun.shadow.mapSize.set(2048,2048);
+  sun.shadow.bias=-0.0008; sun.shadow.normalBias=0.02;
+  scene.add(sun,sun.target);
+
+  groundMesh=new THREE.Mesh(new THREE.PlaneGeometry(2600,2600,1,1),
+    new THREE.MeshStandardMaterial({map:earthTex(),roughness:0.98,metalness:0.0,color:0x6f6a58}));
+  groundMesh.rotation.x=-Math.PI/2; groundMesh.receiveShadow=true; groundMesh.position.y=-0.01;
+  scene.add(groundMesh);
+
+  fieldG=new THREE.Group(); scene.add(fieldG);
+
+  camera=new THREE.PerspectiveCamera(42,1,0.08,4000);
+  controls=new THREE.OrbitControls(camera,cv);
+  controls.enableDamping=true; controls.dampingFactor=0.09;
+  controls.minDistance=1.5; controls.maxDistance=600;
+  controls.maxPolarAngle=Math.PI/2-0.025;
+}
+
+/* ------------------------------ materiales ------------------------------ */
+let MATS=null;
+function materials(){
+  if(MATS) return MATS;
+  MATS=Seguidor.vistePaneles(THREE,Seguidor.materials(THREE));
+  MATS.glass.roughness=0.28; MATS.glass.metalness=0.12;   // vidrio con células, no blanco quirófano
+  MATS.antcoax=new THREE.MeshStandardMaterial({color:0x14171c,roughness:0.65,metalness:0.15});
+  MATS.antena =new THREE.MeshBasicMaterial({color:0x39d0ff,toneMapped:false});
+  MATS.pila   =new THREE.MeshStandardMaterial({color:0x8e97a1,roughness:0.55,metalness:0.55});
+  MATS.link   =new THREE.MeshBasicMaterial({color:0xffffff,toneMapped:false});
+  MATS.pattern=new THREE.LineBasicMaterial({color:0x39d0ff,transparent:true,opacity:0.32,
+                                            fog:false,toneMapped:false});
+  return MATS;
+}
+
+/* --------------------------- utilidades de malla --------------------------- */
+const _up=new THREE.Vector3(0,1,0), _v1=new THREE.Vector3(), _q=new THREE.Quaternion();
+/* Orienta un cilindro unitario (alto 1, eje Y, centrado) entre dos puntos. */
+function spanCyl(mesh,a,b,shrinkA,shrinkB){
+  _v1.subVectors(b,a);
+  const len=_v1.length()||1e-6;
+  mesh.scale.y=len*(1-(shrinkA||0)-(shrinkB||0));
+  mesh.position.copy(a).addScaledVector(_v1,0.5);
+  _q.setFromUnitVectors(_up,_v1.normalize()); mesh.quaternion.copy(_q);
+}
+function disposeTree(o){
+  o.traverse(n=>{
+    if(n.geometry) n.geometry.dispose();
+    if(n.isLine && n.material && n.material.dispose && n.material!==MATS.pattern) n.material.dispose();
+  });
+}
+
+/* ------------------------------ el campo ------------------------------ */
+let BUILT_SPAN=0;                            // largo del tramo YA construido: `D.span` vuelve al
+const SPAN=()=>BUILT_SPAN||D.span;           // canónico de 28 módulos en cuanto se suelta el modelo
+function damperX(){ return Math.min(24, D.span/2-5); }   // misma regla que seguidor.js cuando la app no la fija
+
+function buildField(){
+  const mats=materials();
+  while(fieldG.children.length){ const c=fieldG.children.pop(); disposeTree(c); }
+  rows=[]; pairs=[]; chordTargets=[]; links=null; patKey="";
+
+  const prevMods=D.modsPerStr;
+  Seguidor.setModsPerStr(MODS);
+  BUILT_SPAN=D.span;
+  const dd=damperX();
+
+  for(let i=0;i<NROWS;i++){
+    const west=ANTROWS.indexOf(i)>=0;                  // la viga del MOTOR es la que lleva TCU + antena
+    const beam=Seguidor.buildBeam(THREE,{west:west,detail:"full",size:"largo",materials:mats,
+                                         skip:{antena:1,antenatip:1,soporte:1}});
+    const g=new THREE.Group();
+    const yaw=new THREE.Group(); yaw.rotation.y=Math.PI/2;   // tubo del modelo (+X) → eje Z de la escena
+    yaw.add(beam.spin,beam.static);
+    g.add(yaw); fieldG.add(g);
+
+    // módulos: su cuerda es la cota `modH` del modelo; el deslizador de altura de
+    // módulo la escala SOLO en las piezas del módulo (marco + vidrio), no en el
+    // tubo ni en la TCU, que no cambian de tamaño porque cambie el panel.
+    beam.spin.traverse(n=>{
+      const p=n.geometry&&n.geometry.parameters;
+      if(p&&p.depth!==undefined&&Math.abs(p.depth-D.modH)<0.06) chordTargets.push(n);
+    });
+
+    // pilas: la central bajo la corona del slew y dos de rodamiento donde anclan
+    // los amortiguadores. Se estiran hasta el suelo en `layout()`.
+    const posts=[];
+    const central=new THREE.Mesh(new THREE.BoxGeometry(0.22,1,0.32),mats.steel);
+    central.castShadow=true; central.receiveShadow=true; yaw.add(central); posts.push({m:central,top:-0.28});
+    [-dd,dd].forEach(x=>{
+      const pl=new THREE.Mesh(new THREE.BoxGeometry(0.14,1,0.22),mats.pila);
+      pl.castShadow=true; pl.receiveShadow=true; pl.position.x=x; yaw.add(pl); posts.push({m:pl,top:-0.06});
+      const rod=new THREE.Mesh(new THREE.BoxGeometry(0.20,0.13,0.34),mats.steel);   // sillín del rodamiento
+      rod.position.set(x,-0.095,0); rod.castShadow=true; yaw.add(rod);
+    });
+
+    // amortiguadores: cruzan la frontera spin/estático, así que los orienta la app
+    const damps=beam.dampers.map(dp=>{
+      const rodM=new THREE.Mesh(new THREE.CylinderGeometry(0.021,0.021,1,10),mats.motor);
+      const bodyM=new THREE.Mesh(new THREE.CylinderGeometry(0.038,0.038,1,12),mats.steel);
+      rodM.castShadow=bodyM.castShadow=true;
+      yaw.add(rodM,bodyM);
+      return {a:dp.a,b:dp.b,rod:rodM,body:bodyM};
+    });
+
+    // antena: cuelga VERTICAL del conector de la TCU (que sí bascula con el tubo)
+    let ant=null;
+    if(west){
+      const coax=new THREE.Mesh(new THREE.CylinderGeometry(0.0022,0.0022,1,6),mats.antcoax);
+      const tip =new THREE.Mesh(new THREE.CylinderGeometry(0.006,0.006,D.antTip,10),mats.antena);
+      const dot =new THREE.Mesh(new THREE.SphereGeometry(0.055,12,8),mats.antena);
+      coax.castShadow=tip.castShadow=true;
+      const patG=new THREE.Group();
+      yaw.add(coax,tip,dot,patG);
+      ant={coax:coax,tip:tip,dot:dot,pat:patG,line:null,pos:new THREE.Vector3()};
+    }
+    rows.push({g:g,yaw:yaw,spin:beam.spin,posts:posts,damps:damps,ant:ant,row:i});
+  }
+
+  // eje de transmisión: une las dos vigas de cada seguidor bifila (la del motor
+  // arrastra a la gemela). Cotas del modelo — Ø60 confirmado, no el Ø100 del detalle.
+  for(let k=0;k<NROWS/2;k++){
+    const g=new THREE.Group(); g.rotation.y=Math.PI/2; fieldG.add(g);
+    const eje=new THREE.Mesh(new THREE.BufferGeometry(),materials().steel); eje.castShadow=true;
+    const c1=new THREE.Mesh(Seguidor.cardanGeom(THREE),materials().blue);
+    const c2=new THREE.Mesh(Seguidor.cardanGeom(THREE),materials().blue);
+    c1.castShadow=c2.castShadow=true;
+    g.add(eje,c1,c2);
+    pairs.push({g:g,eje:eje,c1:c1,c2:c2,k:k});
+  }
+
+  // enlaces entre antenas consecutivas: cilindros (una línea de 1 px no se ve)
+  links=new THREE.Group(); links.frustumCulled=false; fieldG.add(links);
+
+  Seguidor.setModsPerStr(prevMods);
+  buildLabels();
+}
+
+/* --------------------------- etiquetas (HTML sobre el 3D) --------------------------- */
+function buildLabels(){
+  labelBox.innerHTML=""; labels=[];
+  ANTROWS.forEach((r,i)=>{
+    const d=document.createElement("div"); d.textContent="Ant "+(i+1); d.style.color="#39d0ff";
+    labelBox.appendChild(d); labels.push({el:d,pos:new THREE.Vector3(),dy:-22});
+  });
+  const dm=document.createElement("div"); dm.style.font="700 13px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif";
+  labelBox.appendChild(dm); labels.push({el:dm,pos:new THREE.Vector3(),dy:20,margin:true});
+}
+
+/* ------------------------------ patrón de la antena ------------------------------ */
+function patternGeom(hA){
+  const NT=96, NP=20, pts=[];
+  const P3=[];
+  for(let i=0;i<NT;i++){
+    const t=i/(NT-1)*Math.PI/2, r=pat(t,hA)*PRV, st=Math.sin(t), ct=Math.cos(t), row=[];
+    for(let j=0;j<NP;j++){ const ph=j/(NP-1)*2*Math.PI; row.push([r*st*Math.cos(ph), r*ct, r*st*Math.sin(ph)]); }
+    P3.push(row);
+  }
+  for(let j=0;j<NP;j++) for(let i=0;i<NT-1;i++){ pts.push(...P3[i][j],...P3[i+1][j]); }
+  for(let i=0;i<NT;i+=12) for(let j=0;j<NP-1;j++){ pts.push(...P3[i][j],...P3[i][j+1]); }
+  const g=new THREE.BufferGeometry();
+  g.setAttribute("position",new THREE.Float32BufferAttribute(pts,3));
+  return g;
+}
+
+/* ------------------------------ colocación ------------------------------ */
+function layout(){
+  const span=SPAN(), width=(NROWS-1)*P, mg=Math.max(8,0.35*span);
+  // el suelo es fijo y enorme (2,6 km): lo que lo cierra es la niebla, no su
+  // borde — un plano recortado al campo dibujaba un rombo de arena en el cielo
+  groundMesh.position.set(width/2,-0.01,0);
+  groundMesh.material.map.repeat.set(2600/8,2600/8);
+  const diag=Math.hypot(width,span);
+  scene.fog.near=diag*1.5+40; scene.fog.far=scene.fog.near*6;
+
+  rows.forEach((r,i)=>{
+    r.g.position.set(i*P,HTUBE,0);
+    r.posts.forEach(p=>{ const h=Math.max(0.25,HTUBE+p.top); p.m.scale.y=h; p.m.position.y=p.top-h/2; });
+  });
+  pairs.forEach(p=>{
+    p.g.position.set((2*p.k+0.5)*P,HTUBE,0);
+    p.eje.geometry.dispose(); p.eje.geometry=Seguidor.ejeTransGeom(THREE,P);
+    const dz=Seguidor.cardanDz(P);
+    p.c1.position.z=dz; p.c2.position.z=-dz;
+  });
+
+  // sombra: la cámara del direccional encuadra el campo entero
+  const R=Math.max(width,span)*0.75+14;
+  sun.target.position.set(width/2,HTUBE,0);
+  sun.position.copy(sun.target.position).addScaledVector(SUNDIR,Math.max(60,R*2.2));
+  const sc=sun.shadow.camera;
+  sc.left=-R; sc.right=R; sc.top=R; sc.bottom=-R; sc.near=1; sc.far=R*5+120;
+  sc.updateProjectionMatrix();
+}
+
+/* ------------------------------ estado dinámico ------------------------------ */
+const _a=new THREE.Vector3(), _b=new THREE.Vector3();
+let patKey="";
+function applyState(){
   const beta=+$("tilt").value, drop=+$("drop").value, hA=Math.max(0.15,HTUBE-drop);
-  const X1=5*P, mg=Math.max(3,0.08*X1);
-  fitAndClear(beta);
-  // suelo
-  poly([[-mg,-10,0],[X1+mg,-10,0],[X1+mg,10,0],[-mg,10,0]],true);
-  ctx.fillStyle="rgba(58,52,40,0.55)"; ctx.fill(); ctx.strokeStyle="rgba(120,130,150,0.16)"; ctx.lineWidth=1; ctx.stroke();
-  // pilotes
-  ctx.strokeStyle="#565d68"; ctx.lineWidth=2;
-  rowsX().forEach(c=>{poly([[c,-L/3,0],[c,-L/3,HTUBE]]);ctx.stroke();poly([[c,L/3,0],[c,L/3,HTUBE]]);ctx.stroke();});
-  // eje de transmisión central de cada seguidor bifila (une las dos filas del par)
-  ctx.strokeStyle="rgba(170,180,194,0.45)"; ctx.lineWidth=2;
-  [0,2,4].forEach(k=>{poly([[k*P,0,HTUBE],[(k+1)*P,0,HTUBE]]);ctx.stroke();});
-  // módulos (orden por profundidad)
-  const ms=modules(beta).map(q=>({q,d:q.reduce((s,p)=>s+scr(p).d,0)/4})); ms.sort((a,b)=>b.d-a.d);
-  ms.forEach(o=>{poly(o.q,true);ctx.fillStyle="rgba(36,90,154,0.9)";ctx.fill();ctx.strokeStyle="#15324f";ctx.lineWidth=1;ctx.stroke();});
-  // vigas de torsión (una por fila)
-  ctx.strokeStyle="#b9c3d0"; ctx.lineWidth=3;
-  rowsX().forEach(c=>{poly([[c,-L/2,HTUBE],[c,L/2,HTUBE]]);ctx.stroke();});
-  // patrones (solo filas pares)
-  function wire(cx,col){const {grid,NT,NP}=donutGrid(cx,hA);ctx.strokeStyle=col;ctx.lineWidth=1;
-    for(let j=0;j<NP;j++){ctx.beginPath();for(let i=0;i<NT;i++){const s=scr(grid[i][j]);i?ctx.lineTo(s.x,s.y):ctx.moveTo(s.x,s.y);}ctx.stroke();}
-    for(let i=0;i<NT;i+=12){ctx.beginPath();for(let j=0;j<NP;j++){const s=scr(grid[i][j]);j?ctx.lineTo(s.x,s.y):ctx.moveTo(s.x,s.y);}ctx.stroke();}}
-  antX().forEach((c)=>wire(c, "rgba(57,208,255,0.28)"));
-  // antenas (látigo hacia el suelo) en filas pares
-  antX().forEach((c,i)=>{
-    ctx.strokeStyle="#5f6b78"; ctx.lineWidth=2; poly([[c,0,HTUBE],[c,0,hA]]); ctx.stroke();
-    ctx.strokeStyle="#39d0ff"; ctx.lineWidth=3; poly([[c,0,hA],[c,0,Math.max(0.05,hA-0.5)]]); ctx.stroke();
-    const s=scr([c,0,hA]);ctx.fillStyle="#39d0ff";ctx.beginPath();ctx.arc(s.x,s.y,4,0,7);ctx.fill();
-    ctx.font="600 12px sans-serif";ctx.fillText("Ant "+(i+1), s.x+7, s.y+4);});
-  // enlaces entre antenas consecutivas (cruzan la fila intermedia)
-  const m=linkMargin(beta,hA), col=colorFor(m), A=antX();
-  ctx.strokeStyle=col; ctx.lineWidth=4; ctx.setLineDash(m<8?[6,5]:[]);
-  for(let i=0;i<A.length-1;i++){poly([[A[i],0,hA],[A[i+1],0,hA]]);ctx.stroke();}
-  ctx.setLineDash([]);
-  const sm=scr([2*P,0,hA]); ctx.fillStyle=col; ctx.font="700 13px sans-serif"; ctx.fillText(m.toFixed(1)+" dB", sm.x-16, sm.y-10);
+  const rad=beta*Math.PI/180, cb=Math.cos(rad), sb=Math.sin(rad);
+  const k=CHORD/D.modH;
+  chordTargets.forEach(n=>{ n.scale.z=k; });
+
+  rows.forEach(r=>{
+    r.spin.rotation.x=rad;
+    // amortiguadores: 'a' fijo en la pila, 'b' en la manivela que bascula
+    r.damps.forEach(d=>{
+      _a.set(d.a[0],d.a[1],d.a[2]);
+      _b.set(d.b[0], d.b[1]*cb-d.b[2]*sb, d.b[1]*sb+d.b[2]*cb);
+      spanCyl(d.rod,_a,_b,0,0);
+      spanCyl(d.body,_a,_b,0,0); d.body.scale.y*=0.46;
+      d.body.position.lerpVectors(_a,_b,0.23);
+    });
+    if(!r.ant) return;
+    // conector de la TCU: (tcuX−0,16, −0,225, 0) del modelo, basculado con el tubo
+    const ax=D.tcuX-0.16, ay=-0.225*cb, az=-0.225*sb;
+    const yTip=hA-HTUBE;                       // el elemento radiante, a la altura de la física
+    r.ant.tip.position.set(ax,yTip,az);
+    r.ant.dot.position.set(ax,yTip,az);
+    _a.set(ax,ay,az); _b.set(ax,yTip+D.antTip/2,az);
+    r.ant.coax.visible=_b.y<_a.y;
+    if(r.ant.coax.visible) spanCyl(r.ant.coax,_b,_a,0,0);
+    r.ant.pat.position.set(ax,yTip,az);
+    r.ant.pat.visible=showPat;
+    r.ant.pos.set(az+r.g.position.x, HTUBE+yTip, -ax);   // modelo (x,y,z) → escena (z,y,−x)
+  });
+
+  // patrón: solo depende de hA y del suelo, así que una geometría para las tres
+  const key=hA.toFixed(4)+"|"+ground;
+  if(showPat&&key!==patKey){
+    patKey=key;
+    const geo=patternGeom(hA);
+    rows.forEach(r=>{
+      if(!r.ant) return;
+      if(r.ant.line){ r.ant.line.geometry.dispose(); r.ant.pat.remove(r.ant.line); }
+      r.ant.line=new THREE.LineSegments(geo.clone(),MATS.pattern);
+      r.ant.line.frustumCulled=false;
+      r.ant.pat.add(r.ant.line);
+    });
+    geo.dispose();
+  }
+
+  // enlaces: cilindro por tramo, a trazos si el margen es corto
+  const m=linkMargin(beta,hA), col=new THREE.Color(colorFor(m));
+  while(links.children.length){ const c=links.children.pop(); c.geometry.dispose(); c.material.dispose(); }
+  const A=rows.filter(r=>r.ant).map(r=>r.ant.pos);
+  const dashed=m<8;
+  for(let i=0;i<A.length-1;i++){
+    const segs=dashed?9:1;
+    for(let s=0;s<segs;s++){
+      if(dashed&&s%2===1) continue;
+      _a.lerpVectors(A[i],A[i+1],s/segs);
+      _b.lerpVectors(A[i],A[i+1],(s+0.72)/segs);
+      const mat=MATS.link.clone(); mat.color.copy(col);
+      const c=new THREE.Mesh(new THREE.CylinderGeometry(0.045,0.045,1,8),mat);
+      spanCyl(c,_a,_b,0,0); c.frustumCulled=false; links.add(c);
+    }
+  }
+
+  // etiquetas
+  A.forEach((p,i)=>{ labels[i].pos.copy(p); });
+  const lm=labels[labels.length-1];
+  if(A.length>1){ lm.pos.copy(A[0]).lerp(A[A.length-1],0.5); lm.el.textContent=m.toFixed(1)+" dB"; lm.el.style.color=colorFor(m); }
+  return {beta:beta,drop:drop,hA:hA,m:m};
 }
 
+/* ------------------------------ encuadres ------------------------------ */
+function frame(which){
+  const span=SPAN(), width=(NROWS-1)*P;
+  if(which==="antena"){
+    const p=rows[3]&&rows[3].ant?rows[3].ant.pos:new THREE.Vector3(3*P,HTUBE,-D.tcuX);
+    const beta=+$("tilt").value, side=(beta>=0?-1:1);   // el canto ALTO del panel
+    controls.target.set(p.x,p.y+0.25,p.z);
+    camera.position.set(p.x+side*2.7,Math.max(0.8,p.y+0.55),p.z+2.9);
+  }else if(which==="motor"){
+    controls.target.set(3*P,HTUBE-0.15,0);
+    camera.position.set(3*P-3.2,HTUBE+1.5,4.4);
+  }else{
+    const d=Math.max(width,span)*0.92+12;
+    controls.target.set(width/2,HTUBE+0.4,0);
+    camera.position.set(width/2-d*0.40,HTUBE+d*0.30,d*0.86);
+  }
+  controls.update();
+}
+
+/* ------------------------------ bucle ------------------------------ */
+function resize(){
+  const W=cv.clientWidth||1, H=cv.clientHeight||1;
+  if(cv.width!==W*renderer.getPixelRatio()||cv.height!==H*renderer.getPixelRatio()) renderer.setSize(W,H,false);
+  camera.aspect=W/H; camera.updateProjectionMatrix();
+}
+const _pv=new THREE.Vector3();
+function drawLabels(){
+  const W=cv.clientWidth, H=cv.clientHeight;
+  labels.forEach(l=>{
+    _pv.copy(l.pos).project(camera);
+    const vis=_pv.z<1;
+    l.el.style.display=vis?"block":"none";
+    if(!vis) return;
+    l.el.style.left=((_pv.x*0.5+0.5)*W)+"px";
+    l.el.style.top =((-_pv.y*0.5+0.5)*H+l.dy)+"px";
+  });
+}
+function tick(){
+  requestAnimationFrame(tick);
+  resize(); controls.update(); renderer.render(scene,camera); drawLabels();
+}
+
+/* ------------------------------ interfaz ------------------------------ */
 function update(){
   readParams();
-  const beta=+$("tilt").value, drop=+$("drop").value, hA=Math.max(0.15,HTUBE-drop);
-  $("vTilt").textContent=beta+"°"; $("vDrop").textContent=drop.toFixed(2)+" m · antena "+hA.toFixed(2)+" m";
+  layout();
+  const st=applyState();
+  $("vTilt").textContent=st.beta+"°";
+  $("vDrop").textContent=st.drop.toFixed(2)+" m · antena "+st.hA.toFixed(2)+" m";
   $("vPitch").textContent=P.toFixed(1)+" m"; $("vHtube").textContent=HTUBE.toFixed(2)+" m"; $("vChord").textContent=CHORD.toFixed(2)+" m";
-  const m=linkMargin(beta,hA);
-  const estado = m<0?"sin enlace":(m<8?"al límite":(m<25?"justo":"holgado"));
-  $("note").innerHTML = `Enlace entre antenas (${(2*P).toFixed(1)} m, cruza la fila intermedia): <b style="color:${colorFor(m)}">${m.toFixed(1)} dB</b> (${estado}) — Tx ${PTX} dBm · Rx ${SENS} dBm · antena ${GANT} dBi; dos rayos + difracción sobre ${ground==="pec"?"suelo perfecto":"tierra real"}.`;
-  draw();
+  const estado = st.m<0?"sin enlace":(st.m<8?"al límite":(st.m<25?"justo":"holgado"));
+  $("note").innerHTML = `Enlace entre antenas (${(2*P).toFixed(1)} m, cruza la fila intermedia): <b style="color:${colorFor(st.m)}">${st.m.toFixed(1)} dB</b> (${estado}) — Tx ${PTX} dBm · Rx ${SENS} dBm · antena ${GANT} dBi; dos rayos + difracción sobre ${ground==="pec"?"suelo perfecto":"tierra real"}. Seguidor: modelo <code>seguidor.js</code> v${Seguidor.VERSION}, ${MODS} módulos por ala (tramo de ${SPAN().toFixed(1)} m).`;
 }
 
-/* ---- interacción ---- */
-let raf=null; const redraw=()=>{ if(!raf) raf=requestAnimationFrame(()=>{raf=null;draw();}); };
-let drag=false, px=0, py=0;
-cv.addEventListener("pointerdown",e=>{drag=true;px=e.clientX;py=e.clientY;});
-cv.addEventListener("pointermove",e=>{ if(!drag)return; yaw+=(e.clientX-px)*0.01; pitch+=(e.clientY-py)*0.01;
-  pitch=Math.max(0.12,Math.min(1.45,pitch)); px=e.clientX; py=e.clientY; redraw();});
-window.addEventListener("pointerup",()=>drag=false);
-cv.addEventListener("wheel",e=>{e.preventDefault();zoom*=e.deltaY<0?1.08:0.93;zoom=Math.max(0.4,Math.min(3,zoom));redraw();},{passive:false});
-$("seg").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;ground=b.dataset.g;[...$("seg").children].forEach(x=>x.classList.toggle("on",x===b));update();});
-$("segr").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;PTX=+b.dataset.p;[...$("segr").children].forEach(x=>x.classList.toggle("on",x===b));update();});
-["tilt","drop","pitch","htube","chord"].forEach(id=>$(id).addEventListener("input",update));
-window.addEventListener("resize",redraw);
-update();
+function segClick(id,fn){
+  $(id).addEventListener("click",e=>{
+    const b=e.target.closest("button"); if(!b) return;
+    [...$(id).children].forEach(x=>x.classList.toggle("on",x===b));
+    fn(b);
+  });
+}
+
+if(webgl){
+  $("drop").value=DROP0.toFixed(2);
+  $("dropCat").textContent="(modelo: "+DROP0.toFixed(3).replace(".",",")+" m)";
+  initScene();
+  buildField();
+  update();
+  frame("campo");
+  tick();
+
+  segClick("seg",  b=>{ ground=b.dataset.g; update(); });
+  segClick("segr", b=>{ PTX=+b.dataset.p; update(); });
+  segClick("segm", b=>{ MODS=+b.dataset.m; buildField(); update(); });
+  segClick("segv", b=>{ frame(b.dataset.v); });
+  $("pat").addEventListener("change",()=>{ showPat=$("pat").checked; update(); });
+  ["tilt","drop","pitch","htube","chord"].forEach(id=>$(id).addEventListener("input",update));
+  window.addEventListener("resize",resize);
+}
 </script>
 </body>
 </html>

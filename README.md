@@ -10,9 +10,14 @@ para validar contra ray tracing.
 
 ## Qué incluye
 
-- `index.html` — render 3D interactivo, sin dependencias: patrón de la antena
-  sobre el suelo y enlace coloreado por margen real, con la geometría bifila
-  parametrizable. Es el "programita" que se abre en el navegador / GitHub Pages.
+- `index.html` — render 3D interactivo (WebGL, todo vendorizado: se abre sin
+  servidor y sin internet) con el **modelo real del seguidor**: patrón de la
+  antena sobre el suelo y enlace coloreado por margen real, con la geometría
+  bifila parametrizable. Es el "programita" que se abre en el navegador /
+  GitHub Pages.
+- `seguidor.js` — la **fuente única** del seguidor solar (cotas, piezas y
+  materiales) que comparten el gemelo digital, Cobertura 3D y el simulador de
+  backtracking. Copia idéntica: mejorarla en un repo mejora todos.
 - `python/` — núcleo físico + driver de diagnóstico para correr sobre tus datos.
 - `web/` — port JS del núcleo (para integrar el cálculo en cualquier HTML) y una
   demo de mapa de cobertura.
@@ -23,6 +28,10 @@ para validar contra ray tracing.
 ```
 cobertura-rf-fv/
 ├── index.html                  # render interactivo (GitHub Pages sirve esto)
+├── seguidor.js                 # modelo del seguidor (idéntico en todos los repos)
+├── lib/                        # three.js r128 + OrbitControls (vendorizados)
+├── tests/
+│   └── test_visor_3d.js        # QA del visor en Chromium (28 comprobaciones)
 ├── README.md
 ├── INSTRUCCIONES.md            # cómo usarlo paso a paso
 ├── python/
@@ -44,6 +53,13 @@ cobertura-rf-fv/
 
 **Render:** abre `index.html` en el navegador (o publícalo en GitHub Pages).
 Mueve los deslizadores; no necesita servidor ni conexión.
+
+**QA del visor** (necesita `playwright` y un servidor estático):
+
+```bash
+python3 -m http.server 8099      # en otra terminal
+node tests/test_visor_3d.js
+```
 
 **Diagnóstico con tus datos:**
 
@@ -77,6 +93,37 @@ el nodo dominador de rutas.
   toroide del modelo.
 - **Por defecto:** PRO (+19 dBm), 3 dBi en cada extremo, −103 dBm. El cable
   LMR195 de 0,7 m resta ~0,4 dB/extremo (despreciable).
+
+## El seguidor del render
+
+El visor no dibuja un rectángulo azul: monta el seguidor pieza a pieza con
+`seguidor.js` —viga de torsión de 120 mm partida en dos medias vigas, correas
+omega con su abarcón, módulos de 1.134 × 2.382 con sus cajas de conexión, slew
+drive con reductora y motor, TCU con sus chapas y abarcones, seccionador DC,
+pilas y amortiguadores—, en **bifila real**: de cada pareja, solo la viga del
+motor lleva TCU y antena, y un eje de transmisión Ø 60 la une con su gemela.
+
+Que sea el modelo de la casa no es estética: **el dibujo y la física hablan del
+mismo seguidor**. Dos consecuencias medibles, y las dos cambian números que
+antes salían de cotas inventadas en esta página:
+
+- la cara del módulo está a `DIMS.off` = **0,14 m** sobre el eje del tubo (antes,
+  0,25 m a ojo). Esa cota entra en `lowerEdge()`, que es el canto que apantalla
+  el enlace: si el render usa una y la difracción otra, la imagen se lee como la
+  prueba visual de un número que contradice;
+- la antena **cuelga donde dice el catálogo**: el coax sale del conector de la
+  TCU (0,225 m bajo el eje del tubo) y baja los 0,50 m de `antHang`, así que la
+  caída de partida es 0,725 m (0,72 al paso de 1 cm del deslizador), no 0,15 m.
+  Con 0,15 m el elemento radiante quedaba *dentro* de la caja de la TCU —
+  imposible de ver mientras el seguidor era un rectángulo. A 0,72 m la antena
+  queda por debajo del canto bajo del módulo y el
+  salto pasa por debajo de las mesas, que es lo que se ve en planta. El
+  deslizador sigue recorriendo 0,25–1,50 m para explorar montajes distintos.
+
+El tramo dibujado se elige en el panel: 7 módulos por ala (16,6 m, el corte con
+el que se aprecia el detalle), 14 (32,7 m) o los 28 de la **fila real** (64,7 m).
+El largo no entra en la física —el balance es una sección transversal— pero sí
+marca el encuadre.
 
 ## Supuestos y límites
 

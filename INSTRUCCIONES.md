@@ -3,19 +3,32 @@
 ## 1. El render interactivo (`index.html`)
 
 Ábrelo en cualquier navegador (doble clic) o publícalo en GitHub Pages. No
-necesita servidor ni internet.
+necesita servidor ni internet: three.js y el modelo del seguidor van dentro del
+repo.
+
+Lo que ves son **tres seguidores bifila** montados con `seguidor.js`, el modelo
+de la casa (el mismo del gemelo digital y de Cobertura 3D): viga de torsión,
+correas, módulos, slew drive con su motor, TCU, seccionador, pilas y
+amortiguadores. De cada pareja, solo la viga del motor lleva TCU y antena.
 
 Controles:
 
 - **Inclinación** — ángulo de los seguidores (−55° a 55°).
 - **Caída de la antena bajo la viga** — cuánto cuelga el látigo por debajo del
-  tubo de torsión.
+  tubo de torsión. Arranca en la cota del modelo (0,725 m: 0,225 m hasta el
+  conector de la TCU + 0,50 m de coax). Por debajo de ~0,35 m el elemento
+  radiante estaría dentro de la caja de la TCU.
 - **Distancia entre filas** — paso entre filas. Las antenas van en las filas
   pares, así que cada salto es 2× este valor y cruza la fila intermedia.
 - **Altura de la viga de torsión** — cota del eje de giro.
 - **Altura de módulo** — dimensión del módulo a lo largo de la pendiente.
 - **Suelo** — conductor perfecto / tierra real (húmeda).
 - **Radio** — XBee RR (+8 dBm) / XBee-PRO RR (+19 dBm).
+- **Tramo dibujado** — 7 módulos por ala (16,6 m), 14 (32,7 m) o los 28 de la
+  fila real (64,7 m). Solo afecta al encuadre: la física es una sección
+  transversal y no depende del largo.
+- **Encuadre** — Conjunto / Antena / Accionamiento, tres posiciones de cámara.
+- **Patrón de la antena** — apaga el toroide para ver el seguidor limpio.
 
 La línea entre antenas se colorea por el margen real (verde holgado → ámbar al
 límite → rojo sin enlace) y muestra el valor en dB. Gira la escena con el
