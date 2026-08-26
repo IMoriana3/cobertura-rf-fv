@@ -17,6 +17,12 @@ y localiza el punto único de fallo.
   uno con su margen y su desglose. Geometría parametrizable (inclinación, caída
   de antena, paso de filas, altura de viga, altura de módulo, tramo dibujado,
   distancia y altura de la NCU, distancia de la HSU, suelo, radio).
+- **El día**: los seguidores se mueven con el sol (NOAA + `singleaxis` de pvlib
+  con backtracking, stow nocturno a 5° al este) con la estética de los 3D de la
+  casa, y el margen de cada salto se recalcula a cada hora. El ángulo de las
+  palas mueve el salto directo al coordinador de 5 dB al alba a 56 dB a
+  mediodía: el peor rato no es la noche, es el sol rasante. El salto entre
+  vecinos aguanta todo el día porque pasa por debajo de las mesas.
 - La **mesa como obstáculo**: una fila no es un muro desde el suelo, es una placa
   entre dos cotas. Con la antena de la TCU por debajo del canto bajo, el salto
   entre vecinos pasa POR DEBAJO de las filas; con la de la NCU por encima de la
@@ -41,8 +47,8 @@ y localiza el punto único de fallo.
 
 ## Componentes
 
-- Render: `index.html` + `seguidor.js` + `equipos.js` + `lib/` (three.js vendorizado)
-- QA del visor: `tests/test_visor_3d.js` (48 comprobaciones en Chromium)
+- Render: `index.html` + `seguidor.js` + `equipos.js` + `sol.js` + `lib/` (three.js vendorizado)
+- QA del visor: `tests/test_visor_3d.js` (67 comprobaciones en Chromium)
 - QA del núcleo: `tests/test_nucleo.py` (19, incluida la paridad `.py` ↔ `.js`)
 - Núcleo + diagnóstico: `python/`
 - Port JS + demo de cobertura: `web/`

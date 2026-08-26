@@ -55,8 +55,8 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bifila · seguidores, NCU y HSU</h1>
-  <p class="sub">Tres seguidores bifila (6 filas) con el <b>modelo real de la casa</b> (<code>seguidor.js</code>), la <b>NCU</b> en su poste de 2,95 m y la <b>HSU</b> en su torre de 8 m (<code>equipos.js</code>, cotas de plano). Los saltos entre TCU pasan <i>por debajo</i> de las mesas; los que van a la NCU las <i>cruzan</i>. Coloreado por margen real. Gira con el ratón/dedo, rueda para acercarte.</p>
+  <h1>Bifila · seguidores, NCU y HSU, a lo largo del día</h1>
+  <p class="sub">Tres seguidores bifila (6 filas) con el <b>modelo real de la casa</b> (<code>seguidor.js</code>), la <b>NCU</b> en su poste de 2,95 m y la <b>HSU</b> en su torre de 8 m (<code>equipos.js</code>, cotas de plano). Los saltos entre TCU pasan <i>por debajo</i> de las mesas; los que van a la NCU las <i>cruzan</i>. Los seguidores <b>se mueven con el sol</b>, y con ellos el margen: de canto al alba, planos a mediodía. Coloreado por margen real. Gira con el ratón/dedo, rueda para acercarte.</p>
 
   <div id="view">
     <canvas id="cv"></canvas>
@@ -87,6 +87,12 @@
         <input id="hncu" type="range" min="1" max="8" step="0.05" value="3.15"></div>
       <div><label>HSU: distancia a la NCU: <span class="val" id="vDhsu">8 m</span></label>
         <input id="dhsu" type="range" min="3" max="60" step="1" value="8"></div>
+      <div><label>Hora solar: <span class="val" id="vHora">13:00</span></label>
+        <input id="hora" type="range" min="0" max="1439" step="5" value="780"></div>
+      <div><label>Día del año: <span class="val" id="vDia">21 jun</span></label>
+        <input id="dia" type="range" min="1" max="365" step="1" value="172"></div>
+      <div><label>Latitud: <span class="val" id="vLat">41.5°</span></label>
+        <input id="lat" type="range" min="-45" max="60" step="0.5" value="41.5"></div>
     </div>
     <div class="row">
       <div><label>Suelo:</label>
@@ -117,9 +123,25 @@
           <button data-v="hsu">HSU</button>
         </div>
       </div>
+      <div><label>Ángulo del seguidor:</label>
+        <div class="seg" id="segd">
+          <button data-d="sol" class="on">Sigue al sol</button>
+          <button data-d="man">Manual</button>
+        </div>
+      </div>
+      <div><label>Reproducir el día:</label>
+        <div class="seg" id="segp">
+          <button id="play">▶ Reproducir</button>
+          <button data-s="amanecer">Amanecer</button>
+          <button data-s="mediodia">Mediodía</button>
+          <button data-s="ocaso">Ocaso</button>
+        </div>
+      </div>
       <div><label class="chk"><input type="checkbox" id="pat" checked> Patrón de la antena</label></div>
       <div><label class="chk"><input type="checkbox" id="lnk" checked> Enlaces a la NCU</label></div>
+      <div><label class="chk"><input type="checkbox" id="bt" checked> Backtracking</label></div>
     </div>
+    <p class="note" id="sunl"></p>
     <div id="lect"></div>
     <p class="note" id="note"></p>
   </div>
@@ -129,6 +151,7 @@
 <script src="lib/OrbitControls.js"></script>
 <script src="seguidor.js"></script>
 <script src="equipos.js"></script>
+<script src="sol.js"></script>
 <script src="web/zigbee_pv_model.js"></script>
 <script>
 const $=id=>document.getElementById(id);
@@ -157,6 +180,15 @@ let P=6, HTUBE=1.5, CHORD=D.modH, MODS=7, DNCU=12, HNCU=ED.ncuAntY, DHSU=8;
 const NROWS=6, M0=D.off, LAM=Z.wavelength(), PRV=1.25;
 const GANT=3.0, SENS=-103; let PTX=19;
 let ground="pec", showPat=true, showNcuLinks=true;
+/* EL DÍA. El seguidor se mueve con el sol como en el resto de aplicaciones de la
+   casa: `sol.js` trae la posición solar (NOAA), el `singleaxis` de pvlib con su
+   backtracking y la receta de luz y cielo de los 3D. Aquí eso no es decoración:
+   el ángulo del seguidor es lo que sube y baja la banda de las mesas, así que el
+   margen de cada salto CAMBIA a lo largo del día — y el peor rato no es de
+   noche, es cuando las palas están de canto. */
+let BETA=30;                       // ángulo del seguidor que manda en la escena
+let modoSol=true, playing=false;
+const STOW=5;                      // stow nocturno del proyecto: 5° al ESTE
 /* Caída de catálogo del látigo de la TCU: 0,225 hasta el conector + `antHang`. */
 const DROP0=0.225+D.antHang;
 const ZANT=-(D.tcuX-0.16);           // los tres extremos viven en el mismo corte
@@ -223,7 +255,8 @@ const estadoDe=m=> m<0?"sin enlace":(m<8?"al límite":(m<25?"justo":"holgado"));
  * fila lleva un `yaw` de 90°: modelo (x,y,z) → escena (z, y, −x).
  * ==========================================================================*/
 const cv=$("cv"), labelBox=$("labels");
-let renderer,scene,camera,controls,sun,groundMesh,fieldG;
+let renderer,scene,camera,controls,sun,hemi,groundMesh,fieldG;
+const SKY={cv:null,tex:null,key:""};
 let rows=[], pairs=[], chordTargets=[], links=null, labels=[];
 let ncu=null, hsu=null;
 let webgl=true;
@@ -269,9 +302,14 @@ function initScene(){
   scene=new THREE.Scene();
   scene.fog=new THREE.Fog(0x97a9b4,120,900);   // bruma del horizonte: disuelve el borde del suelo
 
-  const skyMat=new THREE.MeshBasicMaterial({
-    map:gradTex([[0,"#0d243c"],[0.28,"#2b5478"],[0.44,"#7ea0b8"],[0.499,"#97a9b4"],[0.52,"#5e5b4c"],[1,"#1d1f19"]]),
-    side:THREE.BackSide, depthWrite:false, fog:false, toneMapped:false });
+  /* El cielo es un canvas que se REPINTA con la hora (receta de la casa, en
+     `sol.js`): horizonte encendido al alba y al ocaso, cénit oscuro, y bajo el
+     horizonte el rescoldo del crepúsculo. */
+  SKY.cv=document.createElement("canvas"); SKY.cv.width=4; SKY.cv.height=512;
+  Sol.paintSky(SKY.cv, Sol.skyColors(45).top, Sol.skyColors(45).hor);
+  SKY.tex=new THREE.CanvasTexture(SKY.cv); SKY.tex.encoding=THREE.sRGBEncoding;
+  const skyMat=new THREE.MeshBasicMaterial({map:SKY.tex,side:THREE.BackSide,
+                                            depthWrite:false, fog:false, toneMapped:false});
   scene.add(new THREE.Mesh(new THREE.SphereGeometry(1500,32,20),skyMat));
 
   // entorno para los metales: sin envmap, `metalness` alta renderiza NEGRO
@@ -281,10 +319,13 @@ function initScene(){
   const sunBlob=new THREE.Mesh(new THREE.SphereGeometry(190,14,10),
                                new THREE.MeshBasicMaterial({color:0xfff0d0}));
   sunBlob.position.copy(SUNDIR).multiplyScalar(1100); envScene.add(sunBlob);
+  /* El entorno se hornea UNA vez, con el cielo de mediodía: es lo que reflejan
+     los metales. Rehornearlo por frame costaría más de lo que aporta — el sol,
+     el cielo y las sombras sí se mueven. */
   scene.environment=pmrem.fromScene(envScene,0.03,1,3000).texture;
   pmrem.dispose();
 
-  scene.add(new THREE.HemisphereLight(0x9dc0e6,0x33301f,0.42));
+  hemi=new THREE.HemisphereLight(0x9dc0e6,0x33301f,0.42); scene.add(hemi);
   sun=new THREE.DirectionalLight(0xfff1d8,1.45);
   sun.castShadow=true;
   sun.shadow.mapSize.set(2048,2048);
@@ -413,14 +454,23 @@ function buildField(){
   }
 
   /* --- NCU y HSU: los otros dos extremos de la malla --- */
-  const eq={materials:mats.equipos, antMaterial:mats.antena};
+  // aquí no hay una pasada de sombras sobre el grupo, así que se piden al modelo
+  const eq={materials:mats.equipos, antMaterial:mats.antena, shadows:true};
+  /* Punto cian EN EL LÁTIGO de cada equipo, igual que en la TCU. Sin él, en la
+     HSU el enlace llegaba a la cabeza de la torre —donde también está el
+     anemómetro ultrasónico— y se leía como si la señal saliera del anemo. Va de
+     antena a antena, y ahora se ve dónde está cada una. */
+  const marca=(g,p)=>{ const d=new THREE.Mesh(new THREE.SphereGeometry(0.055,12,8),mats.antena);
+                       d.position.copy(p); g.add(d); return d; };
   const bn=Equipos.buildNCU(THREE,eq);
   bn.group.rotation.y=Math.PI;              // el armario mira al campo
   fieldG.add(bn.group);
+  marca(bn.group,bn.antPos);
   ncu={g:bn.group, local:bn.antPos.clone(), pos:new THREE.Vector3()};
 
   const bh=Equipos.buildHSU(THREE,Object.assign({panelMaterial:mats.glass},eq));
   fieldG.add(bh.group);
+  marca(bh.group,bh.antPos);
   hsu={g:bh.group, local:bh.antPos.clone(), pos:new THREE.Vector3()};
 
   links=new THREE.Group(); links.frustumCulled=false; fieldG.add(links);
@@ -463,6 +513,49 @@ function patternGeom(hA){
   return g;
 }
 
+/* ------------------------------ el sol ------------------------------ */
+/* Marco: +X = este, +Z = sur (el tubo va N-S), +Y arriba. El ángulo positivo
+   del seguidor deja la cara mirando al ESTE — la misma convención que `pvlib`
+   (`surfaceOrient` con axisAz 0 da azimut 90 para θ>0) y la misma que el render,
+   donde β>0 baja el canto hacia +X. Por eso θ entra en la escena tal cual. */
+function sunState(){
+  const min=+$("hora").value, dia=+$("dia").value, lat=+$("lat").value;
+  const ms=Date.UTC(2026,0,1)+(dia-1)*86400000+min*60000;
+  const p=Sol.solarPos(ms,lat,0);
+  const gcr=Math.max(0.05,Math.min(0.95,CHORD/P));      // la GCR sale de la geometría de esta página
+  const th=Sol.singleaxis(p.zen,p.az,{axisTilt:0,axisAz:0,maxAngle:55,
+                                      backtrack:$("bt").checked,gcr:gcr,crossAxisTilt:0});
+  const noche=!isFinite(th);
+  return {elev:p.elev,az:p.az,theta:noche?STOW:th,noche:noche,gcr:gcr,min:min};
+}
+
+const _sv=new THREE.Vector3();
+function applySol(st){
+  const c=Sol.skyColors(st.elev), look=Sol.sunLook(st.elev);
+  const k=Sol.paintSky(SKY.cv,c.top,c.hor);
+  if(k!==SKY.key){ SKY.key=k; SKY.tex.needsUpdate=true; }
+  scene.fog.color.setRGB(c.hor[0],c.hor[1],c.hor[2]);   // la bruma, EXACTAMENTE del color del horizonte: aclararla dejaba una raya pálida donde se juntan
+
+  const width=rowX(NROWS-1), span=SPAN(), total=xHSU()+6;
+  const R=Math.max(total,span)*0.75+14;
+  sun.target.position.set(total/2,HTUBE,0);
+  const v=Sol.sunVector(Math.max(st.elev,1.5),st.az);   // rasante: por debajo de ~1,5° la sombra se va al infinito
+  _sv.set(v.x,v.y,v.z);
+  sun.position.copy(sun.target.position).addScaledVector(_sv,Math.max(60,R*2.2));
+  if(st.noche){ sun.intensity=0.02; hemi.intensity=0.10; }
+  else{
+    sun.color.setRGB(look.color[0],look.color[1],look.color[2]);
+    sun.intensity=look.intensity; hemi.intensity=look.hemi;
+  }
+  /* La caja de sombra sigue al sol: con el sol rasante la escena vista desde él
+     se estira, y con el frustum de mediodía las filas se quedan sin sombra. */
+  const el=Math.max(st.elev,1.5)*Math.PI/180;
+  const vy=Math.max(R*0.5, R*Math.sin(el)+span*0.6*Math.cos(el));
+  const sc=sun.shadow.camera;
+  sc.left=-R; sc.right=R; sc.top=vy; sc.bottom=-vy; sc.near=1; sc.far=R*5+120;
+  sc.updateProjectionMatrix();
+}
+
 /* ------------------------------ colocación ------------------------------ */
 function layout(){
   const span=SPAN(), width=rowX(NROWS-1), total=xHSU()+6, mg=Math.max(8,0.35*span);
@@ -490,12 +583,7 @@ function layout(){
   hsu.g.position.set(xHSU(),0,ZANT);
   hsu.pos.set(xHSU()+hsu.local.x, hsu.local.y, ZANT+hsu.local.z);
 
-  const R=Math.max(total,span)*0.75+14;
-  sun.target.position.set(total/2,HTUBE,0);
-  sun.position.copy(sun.target.position).addScaledVector(SUNDIR,Math.max(60,R*2.2));
-  const sc=sun.shadow.camera;
-  sc.left=-R; sc.right=R; sc.top=R; sc.bottom=-R; sc.near=1; sc.far=R*5+120;
-  sc.updateProjectionMatrix();
+  // la luz y su caja de sombra las coloca `applySol`: dependen de la hora
 }
 
 /* ------------------------------ estado dinámico ------------------------------ */
@@ -523,7 +611,7 @@ function drawLink(a,b,col,dashed){
 }
 
 function applyState(){
-  const beta=+$("tilt").value, drop=+$("drop").value, hA=Math.max(0.15,HTUBE-drop);
+  const beta=BETA, drop=+$("drop").value, hA=Math.max(0.15,HTUBE-drop);
   const rad=beta*Math.PI/180, cb=Math.cos(rad), sb=Math.sin(rad);
   const k=CHORD/D.modH;
   chordTargets.forEach(n=>{ n.scale.z=k; });
@@ -623,7 +711,7 @@ function frame(which){
   const span=SPAN(), width=rowX(NROWS-1);
   if(which==="antena"){
     const p=rows[3]&&rows[3].ant?rows[3].ant.pos:new THREE.Vector3(3*P,HTUBE,ZANT);
-    const beta=+$("tilt").value, side=(beta>=0?-1:1);   // el canto ALTO del panel
+    const side=(BETA>=0?-1:1);   // el canto ALTO del panel
     controls.target.set(p.x,p.y+0.25,p.z);
     camera.position.set(p.x+side*2.7,Math.max(0.8,p.y+0.55),p.z+2.9);
   }else if(which==="motor"){
@@ -663,17 +751,41 @@ function drawLabels(){
     l.el.style.top =((-_pv.y*0.5+0.5)*H+l.dy)+"px";
   });
 }
-function tick(){
+let _tPrev=0, _acc=0;
+const PASO_MIN=5;                 // 5 min por paso: el día entero en ~17 s
+function tick(t){
   requestAnimationFrame(tick);
+  if(playing){
+    const dt=_tPrev?Math.min(0.2,(t-_tPrev)/1000):0; _tPrev=t; _acc+=dt;
+    if(_acc>=0.06){ _acc=0;
+      let m=+$("hora").value+PASO_MIN; if(m>1439)m=0;
+      $("hora").value=m; update();
+    }
+  }else _tPrev=t;
   resize(); controls.update(); renderer.render(scene,camera); drawLabels();
 }
 
 /* ------------------------------ interfaz ------------------------------ */
 function update(){
   readParams();
+  const sl=sunState();
+  if(modoSol) BETA=sl.theta; else BETA=+$("tilt").value;
+  $("tilt").disabled=modoSol;
   layout();
+  applySol(sl);
   const st=applyState();
-  $("vTilt").textContent=st.beta+"°";
+  $("vTilt").textContent=(modoSol?BETA.toFixed(1)+"° (sol)":BETA.toFixed(0)+"°");
+  const hh=String(Math.floor(sl.min/60)).padStart(2,"0"), mm=String(sl.min%60).padStart(2,"0");
+  $("vHora").textContent=hh+":"+mm;
+  $("vDia").textContent=new Date(Date.UTC(2026,0,1)+(+$("dia").value-1)*86400000)
+                          .toLocaleDateString("es-ES",{day:"numeric",month:"short",timeZone:"UTC"});
+  $("vLat").textContent=(+$("lat").value).toFixed(1)+"°";
+  $("sunl").innerHTML = sl.noche
+    ? `<b>Noche</b> — sol a ${sl.elev.toFixed(1)}°. Los seguidores duermen en stow a ${STOW}° al este, y el margen es el de esa postura.`
+    : `Sol a <b>${sl.elev.toFixed(1)}°</b> de altura y ${sl.az.toFixed(0)}° de azimut; el seguidor va a <b>${BETA.toFixed(1)}°</b>`+
+      `${$("bt").checked?" con backtracking":" (seguimiento astronómico, sin backtracking)"} para una GCR de ${sl.gcr.toFixed(2)}.`+
+      ` El canto bajo de la mesa queda a ${(HTUBE+M0*Math.cos(BETA*Math.PI/180)-(CHORD/2)*Math.abs(Math.sin(BETA*Math.PI/180))).toFixed(2)} m: `+
+      `por debajo pasa el salto entre vecinos, por encima cruza el que va a la NCU.`;
   $("vDrop").textContent=st.drop.toFixed(2)+" m · antena "+st.hA.toFixed(2)+" m";
   $("vPitch").textContent=P.toFixed(1)+" m"; $("vHtube").textContent=HTUBE.toFixed(2)+" m";
   $("vChord").textContent=CHORD.toFixed(2)+" m";
@@ -719,9 +831,33 @@ if(webgl){
   segClick("segr", b=>{ PTX=+b.dataset.p; update(); });
   segClick("segm", b=>{ MODS=+b.dataset.m; buildField(); update(); });
   segClick("segv", b=>{ frame(b.dataset.v); });
+  segClick("segd", b=>{ modoSol=(b.dataset.d==="sol"); if(!modoSol)$("tilt").value=BETA.toFixed(0); update(); });
+  $("bt").addEventListener("change",update);
+  /* Saltos a las tres horas que enseñan el día: al amanecer las palas están de
+     canto y la banda de la mesa es un muro; a mediodía están planas y el campo
+     casi no apantalla. */
+  $("segp").addEventListener("click",e=>{
+    const b=e.target.closest("button"); if(!b) return;
+    if(b.id==="play"){ playing=!playing; b.textContent=playing?"⏸ Pausa":"▶ Reproducir";
+                       b.classList.toggle("on",playing); return; }
+    const lat=+$("lat").value, dia=+$("dia").value;
+    if(b.dataset.s==="mediodia") $("hora").value=720;
+    else{
+      // amanecer/ocaso: el primer (o último) minuto con el sol por encima de 0°
+      const ms0=Date.UTC(2026,0,1)+(dia-1)*86400000;
+      let hit=b.dataset.s==="amanecer"?300:1140;
+      for(let m=(b.dataset.s==="amanecer"?180:1260); b.dataset.s==="amanecer"?m<720:m>720;
+          m+=(b.dataset.s==="amanecer"?5:-5)){
+        if(Sol.solarPos(ms0+m*60000,lat,0).elev>0){ hit=m; break; }
+      }
+      $("hora").value=hit;
+    }
+    update();
+  });
   $("pat").addEventListener("change",()=>{ showPat=$("pat").checked; update(); });
   $("lnk").addEventListener("change",()=>{ showNcuLinks=$("lnk").checked; update(); });
-  ["tilt","drop","pitch","htube","chord","dncu","hncu","dhsu"].forEach(id=>$(id).addEventListener("input",update));
+  ["tilt","drop","pitch","htube","chord","dncu","hncu","dhsu","hora","dia","lat"]
+    .forEach(id=>$(id).addEventListener("input",update));
   window.addEventListener("resize",resize);
 }
 </script>

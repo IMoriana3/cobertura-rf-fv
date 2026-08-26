@@ -29,7 +29,16 @@ pasa por debajo de las filas y uno al coordinador las cruza.
 
 Controles:
 
-- **Inclinación** — ángulo de los seguidores (−55° a 55°).
+- **Hora solar · Día del año · Latitud** — mueven el sol, y con él los
+  seguidores, la luz, el cielo y las sombras. **▶ Reproducir** pasa el día
+  entero en unos 17 s; **Amanecer / Mediodía / Ocaso** saltan a las tres horas
+  que lo cuentan.
+- **Ángulo del seguidor** — *Sigue al sol* (`singleaxis` de pvlib, con stow
+  nocturno a 5° al este) o *Manual*, que devuelve el mando al deslizador.
+- **Backtracking** — con el paso de fila de la página. A 6 m no llega a entrar
+  (el tope de ±55° llega antes); a paso corto sí, y se ve.
+- **Inclinación** — ángulo de los seguidores (−55° a 55°). Solo en modo manual:
+  con el sol lo manda la hora.
 - **Caída de la antena bajo la viga** — cuánto cuelga el látigo por debajo del
   tubo de torsión. Arranca en la cota del modelo (0,725 m: 0,225 m hasta el
   conector de la TCU + 0,50 m de coax). Por debajo de ~0,35 m el elemento

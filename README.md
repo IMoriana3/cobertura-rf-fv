@@ -18,6 +18,9 @@ para validar contra ray tracing.
 - `seguidor.js` — la **fuente única** del seguidor solar (cotas, piezas y
   materiales) que comparten el gemelo digital, Cobertura 3D y el simulador de
   backtracking. Copia idéntica: mejorarla en un repo mejora todos.
+- `sol.js` — la posición del sol (NOAA), el `singleaxis` de pvlib con su
+  backtracking y la receta de luz y cielo de los 3D de la casa. Portado 1:1 de
+  `backtracking.html`, donde está contrastado contra pvlib.
 - `equipos.js` — los otros dos extremos de la malla: la **NCU** (armario
   415×515×230 colgado de un poste C de 2,95 m, látigo en la cabeza a 3,15 m) y
   la **HSU** (torre de celosía autoportante de 8 m, ultrasónico y dos látigos a
@@ -35,9 +38,10 @@ cobertura-rf-fv/
 ├── index.html                  # render interactivo (GitHub Pages sirve esto)
 ├── seguidor.js                 # modelo del seguidor (idéntico en todos los repos)
 ├── equipos.js                  # modelos de la NCU y la HSU (cotas de plano)
+├── sol.js                      # sol + seguimiento + estética de los 3D de la casa
 ├── lib/                        # three.js r128 + OrbitControls (vendorizados)
 ├── tests/
-│   ├── test_visor_3d.js        # QA del visor en Chromium (48 comprobaciones)
+│   ├── test_visor_3d.js        # QA del visor en Chromium (67 comprobaciones)
 │   └── test_nucleo.py          # núcleo + PARIDAD .py <-> .js (19 comprobaciones)
 ├── README.md
 ├── INSTRUCCIONES.md            # cómo usarlo paso a paso
@@ -140,6 +144,43 @@ mesa, el salto largo pierde 14,5 dB por difracción; por encima de la cresta,
 44 dB. Cruzar la cresta multiplica la difracción por tres. (Y el margen total
 tampoco es monótono con la altura, porque el modelo de dos rayos mete sus nulos
 de interferencia por el camino: los dos efectos están en la lectura, separados.)
+
+## El día
+
+El seguidor se mueve con el sol, como en el resto de aplicaciones de la casa:
+posición solar NOAA, `singleaxis` de pvlib con backtracking por GCR —y la GCR
+sale de la geometría de la propia página, no de un número aparte—, tope
+mecánico de ±55° y **stow nocturno a 5° al este**, el del proyecto. Manda la
+hora; el deslizador de inclinación queda para el modo manual.
+
+Eso aquí no es decoración: **el ángulo del seguidor es lo que sube y baja la
+banda de la mesa**, y con ella el apantallamiento. Medido en el propio visor, a
+21 de junio y 41,5° de latitud, con la NCU a 12 m del borde:
+
+| Hora | θ | TCU ↔ TCU | TCU 1 → NCU |
+|---|---|---|---|
+| 07:00 | +55° (de canto, al este) | 61,3 dB | **5,0 dB** |
+| 09:00 | +41° | 65,6 dB | 10,3 dB |
+| 12:00 | ≈0° (plano) | 70,8 dB | **56,2 dB** |
+| 17:00 | −55° (de canto, al oeste) | 61,3 dB | **5,0 dB** |
+| noche | +5° (stow) | 70,8 dB | 52,7 dB |
+
+Los 51 dB de diferencia entre el mediodía y el alba son solo el ángulo de las
+palas. Dos lecturas que no se ven con el seguidor congelado:
+
+- **El peor rato no es la noche, es el alba y el ocaso.** De noche las palas
+  duermen casi planas y el campo apenas apantalla; con el sol rasante están de
+  canto y la banda de cada fila es un muro. Si una TCU va a perder al
+  coordinador, lo pierde a primera y a última hora.
+- **El salto entre vecinos aguanta todo el día** (61–71 dB): pasa por debajo de
+  las mesas, y por debajo el ángulo casi no importa. La malla es lo que salva
+  las horas malas — y eso es exactamente lo que se ve en las capturas de la
+  planta real.
+
+Con este paso (6 m, GCR 0,40) el **backtracking no llega a entrar**: no habría
+sombra de fila que evitar hasta los 66,6°, y el tope mecánico de ±55° llega
+antes. A paso corto sí entra, y se ve recoger el seguidor por debajo del ángulo
+astronómico.
 
 ## La mesa como obstáculo
 
