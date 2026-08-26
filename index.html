@@ -259,7 +259,7 @@ const cv=$("cv"), labelBox=$("labels");
 let renderer,scene,camera,controls,sun,hemi,groundMesh,fieldG;
 const SKY={cv:null,tex:null,key:""};
 let rows=[], pairs=[], chordTargets=[], links=null, labels=[];
-let ncu=null, hsu=null;
+let ncu=null, hsu=null, AP=null;
 let webgl=true;
 
 try{ renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true}); }catch(e){ webgl=false; }
@@ -365,6 +365,7 @@ function materials(){
   MATS.pattern=new THREE.LineBasicMaterial({color:0x39d0ff,transparent:true,opacity:0.32,
                                             fog:false,toneMapped:false});
   MATS.equipos=Equipos.materials(THREE);
+  MATS.apoyo=Seguidor.apoyoMaterials(THREE);
   return MATS;
 }
 
@@ -462,6 +463,7 @@ function buildField(){
   while(fieldG.children.length){ const c=fieldG.children.pop(); disposeTree(c); }
   rows=[]; pairs=[]; chordTargets=[]; links=null; ncu=null; hsu=null; patKey="";
 
+  AP=Seguidor.apoyoGeoms(THREE,{postH:Math.max(0.4,HTUBE-0.253)});
   const prevMods=D.modsPerStr;
   Seguidor.setModsPerStr(MODS);
   BUILT_SPAN=D.span;
@@ -501,22 +503,44 @@ function buildField(){
       if(p&&p.depth!==undefined&&Math.abs(p.depth-D.modH)<0.06) chordTargets.push(n);
     });
 
+    /* APOYOS. Ya no son una caja: son el apoyo entero de la casa —perfil C,
+       tambor con sus ranuras, horquilla PRE01, virola y CASQUILLO—, que vive en
+       `seguidor.js`. Lo único que decide esta página es DÓNDE van, que es lo
+       que de verdad cambia entre plantas. El casquillo abraza la viga, así que
+       cuelga del grupo que BASCULA; el resto es fijo. */
     const posts=[];
     const central=new THREE.Mesh(new THREE.BoxGeometry(0.22,1,0.32),mats.steel);
     central.castShadow=true; central.receiveShadow=true; yaw.add(central); posts.push({m:central,top:-0.28});
     [-dd,dd].forEach(x=>{
-      const pl=new THREE.Mesh(new THREE.BoxGeometry(0.14,1,0.22),mats.pila);
-      pl.castShadow=true; pl.receiveShadow=true; pl.position.x=x; yaw.add(pl); posts.push({m:pl,top:-0.06});
-      const rod=new THREE.Mesh(new THREE.BoxGeometry(0.20,0.13,0.34),mats.steel);   // sillín del rodamiento
-      rod.position.set(x,-0.095,0); rod.castShadow=true; yaw.add(rod);
+      const col=new THREE.Mesh(AP.poste,mats.apoyo.steel);
+      col.castShadow=col.receiveShadow=true; col.position.x=x;
+      if(x>0) col.rotation.y=Math.PI;                 // el hueco de la C, siempre al exterior
+      yaw.add(col); posts.push({m:col,top:-0.253,poste:1});
+      [[AP.tambor,mats.apoyo.hdpe],[AP.horquilla,mats.apoyo.steel],[AP.virola,mats.apoyo.steel]].forEach(([g,mm])=>{
+        const p=new THREE.Mesh(g,mm); p.position.x=x; p.castShadow=p.receiveShadow=true; yaw.add(p);
+      });
+      const cq=new THREE.Mesh(AP.casquillo,mats.apoyo.hdpe);   // el casquillo GIRA con la viga
+      cq.position.x=x; cq.castShadow=cq.receiveShadow=true; beam.spin.add(cq);
     });
 
+    /* AMORTIGUADORES largos: pie a 30 cm del suelo con su ménsula al poste, y
+       cima en la esquina inferior de la viga por una orejeta que bascula. */
     const damps=beam.dampers.map(dp=>{
-      const rodM=new THREE.Mesh(new THREE.CylinderGeometry(0.021,0.021,1,10),mats.motor);
-      const bodyM=new THREE.Mesh(new THREE.CylinderGeometry(0.038,0.038,1,12),mats.steel);
-      rodM.castShadow=bodyM.castShadow=true;
-      yaw.add(rodM,bodyM);
-      return {a:dp.a,b:dp.b,rod:rodM,body:bodyM};
+      const L=Seguidor.amortiguadorLargo(THREE,dp.b[0],HTUBE);   // el pie se mide desde el SUELO
+      const bodyM=new THREE.Mesh(new THREE.CylinderGeometry(L.body.r,L.body.r,1,L.body.seg),mats.motor);
+      const rodM =new THREE.Mesh(new THREE.CylinderGeometry(L.rod.r,L.rod.r,1,L.rod.seg),mats.apoyo.steel);
+      const men  =new THREE.Mesh(new THREE.CylinderGeometry(L.mensula.r,L.mensula.r,1,L.mensula.seg),mats.steel);
+      const ojo  =new THREE.Mesh(new THREE.CylinderGeometry(0.045,0.045,0.06,10),mats.steel);
+      const ore  =new THREE.Mesh(new THREE.BoxGeometry(L.orejeta.w,L.orejeta.h,L.orejeta.d),mats.steel);
+      bodyM.castShadow=rodM.castShadow=men.castShadow=ore.castShadow=true;
+      yaw.add(bodyM,rodM,men,ojo);
+      ore.position.set(L.x,-0.0375,0.0425);
+      ore.quaternion.setFromUnitVectors(_up,new THREE.Vector3(0,-0.075,0.085).normalize());
+      beam.spin.add(ore);                              // la orejeta bascula con la viga
+      // la ménsula y el ojo del pie son FIJOS: se colocan una vez
+      _a.set(dp.b[0],L.pieY,0); _b.set(L.pie[0],L.pie[1],L.pie[2]);
+      spanCyl(men,_a,_b); ojo.position.copy(_b);
+      return {a:L.pie,b:L.cima,rod:rodM,body:bodyM};
     });
 
     let ant=null;
@@ -657,7 +681,10 @@ function layout(){
 
   rows.forEach((r,i)=>{
     r.g.position.set(rowX(i),HTUBE,0);
-    r.posts.forEach(p=>{ const h=Math.max(0.25,HTUBE+p.top); p.m.scale.y=h; p.m.position.y=p.top-h/2; });
+    r.posts.forEach(p=>{
+      if(p.poste){ p.m.position.y=p.top-(HTUBE+p.top)/2; return; }   // el perfil C ya nace con su largo
+      const h=Math.max(0.25,HTUBE+p.top); p.m.scale.y=h; p.m.position.y=p.top-h/2;
+    });
   });
   pairs.forEach(p=>{
     p.g.position.set((2*p.k+0.5)*P,HTUBE,0);
@@ -954,8 +981,11 @@ if(webgl){
   });
   $("pat").addEventListener("change",()=>{ showPat=$("pat").checked; update(); });
   $("lnk").addEventListener("change",()=>{ showNcuLinks=$("lnk").checked; update(); });
-  ["tilt","drop","pitch","htube","chord","dncu","hncu","dhsu","hora","dia","lat"]
+  ["tilt","drop","pitch","chord","dncu","hncu","dhsu","hora","dia","lat"]
     .forEach(id=>$(id).addEventListener("input",update));
+  /* La altura de la viga cambia el largo del poste y la cota del pie del
+     amortiguador, que son geometría: hay que rehacer el campo, no recolocarlo. */
+  $("htube").addEventListener("input",()=>{ readParams(); buildField(); update(); });
   window.addEventListener("resize",resize);
 }
 </script>
