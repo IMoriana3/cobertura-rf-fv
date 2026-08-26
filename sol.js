@@ -13,13 +13,22 @@
  *      al alba y al ocaso y deja el cénit oscuro, y bajo el horizonte queda el
  *      rescoldo del crepúsculo.
  *
- * PROCEDENCIA. Portado 1:1 de `backtracking.html` (el simulador de backtracking,
- * en el repo de Cobertura Zigbee), que es donde vive desde antes y donde está
- * contrastado contra pvlib. Aquí no hay física nueva: hay un módulo, para que la
- * siguiente página que necesite mover un seguidor con el sol no se escriba su
- * cuarta versión de la ecuación del tiempo. `backtracking.html` sigue con su
- * copia embebida — el día que se toque una, hay que tocar las dos; extraerlo
- * allí también es la tarea pendiente, la misma que se hizo con `equipos.js`.
+ * PROCEDENCIA. De `backtracking.html` (el simulador de backtracking, en el repo
+ * de Cobertura Zigbee), que es donde vive desde antes y donde está contrastado
+ * contra pvlib. Aquí no hay física nueva: hay un módulo, para que la siguiente
+ * página que necesite mover un seguidor con el sol no se escriba su cuarta
+ * versión de la ecuación del tiempo. Desde 0.2.0, `backtracking.html` lo LEE de
+ * aquí: ya no hay dos copias.
+ *
+ * DOS COSAS QUE NO ERAN 1:1 y se han corregido al juntarlas (v0.2.0), las dos a
+ * favor del original, que es el que está contrastado:
+ *   · la REFRACCIÓN. `backtracking.html` devolvía elevación APARENTE; este
+ *     módulo la daba geométrica y sin avisar. Ahora es una OPCIÓN
+ *     (`solarPos(..., {refract:true})`), que es lo que pide aquel. Por defecto
+ *     sigue geométrica, que es lo que usa el simulador de cobertura RF.
+ *   · el CIELO. El degradado se abría con `elev/60` y en el original es
+ *     `elev/35`: el cénit aclaraba más despacio de lo que aclara en los 3D de
+ *     la casa. Manda el original.
  * ============================================================================= */
 (function (root) {
   'use strict';
@@ -40,8 +49,16 @@
   };
 
   /* Posición del sol (NOAA). dateUTCms en ms; lat/lon en grados (lon + al este).
-     Devuelve {elev, az, zen, decl, eqTime} en grados. */
-  S.solarPos = function (dateUTCms, lat, lon) {
+     Devuelve {elev, az, zen, decl, eqTime, ha} en grados.
+
+     REFRACCIÓN. Por defecto la elevación es GEOMÉTRICA. Con `{refract:true}` se
+     devuelve la APARENTE —la que ve el ojo, con el disco ya apartado del
+     horizonte— y `zen` se recalcula con ella. La diferencia es de centésimas
+     salvo pegada al horizonte, donde llega a medio grado y decide si el sol ha
+     salido o no; por eso lo pide `backtracking.html`, que es el que se carea
+     contra pvlib. El simulador de cobertura RF usa la geométrica, que es la que
+     usaba, y para mover un seguidor a efectos de cobertura da igual. */
+  S.solarPos = function (dateUTCms, lat, lon, opts) {
     var jd = julianDay(dateUTCms), T = (jd - 2451545) / 36525;
     var L0 = (280.46646 + T * (36000.76983 + T * 0.0003032)) % 360; if (L0 < 0) L0 += 360;
     var M = 357.52911 + T * (35999.05029 - 0.0001537 * T);
@@ -74,6 +91,10 @@
       az = Math.acos(azc) / RAD;
       if (ha > 0) az = (az + 180) % 360; else az = (540 - az) % 360;
     } else az = (lat > decl) ? 180 : 0;
+    if (opts && opts.refract) {
+      var ap = elev + S.refraction(elev);
+      return { elev: ap, az: az, zen: 90 - ap, decl: decl, eqTime: eqTime, ha: ha };
+    }
     return { elev: elev, az: az, zen: zen, decl: decl, eqTime: eqTime, ha: ha };
   };
 
@@ -123,7 +144,7 @@
      entre 0 y −8°. Devuelve {top:[r,g,b], hor:[r,g,b], noche:bool}. */
   S.skyColors = function (elevDeg) {
     if (elevDeg > 0) {
-      var up = Math.max(0, Math.min(1, elevDeg / 60));
+      var up = Math.max(0, Math.min(1, elevDeg / 35));
       var warm = Math.max(0, Math.min(1, (12 - elevDeg) / 12));
       return {
         noche: false,
@@ -165,7 +186,7 @@
     return { x: Math.cos(el) * Math.sin(az), y: Math.sin(el), z: -Math.cos(el) * Math.cos(az) };
   };
 
-  S.VERSION = '0.1.0';
+  S.VERSION = '0.2.0';
   root.Sol = S;
   if (typeof module !== 'undefined' && module.exports) module.exports = S;
 })(typeof window !== 'undefined' ? window : this);
