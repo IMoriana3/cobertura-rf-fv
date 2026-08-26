@@ -56,7 +56,8 @@ cobertura-rf-fv/
 │   └── rssi_ejemplo.csv        # plantilla de RSSI medido
 ├── web/
 │   ├── zigbee_pv_model.js      # port JS del núcleo (sin dependencias)
-│   └── demo-cobertura.html     # mapa de calor de cobertura (autónomo)
+│   └── demo-cobertura.html     # mapa de calor en planta: campo con filas
+│                               #   finitas, azimut y calles. CONSUME el núcleo
 ├── assets/
 │   └── antena_patron.png       # patrón del dipolo (referencia)
 └── docs/
