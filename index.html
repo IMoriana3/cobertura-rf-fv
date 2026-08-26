@@ -523,7 +523,12 @@ function cargaCAD(){
 /* ------------------------------ el campo ------------------------------ */
 let BUILT_SPAN=0;                            // largo del tramo YA construido: `D.span` vuelve al
 const SPAN=()=>BUILT_SPAN||D.span;           // canónico de 28 módulos en cuanto se suelta el modelo
-function damperX(){ return Math.min(24, D.span/2-5); }   // misma regla que seguidor.js cuando la app no la fija
+/* La X de los apoyos y la del pie del amortiguador salen de la retícula de la
+   casa (`seguidor.js`), no de una regla propia: antes esta página los ponía en
+   `min(24, span/2-5)`, que no es un poste de nada, y dejaba el tubo con tres
+   puntos de apoyo y sin pilotes intermedios. */
+function pilotesX(mods){ return Seguidor.pilotesX(mods); }
+function damperX(){ return Seguidor.damperPostX(pilotesX(D.modsPerStr))[1]; }
 
 function buildField(){
   const mats=materials();
@@ -534,11 +539,12 @@ function buildField(){
   const prevMods=D.modsPerStr;
   Seguidor.setModsPerStr(MODS);
   BUILT_SPAN=D.span;
-  const dd=damperX();
+  const XP=pilotesX(MODS), DX=Seguidor.damperPostX(XP);
 
   for(let i=0;i<NROWS;i++){
     const west=ANTROWS.indexOf(i)>=0;                  // la viga del MOTOR es la que lleva TCU + antena
     const beam=Seguidor.buildBeam(THREE,{west:west,detail:"full",size:"largo",materials:mats,
+                                         damperX:DX,
                                          skip:{antena:1,antenatip:1,soporte:1,tcu:CAD.tcu?1:0}});
     const g=new THREE.Group();
     const yaw=new THREE.Group(); yaw.rotation.y=Math.PI/2;   // tubo del modelo (+X) → eje Z de la escena
@@ -578,7 +584,7 @@ function buildField(){
     const posts=[];
     const central=new THREE.Mesh(new THREE.BoxGeometry(0.22,1,0.32),mats.steel);
     central.castShadow=true; central.receiveShadow=true; yaw.add(central); posts.push({m:central,top:-0.28});
-    [-dd,dd].forEach(x=>{
+    XP.forEach(x=>{
       const col=new THREE.Mesh(AP.poste,mats.apoyo.steel);
       col.castShadow=col.receiveShadow=true; col.position.x=x;
       if(x>0) col.rotation.y=Math.PI;                 // el hueco de la C, siempre al exterior
@@ -1058,6 +1064,9 @@ function buildPlanta(){
   plantaG=new THREE.Group(); fieldG.add(plantaG);
 
   const prev=D.modsPerStr;
+  /* Apoyo de ALTURA UNIDAD: el poste sale centrado en su eje y con 1 m de alto,
+     así que la app lo estira a lo que pida el terreno de cada fila. */
+  const APU=Seguidor.apoyoGeoms(THREE,{postH:1});
   Seguidor.setModsPerStr(PLANTA.mods);
   SPANP=D.span; BUILT_SPAN=D.span;
   PLANTA._filas=filasPlanta();
@@ -1077,7 +1086,7 @@ function buildPlanta(){
     (gru[mo]=gru[mo]||[]).push(i);
   });
   PLANTA._mods=Object.keys(gru).map(Number).sort((a,b)=>a-b);
-  PLMESA={list:[]};
+  PLMESA={list:[]}; PILSUCIO=true;
   PLANTA._mods.forEach(k=>{
     const idx=gru[k], N=idx.length;
     Seguidor.setModsPerStr(k);
@@ -1096,6 +1105,25 @@ function buildPlanta(){
       PLI.push({key:tp.key,spin:tp.spin,locals:tp.locals,im:im,terr:!!tp.terrainScaled,idx:idx});
       if(tp.key==="mesa") PLMESA.list.push({im:im,per:tp.locals.length,idx:idx});
     });
+    /* PILOTES INTERMEDIOS. `parts()` solo trae el soporte del slew, así que la
+       planta salía con cada mesa colgada de un único poste central: un tubo de
+       64 m con tres puntos de apoyo. Van en la retícula de la casa —±28 y ±9 m
+       en el completo, proporcional al largo, así que cada grupo de módulos tiene
+       la suya— y se estiran hasta el suelo de SU fila.
+       El perfil C y nada más, como el slew: en planta el soporte del slew también
+       va sin herraje. Poner el apoyo entero —tambor, horquilla, virola y
+       casquillo— costaba 5,3 M de triángulos en El Burgo y 62 M en San José,
+       para un detalle que a esta escala no se ve; el corte de estudio, que son
+       seis filas, sí lo lleva completo. */
+    const XP=Seguidor.pilotesX(k);
+    const locals=XP.map(px=>{ const m=new THREE.Matrix4().makeTranslation(px,0,0);
+      if(px>0) m.multiply(new THREE.Matrix4().makeRotationY(Math.PI));   // el hueco de la C, al exterior
+      return m; });
+    const imP=new THREE.InstancedMesh(APU.poste,mats.apoyo.steel,N*locals.length);
+    imP.frustumCulled=false; imP.castShadow=true; imP.receiveShadow=true;
+    imP.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    plantaG.add(imP);
+    PLI.push({key:"pilote",spin:false,locals:locals,im:imP,pil:1,top:-0.253,idx:idx});
   });
   Seguidor.setModsPerStr(PLANTA.mods);
   // los equipos, en sus coordenadas del DWG
@@ -1125,6 +1153,12 @@ function buildLabelsPlanta(){
 /* Coloca los seguidores y colorea cada uno por el margen de SU salto directo a
    SU NCU (la que dice el layout). Verde = llega directo; rojo = ese seguidor
    depende de la malla. */
+/* Los pilotes FIJOS (perfil C, tambor, horquilla y virola) no dependen del
+   ángulo del seguidor: su sitio lo fijan la fila, su cota y la altura de viga,
+   y las tres solo cambian al reconstruir. Escribirlos en CADA frame eran 4.300
+   matrices y 50 k floats a la GPU por nada, y con eso la página se quedaba sin
+   atender ni un clic. Se escriben una vez y se quedan. */
+let PILSUCIO=true;
 const _col=new THREE.Color();
 function pintaPlanta(beta,hA){
   const rad=beta*Math.PI/180;
@@ -1156,6 +1190,7 @@ function pintaPlanta(beta,hA){
       const L=PLI[k];
       if(L.idx[L._n]!==i) continue;              // esta fila no es de este grupo de módulos
       const base=(L._n++)*L.locals.length;
+      if(L.pil&&!PILSUCIO) continue;                   // ya están puestos: no dependen del ángulo
       for(let l=0;l<L.locals.length;l++){
         const m=new THREE.Matrix4().copy(_mB);
         if(L.spin) m.multiply(_mR);
@@ -1165,6 +1200,13 @@ function pintaPlanta(beta,hA){
              aire a media altura. Va del bracket (−0,28) al SUELO. */
           const h=Math.max(0.3,HTUBE-0.28);
           m.multiply(new THREE.Matrix4().makeTranslation(0,-0.28-h/2,0));
+          m.multiply(new THREE.Matrix4().makeScale(1,h,1));
+        }else if(L.pil){
+          /* El perfil C nace centrado y con 1 m: se coloca en la X de su pilote
+             y se estira de la horquilla (−0,253) al SUELO de esta fila. */
+          const h=Math.max(0.3,HTUBE+L.top);
+          m.multiply(L.locals[l]);                    // la X del pilote, y el giro de la C
+          m.multiply(new THREE.Matrix4().makeTranslation(0,L.top-h/2,0));
           m.multiply(new THREE.Matrix4().makeScale(1,h,1));
         }else m.multiply(L.locals[l]);
         L.im.setMatrixAt(base+l,m);
@@ -1191,7 +1233,8 @@ function pintaPlanta(beta,hA){
       PLMESA.list.forEach(g=>{ const j=g.idx.indexOf(i); if(j<0) return;
         for(let l=0;l<g.per;l++) g.im.setColorAt(j*g.per+l,_col); }); }
   }
-  PLI.forEach(L=>{ L.im.instanceMatrix.needsUpdate=true; });
+  PLI.forEach(L=>{ if(PILSUCIO||!L.pil) L.im.instanceMatrix.needsUpdate=true; });
+  PILSUCIO=false;
   if(PLMESA) PLMESA.list.forEach(g=>{ if(g.im.instanceColor) g.im.instanceColor.needsUpdate=true; });
   return {peor:peor, medio:pmed/NTOT, sin:sin, n:NTOT, grupos:grupos};
 }
