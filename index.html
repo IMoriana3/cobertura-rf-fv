@@ -110,6 +110,12 @@
           <button data-p="19" class="on">XBee-PRO RR (+19 dBm)</button>
         </div>
       </div>
+      <div><label>Modelo del enlace:</label>
+        <div class="seg" id="segcal">
+          <button data-k="1" class="on">Calibrado (El Burgo)</button>
+          <button data-k="0">Sin calibrar</button>
+        </div>
+      </div>
       <div><label>Planta:</label>
         <div class="seg" id="segpl">
           <button data-p="" class="on">Corte de estudio</button>
@@ -212,6 +218,12 @@ const D=Seguidor.DIMS, ED=Equipos.DIMS, Z=window.ZigbeePV;
 let P=6, HTUBE=1.5, CHORD=D.modH, MODS=7, DNCU=12, HNCU=ED.ncuAntY, DHSU=8;
 const NROWS=6, M0=D.off, LAM=Z.wavelength(), PRV=1.25;
 const GANT=3.0, SENS=-103; let PTX=19;
+/* Qué modelo se usa para el margen. El desnudo sale ~33 dB optimista contra lo
+   medido en El Burgo I (NCU1): el ajuste da n_eff ≈ 0,4, o sea que la distancia
+   predice poco y lo que manda es la obstrucción local. Por defecto va el
+   CALIBRADO, que es el único contrastado contra medidas; el desnudo se queda
+   para comparar. */
+let CAL=true;
 let ground="pec", showPat=true, showNcuLinks=true;
 /* EL DÍA. El seguidor se mueve con el sol como en el resto de aplicaciones de la
    casa: `sol.js` trae la posición solar (NOAA), el `singleaxis` de pvlib con su
@@ -237,9 +249,14 @@ const ANTROWS=[1,3,5];                       // la antena va en las filas pares 
 const rowX=i=>i*P;
 const xNCU=()=>rowX(NROWS-1)+DNCU, xHSU=()=>xNCU()+DHSU;
 
+/* Decimal con COMA: la página habla en castellano y «33.6 dB» se lee como otra
+   cosa. Solo para prosa; los ejes y las tablas van aparte. */
+const dec=(v,n)=>v.toFixed(n).replace(".",",");
 function params(){
-  const p=Z.defaultParams();
-  p.ptxDbm=PTX; p.gtxDbi=GANT; p.grxDbi=GANT; p.rxSensDbm=SENS;
+  const p=CAL?Z.defaultParamsElBurgo():Z.defaultParams();
+  /* El sesgo va SOBRE la potencia que diga el mando, no sobre los 19 dBm de
+     fábrica: si no, elegir el XBee de +8 se comería la calibración. */
+  p.ptxDbm=PTX+(p.biasDb||0); p.gtxDbi=GANT; p.grxDbi=GANT; p.rxSensDbm=SENS;
   p.epsR = ground==="pec" ? Infinity : 15.0;   // el núcleo entiende Infinity = conductor perfecto
   return p;
 }
@@ -1472,6 +1489,13 @@ function update(){
       `asi que el margen ONDULA: hay nulos cada pocos metros y entre ellos crestas. Por eso alejar un equipo puede MEJORARLO. `+
       `Es fisica del modelo, pero un dB suelto cerca de un nulo no es una promesa — mira la probabilidad p, que ya lleva dentro el desvanecimiento. `+
       `Con <b>conductor perfecto</b> el suelo es un espejo y el rizado se dispara; con <b>tierra real</b> se queda en pocos dB, y es el caso con el que se decide un emplazamiento.<br>`:``)+
+    (CAL
+      ? `<b>Modelo calibrado con El Burgo I (NCU1)</b>: −${dec(-Z.defaultParamsElBurgo().biasDb,1)} dB de sesgo sobre la potencia y σ ${dec(Z.defaultParamsElBurgo().sigmaDb,1)} dB de desvanecimiento. `+
+        `El modelo desnudo sale unos 33 dB optimista —el ajuste da n<sub>eff</sub> ≈ 0,4: la distancia predice poco y manda la obstrucción local—. `+
+        `Es de UNA planta: para El Burgo es una medida, para las demás es la mejor referencia que hay, no un dato suyo. `+
+        `Con «Sin calibrar» se ve el modelo desnudo, y la diferencia es exactamente el sesgo.<br>`
+      : `<b style="color:#e0a72c">Modelo SIN calibrar.</b> Es el teórico, sin el sesgo medido: contra El Burgo I sale unos 33 dB optimista. `+
+        `Sirve para ver la física; para decidir un emplazamiento, el calibrado.<br>`)+
     `Tx ${PTX} dBm · Rx ${SENS} dBm · antena ${GANT} dBi en los dos extremos; dos rayos + difracción multiobstáculo (Deygout) sobre `+
     `${ground==="pec"?"suelo perfecto":"tierra real"}, con el núcleo del repo (<code>web/zigbee_pv_model.js</code>). `+
     `Seguidor <code>seguidor.js</code> v${Seguidor.VERSION}, ${MODS} módulos por ala (tramo de ${SPAN().toFixed(1)} m); `+
@@ -1636,6 +1660,7 @@ if(webgl){
 
   segClick("seg",  b=>{ ground=b.dataset.g; update(); });
   segClick("segr", b=>{ PTX=+b.dataset.p; update(); });
+  segClick("segcal", b=>{ CAL=(b.dataset.k==="1"); update(); });
   segClick("segm", b=>{ MODS=+b.dataset.m; if(!PLANTA){ buildField(); update(); } });   // el tramo es del corte de estudio; en planta manda el layout
   segClick("segv", b=>{ frame(b.dataset.v); });
   segClick("segc", b=>{ VISTA=b.dataset.c; update(); });
