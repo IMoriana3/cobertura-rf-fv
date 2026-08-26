@@ -556,6 +556,43 @@ const SONDA = `(() => {
     check('la cobertura se desglosa por (NCU, GW), que es el ámbito real',
           g.length === 4, g.join(' | '));
   }
+  {
+    /* Y saber CUÁLES son de cada uno: el color por ámbito y el aislar pinchando
+       la leyenda. El desglose ya decía cuántas y qué margen; esto dice dónde. */
+    const colores = () => page.evaluate(() => {
+      const c3 = i => {
+        for (const g of PLMESA.list) { const j = g.idx.indexOf(i); if (j < 0) continue;
+          const a = g.im.instanceColor.array, k = j * g.per * 3;
+          return [a[k], a[k + 1], a[k + 2]].map(v => v.toFixed(3)).join(','); }
+        return null; };
+      const por = {};
+      PLANTA._un.forEach((u, i) => { const k = (u.ncu || 1) + '.' + (u.gw || 1);
+        (por[k] = por[k] || {})[c3(i)] = 1; });
+      return por;
+    });
+    await page.click('#segc [data-c="ambito"]'); await page.waitForTimeout(1500);
+    const A = await colores();
+    const claves = Object.keys(A).sort();
+    const uno = claves.every(k => Object.keys(A[k]).length === 1);
+    const distintos = new Set(claves.map(k => Object.keys(A[k])[0]));
+    check('coloreando por ámbito, cada (NCU,GW) tiene UN color',
+          claves.length === 4 && uno, JSON.stringify(A));
+    check('y los cuatro ámbitos salen con colores distintos',
+          distintos.size === 4, [...distintos].join(' | '));
+
+    await page.click('#lect .l.amb[data-amb="1.1"]'); await page.waitForTimeout(1500);
+    const B = await colores();
+    const APAG = [0x2a, 0x2f, 0x39].map(v => (v / 255).toFixed(3)).join(',');
+    check('pinchando NCU 1 · GW 1 en la leyenda, solo quedan encendidos los SUYOS',
+          Object.keys(B['1.1'])[0] !== APAG &&
+          ['1.2', '2.1', '2.2'].every(k => Object.keys(B[k]).length === 1 && Object.keys(B[k])[0] === APAG),
+          JSON.stringify(B));
+    await page.click('#lect .l.amb[data-amb="1.1"]'); await page.waitForTimeout(1200);
+    const C = await colores();
+    check('y volviendo a pincharlo se sueltan todos',
+          Object.keys(C).every(k => Object.keys(C[k])[0] !== APAG), JSON.stringify(C));
+    await page.click('#segc [data-c="margen"]'); await page.waitForTimeout(1200);
+  }
   await page.click('[data-p=""]'); await page.waitForTimeout(1200);
 
   /* ---- 18e. cada mesa a su tamaño, y los mandos sin llevarse la planta ---- */
