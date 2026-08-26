@@ -780,12 +780,14 @@ function update(){
   $("vDia").textContent=new Date(Date.UTC(2026,0,1)+(+$("dia").value-1)*86400000)
                           .toLocaleDateString("es-ES",{day:"numeric",month:"short",timeZone:"UTC"});
   $("vLat").textContent=(+$("lat").value).toFixed(1)+"°";
+  const bot=HTUBE+M0*Math.cos(BETA*Math.PI/180)-(CHORD/2)*Math.abs(Math.sin(BETA*Math.PI/180));
   $("sunl").innerHTML = sl.noche
     ? `<b>Noche</b> — sol a ${sl.elev.toFixed(1)}°. Los seguidores duermen en stow a ${STOW}° al este, y el margen es el de esa postura.`
     : `Sol a <b>${sl.elev.toFixed(1)}°</b> de altura y ${sl.az.toFixed(0)}° de azimut; el seguidor va a <b>${BETA.toFixed(1)}°</b>`+
       `${$("bt").checked?" con backtracking":" (seguimiento astronómico, sin backtracking)"} para una GCR de ${sl.gcr.toFixed(2)}.`+
-      ` El canto bajo de la mesa queda a ${(HTUBE+M0*Math.cos(BETA*Math.PI/180)-(CHORD/2)*Math.abs(Math.sin(BETA*Math.PI/180))).toFixed(2)} m: `+
-      `por debajo pasa el salto entre vecinos, por encima cruza el que va a la NCU.`;
+      ` El canto bajo de la mesa queda a ${bot.toFixed(2)} m y la antena de la TCU a ${st.hA.toFixed(2)}: `+
+      (st.hA < bot ? `el salto entre vecinos pasa POR DEBAJO y solo lo roza la difracción.`
+                   : `con las palas tan de canto el canto bajo ha caído por DEBAJO de la antena, así que hasta el salto entre vecinos empieza a cruzar mesa.`);
   $("vDrop").textContent=st.drop.toFixed(2)+" m · antena "+st.hA.toFixed(2)+" m";
   $("vPitch").textContent=P.toFixed(1)+" m"; $("vHtube").textContent=HTUBE.toFixed(2)+" m";
   $("vChord").textContent=CHORD.toFixed(2)+" m";

@@ -172,10 +172,11 @@ palas. Dos lecturas que no se ven con el seguidor congelado:
   duermen casi planas y el campo apenas apantalla; con el sol rasante están de
   canto y la banda de cada fila es un muro. Si una TCU va a perder al
   coordinador, lo pierde a primera y a última hora.
-- **El salto entre vecinos aguanta todo el día** (61–71 dB): pasa por debajo de
-  las mesas, y por debajo el ángulo casi no importa. La malla es lo que salva
-  las horas malas — y eso es exactamente lo que se ve en las capturas de la
-  planta real.
+- **El salto entre vecinos aguanta todo el día** (61–71 dB). Ojo con el atajo
+  de decir que «pasa por debajo»: a mediodía sí (canto bajo 1,60 m, antena
+  0,78), pero con las palas a 55° el canto baja a 0,61 y la antena se queda
+  *por encima* — ese salto también cruza mesa, solo que rozando el borde, y por
+  eso pierde 9,5 dB y no 57. La malla es lo que salva las horas malas.
 
 Con este paso (6 m, GCR 0,40) el **backtracking no llega a entrar**: no habría
 sombra de fila que evitar hasta los 66,6°, y el tope mecánico de ±55° llega

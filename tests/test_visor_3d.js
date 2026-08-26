@@ -318,8 +318,14 @@ const SONDA = `(() => {
     const mAlba = alba.lect[2].m, mMedio = medio.lect[2].m;
     check('con las palas de canto el salto a la NCU se cae', mAlba < 15, mAlba + ' dB');
     check('con las palas planas el mismo salto va holgado', mMedio > 40, mMedio + ' dB');
-    check('el salto entre vecinos aguanta a las dos horas (pasa por debajo)',
+    /* El salto entre vecinos aguanta el día entero. Ojo: NO siempre "pasa por
+       debajo" — con las palas muy de canto el borde bajo cae por debajo de la
+       antena y hasta ese salto empieza a cruzar mesa. Lo que se sostiene es que
+       aguanta, porque roza el borde en vez de atravesar la banda entera. */
+    check('el salto entre vecinos aguanta a las dos horas',
           alba.lect[0].m > 40 && medio.lect[0].m > 40, alba.lect[0].m + ' / ' + medio.lect[0].m);
+    check('a mediodía la antena de la TCU sí queda bajo el canto de la mesa',
+          medio.hA < medio.band.bot, medio.hA + ' vs ' + medio.band.bot);
 
     const noche = await enHora(60);
     check('de noche los seguidores duermen en stow (5° al este)', Math.abs(noche.beta - 5) < 1e-6, noche.beta);
