@@ -41,10 +41,10 @@ cobertura-rf-fv/
 ├── secc.json                   # malla del STEP del seccionador DC (DS132EL)
 ├── equipos.js                  # modelos de la NCU y la HSU (cotas de plano)
 ├── sol.js                      # sol + seguimiento + estética de los 3D de la casa
-├── plantas/                    # layouts reales (copia de cobertura-zigbee)
+├── plantas/                    # layouts y levantamientos (copia de cobertura-zigbee)
 ├── lib/                        # three.js r128 + OrbitControls (vendorizados)
 ├── tests/
-│   ├── test_visor_3d.js        # QA del visor en Chromium (95 comprobaciones)
+│   ├── test_visor_3d.js        # QA del visor en Chromium (103 comprobaciones)
 │   └── test_nucleo.py          # núcleo + PARIDAD .py <-> .js (19 comprobaciones)
 ├── README.md
 ├── INSTRUCCIONES.md            # cómo usarlo paso a paso
@@ -162,21 +162,52 @@ El corte de estudio (6 filas) sirve para entender el mecanismo; la pregunta de
 siting se hace sobre una planta. El selector carga el `<planta>_layout.json` de
 Cobertura Zigbee —los seguidores en sus coordenadas del DWG, las NCU, las HSU y
 los repetidores— y dibuja con el **modelo instanciado** (`Seguidor.instancePlan`):
-un `InstancedMesh` por tipo de pieza, que es lo que permite 754 seguidores.
+un `InstancedMesh` por tipo de pieza, que es lo que permite 2.289 seguidores.
 
-Cada seguidor se colorea por el **margen de su salto DIRECTO a su NCU** (la que
-dice el layout), con el núcleo y las mesas que ese rayo cruza. Verde = llega
-solo; rojo = ese seguidor depende de la malla. En El Burgo I, con las NCU donde
-están: margen medio 22,6 dB y **23 de 215 seguidores (10,7 %) por debajo de
-8 dB** de margen directo.
+Cada seguidor se colorea por el margen de su salto **directo al mástil de su
+coordinador**, con el núcleo y las mesas que ese rayo cruza.
+
+### El ámbito es el (NCU, GW), no la planta
+
+No todas las TCU hablan con todas las NCU: **cada NCU lleva dos gateways y cada
+TCU cuelga de uno** — el par (NCU, GW) es el ámbito que lanza Cobertura Zigbee,
+porque cada uno es una IP:puerto. Y según la planta, los dos gateways de una NCU
+comparten mástil o no: El Burgo tiene 2 mástiles y **cuatro** grupos; Ayora los
+separa y los nombra «NCU 4.1» y «NCU 4.2». El mástil se busca por nombre —
+`NCU n.g`, luego `NCU n`— y si el nombre no se deja leer (San José usa códigos
+de obra) se cae al orden del listado y se dice.
+
+Eso cambia la lectura de sitio. El Burgo I, media 22,6 dB y 23 de 215 por debajo
+de 8 dB — pero repartidos así:
+
+| Coordinador | Filas | Bajo 8 dB | Peor |
+|---|---|---|---|
+| NCU 1 · GW 1 | 56 | **17** | −18,7 dB |
+| NCU 1 · GW 2 | 52 | 2 | 0,2 dB |
+| NCU 2 · GW 1 | 45 | 4 | 4,6 dB |
+| NCU 2 · GW 2 | 62 | **0** | 8,9 dB |
+
+El problema no está repartido: está en un gateway. Y la malla que salva a una
+TCU es la de **su** gateway, no la de la planta.
+
+### Azimut de eje
+
+`t.rot` del layout viene en **grados**, y casi todas las plantas lo traen a 0 —
+por eso no se notaba. **Bagnarelli no**: su eje va a 23,7°. Con el eje girado
+fallan dos cosas, y fallaban las dos: el render, si el valor se toma como
+radianes (23,7 rad = 1358°), y la **física**, que agrupaba las filas por X y
+buscaba los cruces en planos de X constante. Ahora todo lo que sea «a través de
+las filas / a lo largo del tubo» va en el **marco del eje**, y el seguimiento
+recibe su `axisAz`. Con azimut 0 es la identidad: las plantas que ya estaban no
+se mueven.
 
 La NCU y la HSU se **colocan a mano** de dos formas sincronizadas: arrastrando
 por el suelo (para tantear) y escribiendo su coordenada E/N del DWG (para
 reproducirlo). Al soltar, la cobertura se recalcula entera.
 
-### Las pendientes de Ayora
+### Las pendientes de Ayora y San José
 
-Ayora trae su levantamiento (`ayora_cotas.json`): por seguidor bifila, sus **dos
+Ayora y San José traen su levantamiento (`<planta>_cotas.json`): por seguidor bifila, sus **dos
 filas** con los extremos (n₀,n₁) y las **cotas medidas** en esos extremos. De ahí
 sale la cota de cada fila, su pendiente N-S —`atan2(y₁−y₀, n₁−n₀)`, la misma
 lectura que hace el simulador de backtracking— y el suelo sobre el que corre
@@ -194,6 +225,14 @@ a la de nadie:
 91 m de desnivel y pendientes N-S de hasta 4,5° convierten 16 seguidores
 problemáticos en 130. Un mapa de cobertura sobre terreno plano de una planta que
 no lo es no dice lo que parece decir.
+
+**San José** añade tres cosas que el resto no pedía y que se tratan
+explícitamente: son **32 módulos por ala** (filas de 74 m, no de 64,7 — con el 28
+por defecto salían cortas), su levantamiento tiene **huecos** (103 seguidores sin
+medir, que se plantan en la cota de alrededor y se declaran en vez de
+desaparecer), y está en el **hemisferio sur** (−16,6°), así que la latitud la
+manda la planta y no el deslizador: con la latitud equivocada el sol iría al
+revés y los seguidores con él.
 
 El terreno se dibuja muestreando esas mismas cotas: manda la fila más cercana en
 X, interpolando a lo largo de su eje. Es el criterio con el que se midió —las

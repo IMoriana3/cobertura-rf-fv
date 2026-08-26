@@ -23,7 +23,13 @@ y localiza el punto único de fallo.
   colorea por el margen de su salto directo a su NCU: en El Burgo, 23 de 215
   (10,7 %) por debajo de 8 dB, o sea que dependen de la malla. La NCU y la HSU
   se colocan arrastrando o escribiendo su coordenada.
-- **Pendientes medidas** (Ayora): las 1.508 filas a su cota y con su pendiente
+- **El ámbito es el (NCU, GW)**: cada NCU lleva dos gateways y cada TCU cuelga
+  de uno, así que el salto directo va al mástil de SU coordinador y el resumen se
+  desglosa por grupo. En El Burgo los 23 seguidores flojos no están repartidos:
+  17 son del (NCU 1, GW 1) y el (NCU 2, GW 2) no tiene ninguno.
+- **Azimut de eje**: `rot` del layout viene en grados y Bagnarelli lo trae a
+  23,7°; render y física trabajan en el marco del eje.
+- **Pendientes medidas** (Ayora y San José): las 1.508 filas a su cota y con su pendiente
   N-S del levantamiento, el terreno dibujado de esas mismas cotas y cada mesa
   apantallando a la suya. Cambia el resultado de 16 a 130 filas por debajo de
   8 dB — un mapa sobre terreno plano de una planta que no lo es engaña.
@@ -59,7 +65,7 @@ y localiza el punto único de fallo.
 
 - Render: `index.html` + `seguidor.js` + `equipos.js` + `sol.js` + `lib/` (three.js vendorizado)
   + el CAD real de la TCU (`tcu.glb`) y del seccionador (`secc.json`), los mismos del gemelo
-- QA del visor: `tests/test_visor_3d.js` (95 comprobaciones en Chromium)
+- QA del visor: `tests/test_visor_3d.js` (103 comprobaciones en Chromium)
 - QA del núcleo: `tests/test_nucleo.py` (19, incluida la paridad `.py` ↔ `.js`)
 - Núcleo + diagnóstico: `python/`
 - Port JS + demo de cobertura: `web/`
