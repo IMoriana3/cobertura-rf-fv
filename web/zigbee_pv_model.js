@@ -108,6 +108,19 @@
     sigmaDb: 6.0, epsR: 15.0, sigmaGround: 5e-3, pol: "v", lModDb: 0.0,
   }); // ptxDbm: XBee-PRO RR. Estándar +8. Canal 26: máx +3. Antena Jinchang 3 dBi.
 
+  // Parámetros calibrados con El Burgo I (NCU1): el sesgo real -33.6 dB trasladado
+  // a potencia efectiva + sigma del residuo 6.8 dB. Sin esto la cobertura sale
+  // ~33 dB optimista (n_eff≈0.4: la distancia predice poco; manda la obstrucción
+  // local). Úsalo para cualquier predicción de cobertura "tipo El Burgo".
+  const EL_BURGO_BIAS_DB = -33.6;
+  const defaultParamsElBurgo = () => {
+    const p = defaultParams();
+    p.ptxDbm += EL_BURGO_BIAS_DB;   // traslada el sesgo a potencia efectiva
+    p.sigmaDb = 6.8;
+    p.biasDb = EL_BURGO_BIAS_DB;
+    return p;
+  };
+
   const _phi = (x) => 0.5 * (1 + erf(x / Math.SQRT2));
   function erf(x) { // Abramowitz-Stegun 7.1.26
     const t = 1 / (1 + 0.3275911 * Math.abs(x));
@@ -137,7 +150,8 @@
 
   const ZigbeePV = {
     wavelength, fsplDb, breakpointDistance, fresnelRadius, reflectionCoefficient,
-    twoRayPlDb, knifeEdgeLossDb, diffractionLossDb, rowTopElev, predictLink, defaultParams,
+    twoRayPlDb, knifeEdgeLossDb, diffractionLossDb, rowTopElev, predictLink,
+    defaultParams, defaultParamsElBurgo,
   };
   global.ZigbeePV = ZigbeePV;
   if (typeof module !== "undefined" && module.exports) module.exports = ZigbeePV;
