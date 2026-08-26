@@ -6,10 +6,26 @@
 necesita servidor ni internet: three.js y el modelo del seguidor van dentro del
 repo.
 
-Lo que ves son **tres seguidores bifila** montados con `seguidor.js`, el modelo
-de la casa (el mismo del gemelo digital y de Cobertura 3D): viga de torsión,
-correas, módulos, slew drive con su motor, TCU, seccionador, pilas y
-amortiguadores. De cada pareja, solo la viga del motor lleva TCU y antena.
+Lo que ves son los **tres extremos de la malla Zigbee** de una planta:
+
+- **tres seguidores bifila** montados con `seguidor.js`, el modelo de la casa
+  (el mismo del gemelo digital y de Cobertura 3D): viga de torsión, correas,
+  módulos, slew drive con su motor, TCU, seccionador, pilas y amortiguadores.
+  De cada pareja, solo la viga del motor lleva TCU y antena, a ~0,78 m;
+- la **NCU** (el coordinador) en su poste C de 2,95 m, con el armario colgado de
+  los carriles y el látigo en la cabeza, a **3,15 m**;
+- la **HSU** (la meteo) en su torre de celosía autoportante de 8 m, con el
+  anemómetro ultrasónico y sus dos látigos a **~8,3 m**.
+
+Las cotas de la NCU y la HSU salen de sus planos (`DR_NCU_v0` y
+`FTR.24.00145_5_C`) vía `equipos.js`, y son las mismas que dibuja Cobertura 3D.
+
+Y se dibujan los **saltos**: los dos TCU↔TCU, los tres TCU→NCU (directos, uno
+por seguidor) y el HSU→NCU. Cada uno con su color, su dB y, en la tabla de
+abajo, su desglose: distancia, cuántas mesas cruza, dos rayos y difracción.
+La diferencia se ve sola — la TCU tiene la antena **por debajo** del canto bajo
+de la mesa y la NCU **por encima** de la cresta, así que un salto entre vecinos
+pasa por debajo de las filas y uno al coordinador las cruza.
 
 Controles:
 
@@ -22,17 +38,28 @@ Controles:
   pares, así que cada salto es 2× este valor y cruza la fila intermedia.
 - **Altura de la viga de torsión** — cota del eje de giro.
 - **Altura de módulo** — dimensión del módulo a lo largo de la pendiente.
+- **NCU: distancia al borde del campo** — dónde está el coordinador.
+- **NCU: altura de antena** — arranca en la cota del plano (3,15 m). Bájala por
+  debajo del canto bajo de la mesa y verás caer la difracción del salto largo:
+  el rayo deja de cruzar las filas y pasa por debajo.
+- **HSU: distancia a la NCU** — las dos van fuera del campo.
 - **Suelo** — conductor perfecto / tierra real (húmeda).
 - **Radio** — XBee RR (+8 dBm) / XBee-PRO RR (+19 dBm).
 - **Tramo dibujado** — 7 módulos por ala (16,6 m), 14 (32,7 m) o los 28 de la
   fila real (64,7 m). Solo afecta al encuadre: la física es una sección
   transversal y no depende del largo.
-- **Encuadre** — Conjunto / Antena / Accionamiento, tres posiciones de cámara.
+- **Encuadre** — Conjunto / Antena TCU / Accionamiento / NCU / HSU.
 - **Patrón de la antena** — apaga el toroide para ver el seguidor limpio.
+- **Enlaces a la NCU** — apaga los cuatro saltos al coordinador y deja solo la
+  malla entre vecinos.
 
-La línea entre antenas se colorea por el margen real (verde holgado → ámbar al
-límite → rojo sin enlace) y muestra el valor en dB. Gira la escena con el
-ratón/dedo y haz zoom con la rueda.
+Cada enlace se colorea por el margen real (verde holgado → ámbar al límite →
+rojo sin enlace, y a trazos por debajo de 8 dB) y muestra el valor en dB. El
+tramo que queda **bajo una mesa** se dibuja tenue en vez de desaparecer: desde
+una cámara alta el panel lo tapa, y sin ese fantasma el haz se lee como una raya
+rota cuando lo que hace es pasar por debajo.
+
+Gira la escena con el ratón/dedo y haz zoom con la rueda.
 
 ## 2. Diagnóstico de tu malla real (Python)
 

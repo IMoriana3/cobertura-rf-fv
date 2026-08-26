@@ -43,7 +43,12 @@
   const fresnelRadius = (d1, d2, fHz = 2.45e9, n = 1) =>
     Math.sqrt((n * wavelength(fHz) * d1 * d2) / (d1 + d2));
 
+  /* epsR = Infinity -> CONDUCTOR PERFECTO: Gamma = +1, sin dependencia del
+     ángulo. Es el caso de referencia (cota superior del rebote) que ofrece el
+     visor junto a la tierra real; tenerlo aquí evita que cada página se escriba
+     su propio "dos rayos con suelo perfecto". */
   function reflectionCoefficient(theta, epsR, sigma, fHz, pol = "v") {
+    if (!isFinite(epsR)) return cx(1, 0);
     const lam = wavelength(fHz);
     const eps = cx(epsR, -60.0 * lam * sigma);
     const s = Math.sin(theta);
@@ -103,6 +108,92 @@
   const rowTopElev = (ground, axisHeight, panelChord, tiltDeg) =>
     ground + axisHeight + (panelChord / 2) * Math.sin((Math.abs(tiltDeg) * Math.PI) / 180);
 
+  /* ------------------------------------------------------------------
+   * LA MESA COMO OBSTÁCULO
+   * Una fila de seguidores NO es un muro desde el suelo: es una PLACA
+   * inclinada que ocupa una banda de altura [bot, top] sobre una huella de
+   * ±hw alrededor del eje de la fila. Al inclinarse, su borde bajo BAJA y su
+   * cresta SUBE, así que un rayo rasante puede pasar por DEBAJO limpio — que
+   * es exactamente lo que hace el salto TCU↔TCU con la antena colgada a la
+   * cota de catálogo, y lo que NO hace el salto TCU→NCU, que sube a la cabeza
+   * de un poste de 2,95 m y cruza la banda de todas las filas de en medio.
+   *
+   * La regla de despeje es la de `terreno.html` (Cobertura 3D, `linkClearance`),
+   * contrastada contra la malla MEDIDA de El Burgo: tratar el campo como un
+   * muro omnidireccional dejaba el 95 % de la planta aislada, contra los 52
+   * enlaces vivos que hay. El encadenado entre filas es el Deygout de siempre
+   * (ITU-R P.526), el mismo de `diffractionLossDb`. Con UNA sola mesa a mitad
+   * de vano reproduce el cálculo de una fila intermedia.
+   * ------------------------------------------------------------------ */
+
+  /* Banda que ocupa la mesa a una inclinación dada.
+     axisH = altura del eje del tubo; off = cara del módulo sobre ese eje;
+     chord = altura del módulo. Devuelve cotas SOBRE EL SUELO de la fila. */
+  function tableBand(ground, axisH, chord, tiltDeg, off) {
+    const a = (Math.abs(tiltDeg) * Math.PI) / 180;
+    const c = ground + axisH + (off || 0) * Math.cos(a);
+    const h = (chord / 2) * Math.sin(a);
+    return { bot: c - h, top: c + h, hw: (chord / 2) * Math.cos(a), ground };
+  }
+
+  /* Despeje del rayo frente a una placa: + libre, − tapado. Por debajo del
+     borde bajo lo que limita es el suelo O la propia placa, lo que esté más
+     cerca. */
+  function bandClearance(los, band) {
+    if (los >= band.top) return los - band.top;
+    if (los <= band.bot) return Math.min(los - band.ground, band.bot - los);
+    return -Math.min(los - band.bot, band.top - los);
+  }
+
+  /* Borde por el que difracta: el que roza el rayo. */
+  function bandEdge(los, band) {
+    if (los >= band.top) return band.top;
+    if (los <= band.bot) return band.bot;
+    return los - band.bot < band.top - los ? band.bot : band.top;
+  }
+
+  /* Deygout sobre mesas = [{x, bot, top, ground}], x = distancia horizontal
+     desde el Tx a lo largo del enlace. */
+  function diffractionLossTablesDb(D, txElev, rxElev, tables, fHz = 2.45e9, depth = 0, maxDepth = 3) {
+    if (!tables || !tables.length || depth >= maxDepth || D <= 0) return 0.0;
+    let bestV = -1e9, bestI = -1;
+    for (let i = 0; i < tables.length; i++) {
+      const t = tables[i];
+      if (t.x <= 0 || t.x >= D) continue;
+      const los = txElev + (rxElev - txElev) * (t.x / D);
+      const v = vParam(-bandClearance(los, t), t.x, D - t.x, fHz);
+      if (v > bestV) { bestV = v; bestI = i; }
+    }
+    if (bestI < 0 || bestV <= -0.78) return 0.0;
+    const t0 = tables[bestI];
+    const los0 = txElev + (rxElev - txElev) * (t0.x / D);
+    const edge = bandEdge(los0, t0);
+    let loss = knifeEdgeLossDb(bestV);
+    const left = tables.filter((t) => t.x < t0.x);
+    const right = tables.filter((t) => t.x > t0.x).map((t) => Object.assign({}, t, { x: t.x - t0.x }));
+    loss += diffractionLossTablesDb(t0.x, txElev, edge, left, fHz, depth + 1, maxDepth);
+    loss += diffractionLossTablesDb(D - t0.x, edge, rxElev, right, fHz, depth + 1, maxDepth);
+    return loss;
+  }
+
+  /* ------------------------------------------------------------------
+   * COTAS DE ANTENA DE CATÁLOGO (m). Fuente única para que el visor, el
+   * diagnóstico y el siting hablen de los mismos equipos.
+   *   TCU — cuelga de la viga, así que su cota depende de la altura del tubo:
+   *         se da la CAÍDA bajo el eje (0,225 hasta el conector de la TCU +
+   *         los 0,50 de coax de `seguidor.js`).
+   *   NCU — látigo en la CABEZA del poste C 100×60 de 2,95 m del que cuelga el
+   *         armario 415×515×230 (plano DR_NCU_v0 / «Montaje NCU»).
+   *   HSU — 2 látigos en la cabeza de la torre de celosía autoportante de 8 m
+   *         (plano FTR.24.00145_5_C, «Montaje HSU»).
+   * Las tres, tal como las dibuja `terreno.html` en Cobertura 3D.
+   * ------------------------------------------------------------------ */
+  const ANTENNAS = {
+    tcu: { dropBelowTube: 0.725 },
+    ncu: { mastH: 2.95, h: 3.15, cabW: 0.415, cabH: 0.515, cabD: 0.230, cabY: 1.15 },
+    hsu: { towerH: 8.0, h: 8.33, legR: 0.15 },
+  };
+
   const defaultParams = () => ({
     fHz: 2.45e9, ptxDbm: 19.0, gtxDbi: 3.0, grxDbi: 3.0, rxSensDbm: -103.0,
     sigmaDb: 6.0, epsR: 15.0, sigmaGround: 5e-3, pol: "v", lModDb: 0.0,
@@ -116,7 +207,8 @@
   }
 
   // tx/rx = {x, y, ground, h};  obstacles/terrain = [[x, cota], ...]
-  function predictLink(tx, rx, p, terrain, obstacles) {
+  // tables = [{x, bot, top, ground}] -> mesas (placas), ver diffractionLossTablesDb
+  function predictLink(tx, rx, p, terrain, obstacles, tables) {
     p = p || defaultParams();
     const d = Math.hypot(rx.x - tx.x, rx.y - tx.y);
     const pl2 = twoRayPlDb(d, tx.h, rx.h, p.fHz, p.epsR, p.sigmaGround, p.pol);
@@ -124,6 +216,9 @@
     const pts = (terrain || []).concat(obstacles || []);
     if (pts.length) {
       plDiff = diffractionLossDb(d, tx.ground + tx.h, rx.ground + rx.h, pts, p.fHz);
+    }
+    if (tables && tables.length) {
+      plDiff += diffractionLossTablesDb(d, tx.ground + tx.h, rx.ground + rx.h, tables, p.fHz);
     }
     const plTotal = pl2 + plDiff + p.lModDb;
     const prx = p.ptxDbm + p.gtxDbi + p.grxDbi - plTotal;
@@ -138,6 +233,7 @@
   const ZigbeePV = {
     wavelength, fsplDb, breakpointDistance, fresnelRadius, reflectionCoefficient,
     twoRayPlDb, knifeEdgeLossDb, diffractionLossDb, rowTopElev, predictLink, defaultParams,
+    tableBand, bandClearance, bandEdge, diffractionLossTablesDb, ANTENNAS,
   };
   global.ZigbeePV = ZigbeePV;
   if (typeof module !== "undefined" && module.exports) module.exports = ZigbeePV;

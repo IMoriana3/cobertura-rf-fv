@@ -1,28 +1,32 @@
-// El seguidor del visor RF — en un Chromium de verdad.
+// El visor RF — en un Chromium de verdad.
 //
-// El visor pasó de dibujar el seguidor como un rectángulo azul a pedírselo a
-// `seguidor.js`, la fuente única de cotas que comparten el gemelo digital,
-// Cobertura 3D y el simulador de backtracking. Un render bonito que no sea el
-// MISMO seguidor del que habla la física es peor que el rectángulo: la imagen
-// se lee como una prueba visual de un número que en realidad contradice.
+// El visor monta el seguidor con `seguidor.js`, la NCU y la HSU con
+// `equipos.js`, y calcula con `web/zigbee_pv_model.js`, el núcleo del repo. Un
+// render bonito que no sea el MISMO equipo del que habla la física es peor que
+// un rectángulo: la imagen se lee como la prueba visual de un número que en
+// realidad contradice.
 //
 // Por eso estas comprobaciones no miran píxeles: sacan las cotas de la ESCENA
-// (matrices del mundo, no variables auxiliares) y las contrastan con las cotas
-// del modelo y con las que usa el balance de enlace:
+// (matrices del mundo) y las contrastan con las de los modelos y con las que
+// usa el balance de enlace:
 //
-//   · la cara del módulo está a `DIMS.off` del eje del tubo — la misma cota que
-//     entra en `lowerEdge()`, que es lo que decide la difracción;
-//   · la antena cuelga del conector de la TCU y su elemento queda a la altura
-//     `hA` con la que se calcula el margen, no a ojo;
-//   · las tres antenas están separadas 2·paso EXACTOS (el enlace supone eso);
-//   · es una BIFILA: solo la viga del motor lleva TCU y antena, y hay un eje de
-//     transmisión por pareja — si esto falla, se está dibujando un campo de
-//     monofilas con una TCU cada una, que es otra planta;
-//   · el tilt del deslizador llega al modelo con el SIGNO bueno (canto bajo
-//     hacia +X, igual que `moduleQuad` en la física);
-//   · el deslizador de altura de módulo escala el MÓDULO, no el tubo;
-//   · y la luz direccional tiene el frustum de sombra a escala del campo (el
-//     ±5 m de fábrica de three deja la planta entera sin sombra).
+//   · la cara del módulo está a `DIMS.off`, y esa misma cota es la que fija el
+//     canto bajo de la mesa que apantalla;
+//   · la antena de la TCU cuelga a la altura `hA` con la que se calcula;
+//   · las tres TCU, separadas 2·paso EXACTOS (lo que supone el salto);
+//   · es una BIFILA: tres TCU y tres ejes de transmisión, no seis monofilas;
+//   · el tilt llega al modelo con el signo bueno;
+//   · la NCU tiene el látigo a la cota de su plano (2,95 de poste + cabeza) y la
+//     HSU a la del suyo, y las dos están EN EL MISMO CORTE que las TCU — si el
+//     render las sacara de ese plano, el dibujo dejaría de ser el enlace que se
+//     calcula;
+//   · cada salto ve las mesas que le tocan: 1 el TCU↔TCU, y 4/2/0 los tres
+//     TCU→NCU. Ahí se ve que un salto al coordinador CRUZA las filas y uno
+//     entre vecinos pasa por debajo;
+//   · el número que pinta la página es el que devuelve el núcleo, recalculado
+//     aquí aparte;
+//   · y el haz llega HASTA la otra antena (el cilindro continuo se quedaba a un
+//     28 % de cerrar: el reparto de trazos se aplicaba también al tramo lleno).
 //
 //   python3 -m http.server 8099        (en otra terminal)
 //   node tests/test_visor_3d.js
@@ -39,36 +43,70 @@ const check = (n, cond, extra) => { if (cond) { ok++; console.log('OK   ' + n); 
    fila mapea el marco del modelo (+X = tubo) al de la escena (+Z = tubo). */
 const SONDA = `(() => {
   const D = Seguidor.DIMS;
+  function eq(a,b){ return Math.abs(a-b) < 1e-6; }
   const glassOf = beam => { let g = null; beam.traverse(n => {
     const p = n.geometry && n.geometry.parameters;
-    if (!g && p && near(p.depth, D.modH - 0.04) && near(p.width, D.modW - 0.04)) g = n; }); return g; };
-  function near(a,b){ return Math.abs(a-b) < 1e-6; }
+    if (!g && p && eq(p.depth, D.modH - 0.04) && eq(p.width, D.modW - 0.04)) g = n; }); return g; };
   const g0 = glassOf(rows[0].spin);
   g0.updateWorldMatrix(true, false);
   const nrm = new THREE.Vector3(0,1,0).transformDirection(g0.matrixWorld);
-  // TCU: caja de 0,50 × 0,26 × 0,36 del modelo, una por viga del motor
   const conTcu = rows.filter(r => { let f = false; r.spin.traverse(n => {
     const p = n.geometry && n.geometry.parameters;
-    if (p && near(p.width,0.50) && near(p.height,0.26) && near(p.depth,0.36)) f = true; }); return f; }).length;
+    if (p && eq(p.width,0.50) && eq(p.height,0.26) && eq(p.depth,0.36)) f = true; }); return f; }).length;
   const sc = sun.shadow.camera;
   let tube = null;
   rows[0].spin.traverse(n => { const p = n.geometry && n.geometry.parameters;
-    if (!tube && p && near(p.height, D.tube) && near(p.depth, D.tube)) tube = n; });
+    if (!tube && p && eq(p.height, D.tube) && eq(p.depth, D.tube)) tube = n; });
   const A = rows.filter(r => r.ant).map(r => r.ant.pos.clone());
   let meshes = 0; scene.traverse(o => { if (o.isMesh) meshes++; });
+
+  // el látigo de la NCU y los de la HSU, medidos en el MUNDO
+  const bbTop = o => { const b = new THREE.Box3().setFromObject(o); return b.max.y; };
+  const beta = +document.getElementById('tilt').value;
+  const hA = Math.max(0.15, HTUBE - +document.getElementById('drop').value);
+  const band = ZigbeePV.tableBand(0, HTUBE, CHORD, beta, M0);
+
+  // margen recalculado APARTE, contra el núcleo, para cada salto que pinta la página
+  const p2 = params();
+  const rec = [];
+  for (let i = 0; i < A.length - 1; i++) {
+    const ra = rows.filter(r=>r.ant)[i].row, rb = rows.filter(r=>r.ant)[i+1].row;
+    const t = mesas(A[i].x, A[i+1].x, ra, rb, beta);
+    const r0 = ZigbeePV.predictLink({x:A[i].x,y:0,ground:0,h:hA},
+              {x:A[i+1].x,y:0,ground:0,h:hA}, p2, null, null, t);
+    rec.push({ n:'tcu'+i, m: r0.marginDb, dif: r0.plDiffDb, mesas: t.length });
+  }
+  A.forEach((a,i) => {
+    const ra = rows.filter(r=>r.ant)[i].row;
+    const t = mesas(a.x, ncu.pos.x, ra, null, beta);
+    const r1 = ZigbeePV.predictLink({x:a.x,y:0,ground:0,h:hA},
+              {x:ncu.pos.x,y:0,ground:0,h:HNCU}, p2, null, null, t);
+    rec.push({ n:'ncu'+i, m: r1.marginDb, dif: r1.plDiffDb, mesas: t.length });
+  });
+
+  // longitud REAL de los cilindros de enlace, sumada por pareja de extremos
+  const solid = links.children.filter(c => c.material.depthTest !== false);
+  const largo = solid.map(c => c.scale.y);
+
   return {
-    version: Seguidor.VERSION, meshes,
+    version: Seguidor.VERSION, equipos: Equipos.VERSION, nucleo: typeof ZigbeePV, meshes,
     off: g0.position.y, glassScaleZ: g0.scale.z, tubeScaleZ: tube ? tube.scale.z : null,
     modW: D.modW, modH: D.modH, tubeSide: D.tube, off0: D.off,
     normal: nrm.toArray(), spinX: rows[0].spin.rotation.x,
     conTcu, ejes: pairs.length, filas: rows.length,
-    ants: A.map(v => v.toArray()),
-    antY: rows[1].ant.tip.position.y + rows[1].g.position.y,
+    ants: A.map(v => v.toArray()), antY: rows[1].ant.tip.position.y + rows[1].g.position.y,
     coaxVis: rows[1].ant.coax.visible,
-    shadowR: sc.right, shadowFar: sc.far,
-    span: SPAN(), pitch: P, htube: HTUBE, chord: CHORD, M0: M0,
-    lowerEdge: lowerEdge(+document.getElementById('tilt').value),
-    margen: linkMargin(+document.getElementById('tilt').value, Math.max(0.15, HTUBE - +document.getElementById('drop').value))
+    ncuPos: ncu.pos.toArray(), hsuPos: hsu.pos.toArray(),
+    ncuTop: bbTop(ncu.g), hsuTop: bbTop(hsu.g),
+    ncuCat: Equipos.ANT_H.ncu, hsuCat: Equipos.ANT_H.hsu, ZANT,
+    band: { bot: band.bot, top: band.top, hw: band.hw },
+    rec, largo, nSolid: solid.length,
+    ghost: links.children.filter(c => c.material.depthTest === false).length,
+    lect: [...document.querySelectorAll('#lect .l')].map(e => ({
+      n: e.querySelector('.n').textContent, m: parseFloat(e.querySelector('.m').textContent),
+      x: e.querySelector('.x').textContent })),
+    shadowR: sc.right, span: SPAN(), pitch: P, htube: HTUBE, chord: CHORD, M0: M0,
+    hA, hncu: HNCU, dncu: DNCU
   };
 })()`;
 
@@ -85,10 +123,12 @@ const SONDA = `(() => {
   const set = (id, v) => page.evaluate(([id, v]) => {
     const e = document.getElementById(id); e.value = v; e.dispatchEvent(new Event('input')); }, [id, v]);
 
-  /* ---- 1. el visor arranca y el seguidor es el del modelo, no cajas ---- */
+  /* ---- 1. arranque: los tres modelos, y la física en el núcleo del repo ---- */
   let s = await page.evaluate(SONDA);
   check('la escena carga sin errores de consola', errs.length === 0, errs.join(' | '));
-  check('usa seguidor.js (la fuente única)', !!s.version, s.version);
+  check('usa seguidor.js (la fuente única del seguidor)', !!s.version, s.version);
+  check('usa equipos.js (NCU y HSU)', !!s.equipos, s.equipos);
+  check('la física la pone el núcleo del repo, no la página', s.nucleo === 'object', s.nucleo);
   check('el seguidor va montado pieza a pieza (no un rectángulo)', s.meshes > 400, s.meshes + ' mallas');
   check('cotas canónicas del módulo (1,134 × 2,382)', near(s.modW, 1.134, 1e-9) && near(s.modH, 2.382, 1e-9), s.modW + '×' + s.modH);
   check('viga de torsión de 120 mm', near(s.tubeSide, 0.12, 1e-9), s.tubeSide);
@@ -96,22 +136,25 @@ const SONDA = `(() => {
   /* ---- 2. render y física, el MISMO seguidor ---- */
   check('la cara del módulo está a DIMS.off del eje del tubo', near(s.off, s.off0, 1e-6), s.off + ' vs ' + s.off0);
   check('la física usa esa misma cota (M0 = DIMS.off)', near(s.M0, s.off0, 1e-9), s.M0 + ' vs ' + s.off0);
-  { // el canto bajo del módulo que apantalla el enlace, recalculado a mano
+  { // el canto bajo de la mesa que apantalla, recalculado a mano
     const b = 30 * Math.PI / 180;
-    const esperado = s.htube + s.off0 * Math.cos(b) - (s.chord / 2) * Math.abs(Math.sin(b));
-    check('lowerEdge() sale de las cotas del modelo', near(s.lowerEdge, esperado, 1e-9), s.lowerEdge + ' vs ' + esperado);
+    const bot = s.htube + s.off0 * Math.cos(b) - (s.chord / 2) * Math.sin(b);
+    const top = s.htube + s.off0 * Math.cos(b) + (s.chord / 2) * Math.sin(b);
+    check('la mesa es una PLACA entre dos cotas, no un muro',
+          near(s.band.bot, bot, 1e-9) && near(s.band.top, top, 1e-9), s.band.bot + ' / ' + s.band.top);
+    check('la antena de la TCU queda POR DEBAJO del canto bajo', s.hA < s.band.bot, s.hA + ' < ' + s.band.bot);
+    check('la antena de la NCU queda POR ENCIMA de la cresta', s.hncu > s.band.top, s.hncu + ' > ' + s.band.top);
   }
 
-  /* ---- 3. la antena, donde dice el modelo ---- */
-  check('la antena cuelga a la altura hA de la física', near(s.antY, s.htube - 0.72, 1e-6), s.antY);
+  /* ---- 3. las tres antenas de TCU ---- */
+  check('la antena de la TCU cuelga a la altura hA de la física', near(s.antY, s.htube - 0.72, 1e-6), s.antY);
   check('el coax se dibuja (el elemento queda bajo el conector)', s.coaxVis === true);
-  check('tres antenas, en las filas pares', s.ants.length === 3, s.ants.length);
+  check('tres TCU con antena, en las filas pares', s.ants.length === 3, s.ants.length);
   {
     const d1 = Math.hypot(s.ants[1][0] - s.ants[0][0], s.ants[1][2] - s.ants[0][2]);
     const d2 = Math.hypot(s.ants[2][0] - s.ants[1][0], s.ants[2][2] - s.ants[1][2]);
-    check('separadas 2·paso exactos (lo que supone el enlace)',
+    check('separadas 2·paso exactos (lo que supone el salto)',
           near(d1, 2 * s.pitch, 1e-6) && near(d2, 2 * s.pitch, 1e-6), d1 + ' / ' + d2);
-    check('las tres a la misma altura', near(s.ants[0][1], s.ants[2][1], 1e-9), s.ants.map(a => a[1]).join(' '));
   }
 
   /* ---- 4. es una bifila, no seis monofilas ---- */
@@ -119,34 +162,100 @@ const SONDA = `(() => {
   check('solo tres llevan TCU (la del motor de cada pareja)', s.conTcu === 3, s.conTcu);
   check('un eje de transmisión por pareja', s.ejes === 3, s.ejes);
 
-  /* ---- 5. el tilt llega al modelo, con su signo ---- */
+  /* ---- 5. NCU y HSU: cotas de plano y en el corte de la física ---- */
+  check('la antena de la NCU, a la cota de su plano', near(s.ncuPos[1], s.ncuCat, 1e-9), s.ncuPos[1] + ' vs ' + s.ncuCat);
+  check('la antena de la HSU, a la cota de su plano', near(s.hsuPos[1], s.hsuCat, 1e-9), s.hsuPos[1] + ' vs ' + s.hsuCat);
+  check('el poste de la NCU llega a su cabeza (2,95 + látigo)', s.ncuTop > 3.3 && s.ncuTop < 3.5, s.ncuTop);
+  check('la torre de la HSU llega a sus 8 m + cabeza', s.hsuTop > 8.4 && s.hsuTop < 8.7, s.hsuTop);
+  check('NCU y HSU van en el MISMO corte que las TCU',
+        near(s.ncuPos[2], s.ZANT, 1e-9) && near(s.hsuPos[2], s.ZANT, 0.13),
+        s.ncuPos[2] + ' / ' + s.hsuPos[2] + ' vs ' + s.ZANT);
+  check('la NCU está fuera del campo, al lado que dice el mando',
+        near(s.ncuPos[0], (s.filas - 1) * s.pitch + s.dncu, 0.1), s.ncuPos[0]);
+
+  /* ---- 6. qué mesas ve cada salto ---- */
+  {
+    const m = Object.fromEntries(s.rec.map(r => [r.n, r.mesas]));
+    check('TCU↔TCU cruza UNA fila intermedia', m.tcu0 === 1 && m.tcu1 === 1, JSON.stringify(m));
+    check('TCU→NCU cruza las filas que quedan en medio (4/2/0)',
+          m.ncu0 === 4 && m.ncu1 === 2 && m.ncu2 === 0, JSON.stringify(m));
+  }
+
+  /* ---- 7. el número pintado es el del núcleo ---- */
+  {
+    const pintado = s.lect.map(l => l.m);
+    const calc = s.rec.map(r => +r.m.toFixed(1));
+    check('los 5 primeros márgenes de la tabla salen del núcleo',
+          calc.every((v, i) => near(v, pintado[i], 0.051)),
+          JSON.stringify(calc) + ' vs ' + JSON.stringify(pintado.slice(0, calc.length)));
+    check('el salto entre vecinos es holgado y el más lejano a la NCU, el peor',
+          pintado[0] > pintado[2] && pintado[2] < pintado[4], JSON.stringify(pintado));
+    check('la tabla lista los 6 saltos (2 TCU↔TCU + 3 →NCU + HSU)', s.lect.length === 6, s.lect.length);
+  }
+
+  /* ---- 8. el haz llega hasta la otra antena ---- */
+  {
+    const d = Math.hypot(s.ants[1][0] - s.ants[0][0], s.ants[1][1] - s.ants[0][1], s.ants[1][2] - s.ants[0][2]);
+    const cierra = s.largo.some(L => near(L, d, 1e-6));
+    check('el cilindro del enlace cubre el vano ENTERO (no el 72 %)', cierra,
+          'vano ' + d.toFixed(3) + ', cilindros ' + s.largo.map(v => v.toFixed(2)).join(','));
+    check('cada enlace lleva su fantasma sin test de profundidad', s.ghost === s.nSolid,
+          s.ghost + ' vs ' + s.nSolid);
+  }
+
+  /* ---- 9. el tilt llega al modelo, con su signo ---- */
   for (const beta of [30, -40, 0]) {
     await set('tilt', beta); await page.waitForTimeout(120);
     const t = await page.evaluate(SONDA);
     const r = beta * Math.PI / 180;
     check('tilt ' + beta + '°: el grupo que bascula gira lo pedido', near(t.spinX, r, 1e-6), t.spinX);
-    // normal del módulo en el MUNDO: (sen β, cos β, 0) — el canto bajo cae hacia +X,
-    // la misma convención que `moduleQuad` en la física del canvas original
     check('tilt ' + beta + '°: la normal del módulo apunta donde dice la física',
           near(t.normal[0], Math.sin(r), 1e-6) && near(t.normal[1], Math.cos(r), 1e-6) && near(t.normal[2], 0, 1e-6),
           t.normal.map(v => v.toFixed(4)).join(','));
   }
   await set('tilt', 30);
 
-  /* ---- 6. la altura de módulo escala el MÓDULO, no el tubo ---- */
+  /* ---- 10. los mandos de NCU/HSU mueven la escena Y el cálculo ---- */
+  await set('dncu', 60); await page.waitForTimeout(200);
+  {
+    const t = await page.evaluate(SONDA);
+    check('alejar la NCU la mueve en la escena', near(t.ncuPos[0], (t.filas - 1) * t.pitch + 60, 0.1), t.ncuPos[0]);
+    check('alejar la NCU cambia la distancia del salto',
+          /60\.\d m|6[0-9]\.\d m/.test(t.lect[4].x), t.lect[4].x);
+  }
+  await set('dncu', 12); await page.waitForTimeout(200);
+  /* El MECANISMO, no el total: subir la antena de la NCU por encima de la cresta
+     hace que el rayo deje de pasar por debajo de las mesas y empiece a cruzarlas,
+     así que la DIFRACCIÓN crece de forma limpia (14,5 -> 43,9 dB en el barrido).
+     El margen no es monótono, y eso también es física: el modelo de dos rayos
+     mete sus nulos de interferencia por el camino. Se comprueba lo primero. */
+  {
+    const alto = await page.evaluate(SONDA);           // 3,15 m: por encima de la cresta
+    await set('hncu', 1.0); await page.waitForTimeout(200);
+    const bajo = await page.evaluate(SONDA);           // 1,00 m: por debajo del canto bajo
+    const dA = alto.rec.find(r => r.n === 'ncu0').dif, dB = bajo.rec.find(r => r.n === 'ncu0').dif;
+    check('la NCU por encima de la cresta CRUZA las mesas: más difracción', dA > dB + 10,
+          'difr. ' + dA.toFixed(1) + ' dB a ' + alto.hncu + ' m vs ' + dB.toFixed(1) + ' dB a ' + bajo.hncu + ' m');
+    check('el salto más corto a la NCU no cruza ninguna mesa: difracción 0',
+          near(alto.rec.find(r => r.n === 'ncu2').dif, 0, 1e-9), alto.rec.find(r => r.n === 'ncu2').dif);
+  }
+  await set('hncu', 3.15); await page.waitForTimeout(200);
+
+  /* ---- 11. altura de módulo: escala el MÓDULO, no el tubo ---- */
   await set('chord', 4.5); await page.waitForTimeout(150);
   s = await page.evaluate(SONDA);
   check('altura de módulo: el panel se escala', near(s.glassScaleZ, 4.5 / 2.382, 1e-3), s.glassScaleZ);
   check('altura de módulo: el tubo NO se escala', near(s.tubeScaleZ, 1, 1e-9), s.tubeScaleZ);
   await set('chord', 2.382);
 
-  /* ---- 7. la sombra, a escala del campo ---- */
+  /* ---- 12. la sombra, a escala del campo ---- */
   await set('pitch', 15); await page.waitForTimeout(150);
   s = await page.evaluate(SONDA);
   check('el frustum de sombra cubre el campo (no el ±5 m de fábrica)',
         s.shadowR > (s.filas - 1) * s.pitch * 0.5, s.shadowR + ' m para un campo de ' + ((s.filas - 1) * s.pitch) + ' m');
+  await set('pitch', 6);
 
-  /* ---- 8. el tramo dibujado es el que se anuncia ---- */
+  /* ---- 13. el tramo dibujado es el que se anuncia ---- */
   for (const [mods, largo] of [[7, 16.57], [28, 64.70]]) {
     await page.click('[data-m="' + mods + '"]'); await page.waitForTimeout(1200);
     const t = await page.evaluate(SONDA);
