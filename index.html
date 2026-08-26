@@ -692,12 +692,33 @@ function patternGeom(hA){
 let PLANTA=null, plantaG=null, PLNOM="";
 const _mB=new THREE.Matrix4(), _mR=new THREE.Matrix4(), _mS=new THREE.Matrix4(), _mT=new THREE.Matrix4();
 
+/* COTAS MEDIDAS. `<planta>_cotas.json` trae, por seguidor bifila, sus DOS filas
+   con los extremos (n0,n1) y las cotas medidas en esos extremos (y0,y1),
+   relativas a la base de la planta. De ahí sale todo lo que hacía falta y hasta
+   ahora se daba por plano: la cota de cada fila, su pendiente N-S —atan2(y1−y0,
+   n1−n0), la misma lectura que hace el simulador de backtracking— y el suelo
+   sobre el que corre cada rayo. En Ayora son 1.508 filas con 91 m de desnivel y
+   pendientes de hasta 8,4°: no es un matiz, cambia el despeje.
+   Ojo: con cotas, la unidad que se dibuja pasa a ser la FILA, no el seguidor —
+   un bifila son dos, y el layout solo daba una posición por unidad. */
+/* Qué plantas tienen levantamiento en el repo. Se declara en vez de tantear:
+   pedir un fichero que no existe deja un 404 en la consola de cada carga, y una
+   consola con ruido es una consola que nadie mira. */
+const CON_COTAS={ayora:1};
+function cargaCotas(nom){
+  if(!CON_COTAS[nom]) return Promise.resolve(null);
+  return fetch("plantas/"+nom+"_cotas.json",{cache:"no-store"})
+    .then(r=>{ if(!r.ok) throw 0; return r.json(); })
+    .catch(()=>null);
+}
+
 function cargaPlanta(nom){
   PLNOM=nom;
   if(!nom){ PLANTA=null; rehacer(); return Promise.resolve(); }
-  return fetch("plantas/"+nom+"_layout.json",{cache:"no-store"})
-    .then(r=>{ if(!r.ok) throw 0; return r.json(); })
-    .then(j=>{
+  return Promise.all([
+      fetch("plantas/"+nom+"_layout.json",{cache:"no-store"}).then(r=>{ if(!r.ok) throw 0; return r.json(); }),
+      cargaCotas(nom)])
+    .then(([j,cot])=>{
       const mods=j.mods||28;
       PLANTA={
         nom:nom, titulo:j.title||nom, mods:mods,
@@ -708,12 +729,87 @@ function cargaPlanta(nom){
         }),
         ncus:(j.ncus||[]).map(c=>({x:c.x,n:c.n,name:c.name})),
         meteo:(j.meteo||[]).map(c=>({x:c.x,n:c.n,name:c.name})),
-        reps:(j.reps||[]).map(c=>({x:c.x,n:c.n,name:c.name}))
+        reps:(j.reps||[]).map(c=>({x:c.x,n:c.n,name:c.name})),
+        cot:null
       };
+      if(cot&&cot.t&&cot.t.length===PLANTA.trk.length){
+        const filas=[];
+        cot.t.forEach((t,i)=>{ (t.f||[]).forEach(f=>{
+          if(!f||!f.n||!f.y||f.n.length<2||f.y.length<2) return;
+          const asc=f.n[0]<=f.n[1];
+          filas.push({x:f.x, n0:asc?f.n[0]:f.n[1], n1:asc?f.n[1]:f.n[0],
+                      y0:asc?f.y[0]:f.y[1], y1:asc?f.y[1]:f.y[0],
+                      ncu:PLANTA.trk[i].ncu, art:!!f.art});
+        }); });
+        if(filas.length){
+          filas.forEach(f=>{ f.nm=(f.n0+f.n1)/2; f.ym=(f.y0+f.y1)/2;
+                             f.len=Math.abs(f.n1-f.n0);
+                             f.tilt=Math.atan2(f.y1-f.y0,f.n1-f.n0); });
+          PLANTA.cot={filas:filas, base:cot.base, xs:null};
+          PLANTA.cot.xs=[...new Set(filas.map(f=>Math.round(f.x*100)/100))].sort((a,b)=>a-b);
+          PLANTA.cot.porX={};
+          filas.forEach(f=>{ const k=Math.round(f.x*100)/100; (PLANTA.cot.porX[k]=PLANTA.cot.porX[k]||[]).push(f); });
+        }
+      }
       rehacer();
     })
     .catch(()=>{ PLANTA=null; PLNOM=""; rehacer();
       $("note").innerHTML="<b>No se pudo cargar la planta.</b> Los layouts se piden por red: con doble clic (file://) no llegan. Sírvelo y vuelve a probar."; });
+}
+
+/* Cota del terreno en (x,n). La define la fila más cercana en X, interpolando a
+   lo largo de su eje: es el mismo criterio con el que se midió (las cotas se
+   tomaron en los extremos de cada mesa), así que no se inventa un DEM que no
+   existe. Fuera de la banda de la fila se prolonga con su pendiente. */
+function cotaEn(x,n){
+  const C=PLANTA&&PLANTA.cot; if(!C) return 0;
+  const xs=C.xs;
+  let lo=0,hi=xs.length-1;
+  while(lo<hi){ const m=(lo+hi)>>1; if(xs[m]<x) lo=m+1; else hi=m; }
+  let best=null,bd=1e9;
+  for(const k of [xs[lo-1],xs[lo],xs[lo+1]]){
+    if(k===undefined) continue;
+    const arr=C.porX[k]; if(!arr) continue;
+    for(const f of arr){
+      const dn=(n<f.n0)?f.n0-n:(n>f.n1?n-f.n1:0);
+      const d=Math.abs(k-x)+dn*0.25;
+      if(d<bd){ bd=d; best=f; }
+    }
+  }
+  if(!best) return 0;
+  const u=(best.n1===best.n0)?0:(n-best.n0)/(best.n1-best.n0);
+  return best.y0+(best.y1-best.y0)*u;
+}
+
+/* Lo que se dibuja y se calcula: con cotas, la FILA medida (un bifila son dos);
+   sin ellas, el seguidor del layout sobre terreno plano. */
+function unidades(){
+  if(PLANTA.cot) return PLANTA.cot.filas.map(f=>({
+    x:f.x, n:f.nm, y:f.ym, tilt:f.tilt, mr:Math.min(1.2,f.len/SPANP), rot:0, ncu:f.ncu}));
+  return PLANTA.trk.map(t=>({x:t.x, n:t.n, y:0, tilt:0, mr:t.mr, rot:t.rot||0, ncu:t.ncu}));
+}
+
+/* El terreno, de las cotas medidas: una malla muestreada sobre la extensión de
+   la planta. Sin cotas se queda el plano de siempre. */
+let terreno=null;
+function buildTerreno(){
+  if(terreno){ scene.remove(terreno); terreno.geometry.dispose(); terreno=null; }
+  if(!PLANTA||!PLANTA.cot) { groundMesh.visible=true; return; }
+  groundMesh.visible=false;
+  const e=extentPlanta(), M=140, mg=40;
+  const w=e.w+2*mg, h=e.h+2*mg;
+  const g=new THREE.PlaneGeometry(w,h,M,M);
+  g.rotateX(-Math.PI/2);
+  const pos=g.attributes.position;
+  for(let i=0;i<pos.count;i++){
+    const X=pos.getX(i)+e.cx, Zc=pos.getZ(i)+e.cz;
+    pos.setY(i,cotaEn(X,-Zc));
+  }
+  g.computeVertexNormals();
+  terreno=new THREE.Mesh(g,new THREE.MeshStandardMaterial({
+    map:groundMesh.material.map, roughness:0.98, metalness:0, color:0x6f6a58}));
+  terreno.position.set(e.cx,-0.02,e.cz);
+  terreno.receiveShadow=true; scene.add(terreno);
 }
 
 /* Filas ordenadas por X: para saber qué mesas cruza un enlace. Es el criterio
@@ -747,7 +843,7 @@ function mesasEnPlanta(ax,an,bx,bn,beta,hw){
       if(nn>=t.n-L-1&&nn<=t.n+L+1){ hay=true; break; }
     }
     if(!hay) continue;
-    const b=Z.tableBand(0,HTUBE,CHORD,beta,M0);
+    const b=Z.tableBand(cotaEn(f.x,nn),HTUBE,CHORD,beta,M0);   // la mesa apantalla a SU cota
     b.x=u*D2;
     out.push(b);
   }
@@ -843,7 +939,10 @@ function buildPlanta(){
   Seguidor.setModsPerStr(PLANTA.mods);
   SPANP=D.span; BUILT_SPAN=D.span;
   PLANTA._filas=filasPlanta();
-  const N=PLANTA.trk.length;
+  buildTerreno();
+  PLANTA._un=null;
+  const UN=PLANTA._un=unidades();   // filas medidas (con cotas) o seguidores del layout
+  const N=UN.length;
   const plan=Seguidor.instancePlan(THREE,{detail:"mass",size:"largo",west:true});
   plan.forEach(tp=>{
     if(tp.motorLink||tp.damperLink||tp.antenna) return;          // los gestiona la app por frame; en planta se omiten
@@ -866,13 +965,13 @@ function buildPlanta(){
   const eq={materials:mats.equipos, antMaterial:mats.antena, shadows:true};
   PLANTA.ncus.forEach((c,i)=>{
     const b=Equipos.buildNCU(THREE,eq); b.group.rotation.y=Math.PI;
-    b.group.position.set(c.x,0,-c.n); plantaG.add(b.group);
+    b.group.position.set(c.x,cotaEn(c.x,c.n),-c.n); plantaG.add(b.group);
     const d=new THREE.Mesh(new THREE.SphereGeometry(0.055,12,8),mats.antena); d.position.copy(b.antPos); b.group.add(d);
     PLEQ.push({tipo:"ncu",i:i,g:b.group,dato:c,ant:b.antPos.clone()});
   });
   PLANTA.meteo.forEach((c,i)=>{
     const b=Equipos.buildHSU(THREE,Object.assign({panelMaterial:mats.glass},eq));
-    b.group.position.set(c.x,0,-c.n); plantaG.add(b.group);
+    b.group.position.set(c.x,cotaEn(c.x,c.n),-c.n); plantaG.add(b.group);
     const d=new THREE.Mesh(new THREE.SphereGeometry(0.055,12,8),mats.antena); d.position.copy(b.antPos); b.group.add(d);
     PLEQ.push({tipo:"hsu",i:i,g:b.group,dato:c,ant:b.antPos.clone()});
   });
@@ -897,14 +996,22 @@ function pintaPlanta(beta,hA){
   const p=params();
   const ncuPos=PLEQ.filter(e=>e.tipo==="ncu").map(e=>({
     x:e.g.position.x+ (e.g.rotation.y?-e.ant.x:e.ant.x),
-    n:-(e.g.position.z+(e.g.rotation.y?-e.ant.z:e.ant.z)), h:HNCU }));
+    n:-(e.g.position.z+(e.g.rotation.y?-e.ant.z:e.ant.z)),
+    y:e.g.position.y, h:HNCU }));   // y = cota del terreno bajo el poste
   let peor=1e9, pmed=0, sin=0;
-  for(let i=0;i<PLANTA.trk.length;i++){
-    const t=PLANTA.trk[i];
-    _mT.makeTranslation(t.x,HTUBE,-t.n);
+  const NTOT=(PLANTA._un||unidades()).length;
+  const UN=PLANTA._un||(PLANTA._un=unidades());
+  for(let i=0;i<UN.length;i++){
+    const t=UN[i];
+    /* Cota medida + pendiente N-S de la fila. El tubo del modelo va en +X, así
+       que la pendiente a lo largo es un giro en Z, y el largo real de la mesa
+       entra como escala en ese mismo eje. */
+    _mT.makeTranslation(t.x,t.y+HTUBE,-t.n);
     _mB.makeRotationY(Math.PI/2+(t.rot||0));
+    _mB.premultiply(_mT);
+    if(t.tilt) _mB.multiply(new THREE.Matrix4().makeRotationZ(-t.tilt));
     _mS.makeScale(t.mr,1,1);
-    _mB.premultiply(_mT); _mB.multiply(_mS);
+    _mB.multiply(_mS);
     for(let k=0;k<PLI.length;k++){
       const L=PLI[k], base=i*L.locals.length;
       for(let l=0;l<L.locals.length;l++){
@@ -914,13 +1021,13 @@ function pintaPlanta(beta,hA){
         L.im.setMatrixAt(base+l,m);
       }
     }
-    // el salto directo a su NCU
+    // el salto directo a su NCU, con las cotas por medio
     let mg=-99;
     if(ncuPos.length){
       const c=ncuPos[Math.min(t.ncu-1,ncuPos.length-1)]||ncuPos[0];
       const tabs=mesasEnPlanta(t.x,t.n,c.x,c.n,beta,hw);
       const d=Math.hypot(c.x-t.x,c.n-t.n);
-      mg=Z.predictLink({x:0,y:0,ground:0,h:hA},{x:d,y:0,ground:0,h:c.h},p,null,null,tabs).marginDb;
+      mg=Z.predictLink({x:0,y:0,ground:t.y,h:hA},{x:d,y:0,ground:c.y,h:c.h},p,null,null,tabs).marginDb;
     }
     peor=Math.min(peor,mg); pmed+=mg; if(mg<8)sin++;
     if(PLMESA){ _col.set(colorFor(mg));
@@ -928,7 +1035,7 @@ function pintaPlanta(beta,hA){
   }
   PLI.forEach(L=>{ L.im.instanceMatrix.needsUpdate=true; });
   if(PLMESA&&PLMESA.im.instanceColor) PLMESA.im.instanceColor.needsUpdate=true;
-  return {peor:peor, medio:pmed/PLANTA.trk.length, sin:sin, n:PLANTA.trk.length};
+  return {peor:peor, medio:pmed/NTOT, sin:sin, n:NTOT};
 }
 
 /* ------------------------------ estado dinámico ------------------------------ */
@@ -1209,17 +1316,22 @@ function updatePlanta(sl){
   $("sunl").innerHTML = sl.noche
     ? `<b>Noche</b> — sol a ${sl.elev.toFixed(1)}°, seguidores en stow a ${STOW}°.`
     : `Sol a <b>${sl.elev.toFixed(1)}°</b> y ${sl.az.toFixed(0)}° de azimut; los seguidores van a <b>${BETA.toFixed(1)}°</b>.`;
-  $("note").innerHTML=`<b>${PLANTA.titulo}</b> — ${PLANTA.trk.length} seguidores, ${PLANTA.ncus.length} NCU y `+
+  const nun=(PLANTA._un||unidades()).length;
+  $("note").innerHTML=`<b>${PLANTA.titulo}</b> — ${PLANTA.trk.length} seguidores`+
+    (PLANTA.cot?` (${nun} filas medidas)`:``)+`, ${PLANTA.ncus.length} NCU y `+
     `${PLANTA.meteo.length} HSU en sus coordenadas del DWG, con ${PLANTA.mods} módulos por string. `+
     `Cada seguidor se colorea por el margen de su salto DIRECTO a su NCU (dos rayos + difracción por las mesas que cruza, `+
     `núcleo del repo). Verde = llega solo; rojo = ese seguidor depende de la malla. `+
-    `<b>Terreno plano</b> en esta fase: las cotas medidas fila a fila (Ayora, San José) son la siguiente vuelta. `+
+    (PLANTA.cot
+      ? `<b>Con las cotas MEDIDAS</b>: cada fila a su altura y con su pendiente N-S, y el rayo corre sobre ese terreno — la mesa que apantalla lo hace a SU cota, no a la de nadie. `
+      : `<b>Terreno plano</b>: esta planta no trae cotas medidas en el repo. `)+
     `Arrastra la NCU o la HSU por el suelo, o escribe su coordenada.`;
 }
 
 function extentPlanta(){
   let x0=1e9,x1=-1e9,n0=1e9,n1=-1e9;
-  PLANTA.trk.forEach(t=>{ x0=Math.min(x0,t.x);x1=Math.max(x1,t.x);n0=Math.min(n0,t.n);n1=Math.max(n1,t.n); });
+  const U=PLANTA._un||(PLANTA._un=unidades());
+  U.forEach(t=>{ x0=Math.min(x0,t.x);x1=Math.max(x1,t.x);n0=Math.min(n0,t.n);n1=Math.max(n1,t.n); });
   PLEQ.forEach(e=>{ const x=e.g.position.x,n=-e.g.position.z;
     x0=Math.min(x0,x);x1=Math.max(x1,x);n0=Math.min(n0,n);n1=Math.max(n1,n); });
   const w=x1-x0, h=n1-n0;
@@ -1275,7 +1387,7 @@ function sueloEn(ev){
   return _ray.ray.intersectPlane(_plano,_hit)?_hit.clone():null;
 }
 function mueveEquipo(e,x,n){
-  e.g.position.set(x,0,-n); e.dato.x=x; e.dato.n=n;
+  e.g.position.set(x,cotaEn(x,n),-n); e.dato.x=x; e.dato.n=n;   // se apoya en el terreno
   if(e===PLEQ.find(q=>q.tipo==="ncu")){ $("ncuX").value=x.toFixed(1); $("ncuN").value=n.toFixed(1); }
   if(e===PLEQ.find(q=>q.tipo==="hsu")){ $("hsuX").value=x.toFixed(1); $("hsuN").value=n.toFixed(1); }
 }

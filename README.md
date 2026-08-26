@@ -44,7 +44,7 @@ cobertura-rf-fv/
 ├── plantas/                    # layouts reales (copia de cobertura-zigbee)
 ├── lib/                        # three.js r128 + OrbitControls (vendorizados)
 ├── tests/
-│   ├── test_visor_3d.js        # QA del visor en Chromium (88 comprobaciones)
+│   ├── test_visor_3d.js        # QA del visor en Chromium (95 comprobaciones)
 │   └── test_nucleo.py          # núcleo + PARIDAD .py <-> .js (19 comprobaciones)
 ├── README.md
 ├── INSTRUCCIONES.md            # cómo usarlo paso a paso
@@ -174,9 +174,31 @@ La NCU y la HSU se **colocan a mano** de dos formas sincronizadas: arrastrando
 por el suelo (para tantear) y escribiendo su coordenada E/N del DWG (para
 reproducirlo). Al soltar, la cobertura se recalcula entera.
 
-Terreno **plano** en esta fase. Las cotas medidas fila a fila existen para Ayora
-y San José (`<planta>_cotas.json`) y son la siguiente vuelta: cambian el despeje
-del rayo, así que no se dan por buenas hasta dibujarlas.
+### Las pendientes de Ayora
+
+Ayora trae su levantamiento (`ayora_cotas.json`): por seguidor bifila, sus **dos
+filas** con los extremos (n₀,n₁) y las **cotas medidas** en esos extremos. De ahí
+sale la cota de cada fila, su pendiente N-S —`atan2(y₁−y₀, n₁−n₀)`, la misma
+lectura que hace el simulador de backtracking— y el suelo sobre el que corre
+cada rayo. Con cotas, la unidad que se dibuja pasa a ser la **fila**: 754
+seguidores son **1.508 filas**.
+
+Y no es decoración. Sobre el terreno real cada mesa apantalla **a su cota**, no
+a la de nadie:
+
+| Ayora | Filas por debajo de 8 dB |
+|---|---|
+| Terreno plano | 16 |
+| **Con las cotas medidas** | **130** |
+
+91 m de desnivel y pendientes N-S de hasta 4,5° convierten 16 seguidores
+problemáticos en 130. Un mapa de cobertura sobre terreno plano de una planta que
+no lo es no dice lo que parece decir.
+
+El terreno se dibuja muestreando esas mismas cotas: manda la fila más cercana en
+X, interpolando a lo largo de su eje. Es el criterio con el que se midió —las
+cotas se tomaron en los extremos de cada mesa—, así que no se inventa un DEM que
+no existe. Las demás plantas siguen en plano, y la página lo dice.
 
 ## El rizado de dos rayos (por qué alejar puede MEJORAR)
 

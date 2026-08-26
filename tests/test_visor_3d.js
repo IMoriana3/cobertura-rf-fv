@@ -454,6 +454,40 @@ const SONDA = `(() => {
     await page.click('[data-g="pec"]'); await page.waitForTimeout(300);
   }
 
+  /* ---- 18b. Ayora con las cotas MEDIDAS ---- */
+  await page.evaluate(() => cargaPlanta('ayora'));
+  for (let i = 0; i < 60; i++) {
+    if (await page.evaluate(() => PLANTA && PLANTA.cot && (PLANTA._un || []).length > 0)) break;
+    await page.waitForTimeout(1000);
+  }
+  await page.waitForTimeout(1500);
+  {
+    const t = await page.evaluate(() => {
+      const U = PLANTA._un || [], y = U.map(u => u.y), tl = U.map(u => Math.abs(u.tilt));
+      return { cot: !!PLANTA.cot, filas: PLANTA.cot.filas.length, un: U.length,
+               ymin: Math.min.apply(null, y), ymax: Math.max.apply(null, y),
+               pmax: Math.max.apply(null, tl) * 180 / Math.PI,
+               terreno: !!terreno,
+               eqY: PLEQ.map(e => e.g.position.y),
+               sin: parseInt([...document.querySelectorAll('#lect .m')][2].textContent, 10) };
+    });
+    check('Ayora trae sus cotas medidas', t.cot === true);
+    /* Con cotas la unidad pasa a ser la FILA: un bifila son dos, y el layout
+       solo daba una posición por unidad. 754 seguidores -> 1.508 filas. */
+    check('con cotas se dibuja FILA a fila (1.508, no 754)', t.filas === 1508 && t.un === 1508,
+          t.filas + ' / ' + t.un);
+    check('las filas van a su cota medida (91 m de desnivel)', t.ymax - t.ymin > 80,
+          t.ymin.toFixed(1) + ' … ' + t.ymax.toFixed(1) + ' m');
+    check('y con su pendiente N-S, que no es cero', t.pmax > 2, t.pmax.toFixed(2) + '°');
+    check('el terreno se dibuja con el relieve medido', t.terreno === true);
+    check('los equipos se apoyan en el terreno, no en el cero',
+          t.eqY.some(v => Math.abs(v) > 1), t.eqY.slice(0, 3).map(v => v.toFixed(1)).join(','));
+    /* Lo que justifica meterlas: en plano salían 16 filas por debajo de 8 dB;
+       con el relieve real son muchas más. El terreno no es decoración. */
+    check('el relieve cambia el resultado, y mucho', t.sin > 60, t.sin + ' filas por debajo de 8 dB');
+  }
+  await page.click('[data-p=""]'); await page.waitForTimeout(1200);
+
   /* ---- 19. el rizado de dos rayos, dicho y no escondido ---- */
   await page.click('[data-p=""]'); await page.waitForTimeout(1500);
   {
