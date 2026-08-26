@@ -10,29 +10,30 @@
   body { margin:0; font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
          color:var(--ink); background:#f4f6f8; padding:18px; }
   .wrap { max-width:880px; margin:0 auto; }
-  h1 { font-size:19px; font-weight:600; margin:0 0 2px; }
-  .sub { color:var(--muted); font-size:13px; margin:0 0 14px; }
-  .plot-card { background:#0f1318; border-radius:12px; padding:10px; }
-  canvas { width:100%; height:auto; display:block; border-radius:8px; cursor:grab; touch-action:none; }
+  h1 { font-size:22px; margin:0 0 4px; }
+  .sub { color:var(--muted); margin:0 0 16px; }
+  .plot-card, .panel { background:#fff; border:1px solid var(--line); border-radius:8px; padding:14px; }
+  .plot-card { margin-bottom:14px; }
+  canvas { width:100%; height:auto; display:block; border-radius:4px; cursor:grab; }
   canvas:active { cursor:grabbing; }
-  .legend { display:flex; align-items:center; gap:10px; margin-top:8px; color:#aeb6c0; font-size:12px; }
+  .legend { display:flex; align-items:center; gap:8px; margin-top:10px; font-size:13px; color:var(--muted); }
   .bar { flex:1; height:10px; border-radius:5px;
-         background:linear-gradient(90deg,#d83a3a,#e0a72c,#3a9d57); }
-  .panel { background:#fff; border:1px solid var(--line); border-radius:12px; padding:16px; margin-top:14px; }
-  .ctrls { display:grid; grid-template-columns:1fr 1fr; gap:14px 22px; }
-  @media (max-width:520px){ .ctrls{ grid-template-columns:1fr; } }
-  .ctrl label { display:flex; justify-content:space-between; font-size:13px; color:var(--muted); margin-bottom:5px; }
-  .ctrl b { color:var(--ink); font-variant-numeric:tabular-nums; }
-  input[type=range]{ width:100%; accent-color:var(--accent); }
-  .hint { color:var(--muted); font-size:12.5px; margin-top:12px; }
-  .read { margin-top:12px; font-size:14px; }
-  .read b { color:var(--accent); font-variant-numeric:tabular-nums; }
+         background:linear-gradient(90deg,#7a1d1d,#e0a72c,#3a9d57); }
+  .ctrls { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:14px; }
+  .ctrl label { display:block; font-size:13px; color:var(--muted); margin-bottom:4px; }
+  .ctrl label b { color:var(--ink); font-variant-numeric:tabular-nums; }
+  .ctrl input[type=range] { width:100%; }
+  .read { margin:14px 0 0; font-size:15px; }
+  .read b { font-size:19px; color:var(--accent); font-variant-numeric:tabular-nums; }
+  .hint { margin:6px 0 0; font-size:13px; color:var(--muted); }
+  .nota { margin:10px 0 0; font-size:12.5px; color:var(--muted); border-top:1px solid var(--line); padding-top:10px; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>Cobertura Zigbee · vista en planta</h1>
-  <p class="sub">Mismo modelo físico que el núcleo (dos rayos + difracción por filas). Arrastra el nodo Tx; mueve la inclinación para ver el apantallamiento dinámico.</p>
+  <p class="sub">El núcleo del repo (<code>zigbee_pv_model.js</code>) sobre un campo REAL: filas
+     de longitud finita, con su azimut y sus calles. Arrastra el nodo Tx.</p>
 
   <div class="plot-card">
     <canvas id="plot" width="840" height="440"></canvas>
@@ -47,115 +48,208 @@
         <input id="tilt" type="range" min="0" max="55" value="30"></div>
       <div class="ctrl"><label>Paso entre filas <b id="vPitch">7.0 m</b></label>
         <input id="pitch" type="range" min="4" max="14" step="0.5" value="7"></div>
-      <div class="ctrl"><label>Altura de antena <b id="vH">1.5 m</b></label>
-        <input id="h" type="range" min="0.5" max="3" step="0.1" value="1.5"></div>
+      <div class="ctrl"><label>Azimut de las filas <b id="vAz">0°</b></label>
+        <input id="az" type="range" min="0" max="90" value="0"></div>
+      <div class="ctrl"><label>Largo de bloque <b id="vBlk">60 m</b></label>
+        <input id="blk" type="range" min="20" max="200" step="10" value="60"></div>
+      <div class="ctrl"><label>Ancho de calle <b id="vSt">6 m</b></label>
+        <input id="st" type="range" min="0" max="20" step="1" value="6"></div>
+      <div class="ctrl"><label>Altura de antena <b id="vHa">1.5 m</b></label>
+        <input id="ha" type="range" min="0.5" max="3" step="0.1" value="1.5"></div>
+      <div class="ctrl"><label>Altura del eje del tubo <b id="vHx">1.5 m</b></label>
+        <input id="hx" type="range" min="0.8" max="2.5" step="0.1" value="1.5"></div>
       <div class="ctrl"><label>Margen mínimo de enlace <b id="vThr">8 dB</b></label>
         <input id="thr" type="range" min="4" max="30" value="8"></div>
     </div>
-    <p class="read">Área con enlace al Tx: <b id="cov">—</b></p>
-    <p class="hint">Verde = margen holgado · rojo = sin enlace. A inclinación alta la cobertura se estrecha en pasillos: ahí es donde hacen falta routers intermedios.</p>
+    <p class="read">Área con enlace al Tx: <b id="cov">—</b> · mesas cruzadas por el peor enlace: <b id="wmax">—</b></p>
+    <p class="hint">Verde = margen holgado · rojo = sin enlace. Baja el azimut a 0° y verás
+       la cobertura salir por las CALLES: es el pasillo el que enlaza, no la distancia.</p>
+    <p class="nota"><b>Qué modela y qué no.</b> Una fila es una PLACA entre dos cotas
+       (<code>tableBand</code> del núcleo), no un muro desde el suelo: con la antena por debajo
+       del canto bajo, el rayo pasa por abajo y solo lo roza la difracción. Un enlace solo ve
+       las filas que su traza CRUZA de verdad — pasar por el hueco de una calle, o más allá del
+       extremo de un bloque, no cuesta nada. Sin modelar: terreno (todo a cota 0) y vegetación.</p>
   </div>
 </div>
 
+<script src="zigbee_pv_model.js"></script>
 <script>
-/* --- núcleo RF embebido (idéntico a zigbee_pv_model.js) --- */
-(function(g){"use strict";const C=299792458;
-const cx=(r,i)=>({re:r,im:i||0}),cAdd=(a,b)=>cx(a.re+b.re,a.im+b.im),cSub=(a,b)=>cx(a.re-b.re,a.im-b.im),
-cMul=(a,b)=>cx(a.re*b.re-a.im*b.im,a.re*b.im+a.im*b.re),cScale=(a,s)=>cx(a.re*s,a.im*s),cAbs=a=>Math.hypot(a.re,a.im);
-function cDiv(a,b){const d=b.re*b.re+b.im*b.im;return cx((a.re*b.re+a.im*b.im)/d,(a.im*b.re-a.re*b.im)/d);}
-function cSqrt(z){const r=Math.hypot(z.re,z.im),re=Math.sqrt((r+z.re)/2);let im=Math.sqrt((r-z.re)/2);if(z.im<0)im=-im;return cx(re,im);}
-function cExp(z){const e=Math.exp(z.re);return cx(e*Math.cos(z.im),e*Math.sin(z.im));}
-const wl=f=>C/(f||2.45e9);
-function refl(th,er,sg,f,p){const lam=wl(f),eps=cx(er,-60*lam*sg),s=Math.sin(th),c2=Math.cos(th)**2,root=cSqrt(cSub(eps,cx(c2,0)));
-  if((p||"v").startsWith("v")){const es=cScale(eps,s);return cDiv(cSub(es,root),cAdd(es,root));}return cDiv(cSub(cx(s,0),root),cAdd(cx(s,0),root));}
-function twoRay(d,ht,hr,f,er,sg,p){d=Math.max(d,1e-3);const lam=wl(f),dl=Math.hypot(d,ht-hr),dr=Math.hypot(d,ht+hr),
-  th=Math.atan2(ht+hr,d),G=refl(th,er,sg,f,p),dphi=2*Math.PI*(dr-dl)/lam,
-  fld=cAdd(cx(1/dl,0),cScale(cMul(G,cExp(cx(0,-dphi))),1/dr));return -20*Math.log10((lam/(4*Math.PI))*cAbs(fld));}
-function knife(v){return v<=-0.78?0:6.9+20*Math.log10(Math.sqrt((v-0.1)**2+1)+v-0.1);}
-function vp(h,d1,d2,f){return h*Math.sqrt(2*(d1+d2)/(wl(f)*d1*d2));}
-function diff(D,te,re_,obs,f,dep,md){dep=dep||0;md=md||3;if(!obs||!obs.length||dep>=md||D<=0)return 0;
-  let bv=-1e9,bi=-1;for(let i=0;i<obs.length;i++){const[x,t]=obs[i];if(x<=0||x>=D)continue;const lo=te+(re_-te)*(x/D),v=vp(t-lo,x,D-x,f);if(v>bv){bv=v;bi=i;}}
-  if(bi<0||bv<=-0.78)return 0;const[x0,t0]=obs[bi];let L=knife(bv);
-  L+=diff(x0,te,t0,obs.filter(o=>o[0]<x0),f,dep+1,md);L+=diff(D-x0,t0,re_,obs.filter(o=>o[0]>x0).map(o=>[o[0]-x0,o[1]]),f,dep+1,md);return L;}
-const rowTop=(gr,ah,ch,tl)=>gr+ah+(ch/2)*Math.sin(Math.abs(tl)*Math.PI/180);
-function erf(x){const t=1/(1+0.3275911*Math.abs(x)),y=1-(((((1.061405429*t-1.453152027)*t)+1.421413741)*t-0.284496736)*t+0.254829592)*t*Math.exp(-x*x);return x>=0?y:-y;}
-const params=()=>({fHz:2.45e9,ptxDbm:18,gtxDbi:2.1,grxDbi:2.1,rxSensDbm:-101,sigmaDb:6,epsR:15,sigmaGround:5e-3,pol:"v",lModDb:0});
-function predict(tx,rx,p,ter,obs){p=p||params();const d=Math.hypot(rx.x-tx.x,rx.y-tx.y),pl2=twoRay(d,tx.h,rx.h,p.fHz,p.epsR,p.sigmaGround,p.pol);
-  let pd=0;const pts=(ter||[]).concat(obs||[]);if(pts.length)pd=diff(d,tx.ground+tx.h,rx.ground+rx.h,pts,p.fHz);
-  const prx=p.ptxDbm+p.gtxDbi+p.grxDbi-(pl2+pd+p.lModDb);return{marginDb:prx-p.rxSensDbm};}
-g.ZigbeePV={predictLink:predict,rowTopElev:rowTop,defaultParams:params};
-})(window);
+/* ══════════════════════════ CAMPO — inicio ═══════════════════════════════
+   La FÍSICA no vive aquí: es `zigbee_pv_model.js`, el mismo núcleo que corre
+   `index.html` y el gemelo 1:1 del `.py`. Antes esta página llevaba 26 líneas
+   de copia inline con su propio presupuesto de enlace (ptx 18 dBm contra los
+   19 del núcleo, antena 2,1 contra 3,0 dBi, sensibilidad −101 contra −103) y
+   un modelo de MURO desde el suelo, anterior al de banda. Se decía «mismo
+   modelo físico que el núcleo» sin serlo.
 
-/* --- demo de cobertura --- */
-const cv=document.getElementById("plot"),ctx=cv.getContext("2d");
-const W_M=420, H_M=H_M_calc(), CELL=12, CHORD=2.38;     // dominio en metros, celda en px
-function H_M_calc(){return 220;}
-const sx=cv.width/W_M, sy=cv.height/H_M;                 // metros -> px
-let tx={mx:60,my:H_M/2};                                 // posición del Tx en metros
-const el=id=>document.getElementById(id);
-const state=()=>({tilt:+el("tilt").value,pitch:+el("pitch").value,h:+el("h").value,thr:+el("thr").value});
+   Lo que sí es de esta página: QUÉ obstáculos ve cada enlace, y eso se
+   resuelve con la geometría del campo, no suponiendo filas infinitas:
 
-function colorFor(m,thr){
-  if(m<thr-12) return "#7a1d1d";
-  if(m<thr)    return lerp("#7a1d1d","#e0a72c",(m-(thr-12))/12);
-  if(m<thr+22) return lerp("#e0a72c","#3a9d57",(m-thr)/22);
-  return "#3a9d57";
-}
-function lerp(a,b,t){t=Math.max(0,Math.min(1,t));const A=hx(a),B=hx(b);
-  return `rgb(${A.map((v,i)=>Math.round(v+(B[i]-v)*t)).join(",")})`;}
-const hx=h=>[1,3,5].map(i=>parseInt(h.substr(i,2),16));
+     · una fila es un SEGMENTO de longitud finita, con su azimut;
+     · el campo se parte en BLOQUES separados por calles, en las dos
+       direcciones — a lo largo de la fila y entre grupos de filas;
+     · un enlace cruza la fila `i` solo si su traza y ese segmento se CORTAN.
+       Bajar por una calle, o pasar más allá del extremo de un bloque, no
+       cruza nada y no cuesta nada.
 
-function obstaclesAlong(txm,rxm,pitch,tilt,h){
-  const D=Math.hypot(rxm.mx-txm.mx,rxm.my-txm.my); if(D<0.5)return[];
-  const obs=[],lo=Math.ceil(Math.min(txm.mx,rxm.mx)/pitch),hi=Math.floor(Math.max(txm.mx,rxm.mx)/pitch);
-  for(let k=lo;k<=hi;k++){const rx=k*pitch,t=(rx-txm.mx)/(rxm.mx-txm.mx);
-    if(t>0.001&&t<0.999)obs.push([t*D,ZigbeePV.rowTopElev(0,h,CHORD,tilt)]);}
-  return obs;
-}
+   Antes se enumeraba `x = k·pitch` entre los dos extremos: filas infinitas en
+   `y`, sin azimut y sin calles. Coherente con lo que se DIBUJABA (líneas de
+   lado a lado del lienzo), así que no mentía — pero no dejaba ver lo único
+   que esta página existe para enseñar, que es por dónde sale la cobertura.
+   ═══════════════════════════════════════════════════════════════════════ */
+const Z = window.ZigbeePV;
 
-let raf=null;
-function recompute(){
-  const s=state(),p=ZigbeePV.defaultParams();
-  let covered=0,total=0;
-  for(let py=0;py<cv.height;py+=CELL){
-    for(let px=0;px<cv.width;px+=CELL){
-      const mx=(px+CELL/2)/sx, my=(py+CELL/2)/sy;
-      const obs=obstaclesAlong(tx,{mx,my},s.pitch,s.tilt,s.h);
-      const m=ZigbeePV.predictLink({x:tx.mx,y:tx.my,ground:0,h:s.h},{x:mx,y:my,ground:0,h:s.h},p,null,obs).marginDb;
-      ctx.fillStyle=colorFor(m,s.thr); ctx.fillRect(px,py,CELL,CELL);
-      total++; if(m>=s.thr)covered++;
+/* Cotas de la mesa. `off` = cara del módulo sobre el eje del tubo; el núcleo
+   la usa igual en `index.html`. */
+const CHORD = 2.38, OFF = 0.06;
+
+/* Cuántas filas seguidas antes de una calle transversal. Constante y no
+   slider: con el ancho de calle a 0 el campo ya es continuo, que es el caso
+   que interesa comparar. */
+const FILAS_POR_BLOQUE = 10;
+
+/* Filas del campo como SEGMENTOS `{ax,ay,bx,by}` en metros.
+   `azDeg` = 0 → las filas corren en `y` (norte-sur en el lienzo) y el paso
+   avanza en `x`. Al girar, giran las dos direcciones a la vez: el paso es
+   siempre perpendicular a la fila. */
+function campo(W, H, pitch, azDeg, blockLen, streetW) {
+  const a = azDeg * Math.PI / 180;
+  const ux = Math.sin(a), uy = Math.cos(a);          // a lo largo de la fila
+  const vx = Math.cos(a), vy = -Math.sin(a);         // entre filas (⊥)
+  const cxm = W / 2, cym = H / 2;
+  const diag = Math.hypot(W, H);                     // cubre el lienzo girado
+  const filas = [];
+  const pasoBloque = blockLen + streetW;             // periodo a lo largo
+  const nU = Math.ceil(diag / Math.max(pasoBloque, 1e-6)) + 1;
+  const nV = Math.ceil(diag / (2 * Math.max(pitch, 1e-6))) + 1;
+  for (let j = -nV; j <= nV; j++) {
+    // calle LONGITUDINAL: se salta la fila que caería en el hueco
+    if (streetW > 0 && FILAS_POR_BLOQUE > 0 &&
+        ((j % (FILAS_POR_BLOQUE + 1)) + (FILAS_POR_BLOQUE + 1)) % (FILAS_POR_BLOQUE + 1) === FILAS_POR_BLOQUE) continue;
+    const ox = cxm + vx * j * pitch, oy = cym + vy * j * pitch;
+    for (let i = -nU; i <= nU; i++) {
+      // calle TRANSVERSAL: el bloque ocupa `blockLen` y deja `streetW`
+      const s0 = i * pasoBloque - blockLen / 2, s1 = s0 + blockLen;
+      filas.push({ ax: ox + ux * s0, ay: oy + uy * s0,
+                   bx: ox + ux * s1, by: oy + uy * s1 });
     }
   }
-  // filas de seguidores
-  ctx.strokeStyle="rgba(180,200,220,.18)"; ctx.lineWidth=1;
-  for(let k=0;k*s.pitch<=W_M;k++){const x=k*s.pitch*sx; ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,cv.height);ctx.stroke();}
-  // nodo Tx
-  const px=tx.mx*sx,py=tx.my*sy;
-  ctx.fillStyle="#ffffff"; ctx.strokeStyle="#185FA5"; ctx.lineWidth=3;
-  ctx.beginPath();ctx.arc(px,py,8,0,2*Math.PI);ctx.fill();ctx.stroke();
-  ctx.fillStyle="#fff";ctx.font="600 13px sans-serif";ctx.fillText("Tx",px+12,py+4);
-  el("cov").textContent=(100*covered/total).toFixed(0)+" %";
+  return filas;
 }
-function schedule(){ if(!raf) raf=requestAnimationFrame(()=>{raf=null;recompute();}); }
 
-["tilt","pitch","h","thr"].forEach(id=>el(id).addEventListener("input",()=>{
-  el("vTilt").textContent=el("tilt").value+"°";
-  el("vPitch").textContent=(+el("pitch").value).toFixed(1)+" m";
-  el("vH").textContent=(+el("h").value).toFixed(1)+" m";
-  el("vThr").textContent=el("thr").value+" dB";
+/* ¿Se cortan los segmentos P0P1 y Q0Q1? Devuelve `t` sobre P (0..1) o null.
+   Paralelos o colineales → null: una fila paralela al enlace no lo corta, y
+   si es colineal el rayo va POR ENCIMA de la fila, que es otro problema y no
+   una difracción de canto.
+
+   El paralelismo se juzga por el SENO DEL ÁNGULO, no por el producto vectorial
+   crudo. `den` no es invariante de escala —vale |r|·|s|·sen θ, así que crece
+   con el largo de los segmentos— y un épsilon fijo sobre él no significa nada:
+   con el campo a azimut 90° una fila EXACTAMENTE paralela al enlace daba
+   den = 1,14e-12 sobre un umbral de 1e-12 y se colaba como obstáculo, siendo
+   sen θ = 2,4e-16. Normalizado, el umbral es un ángulo y se puede razonar:
+   1e-9 rad es 0,2 milésimas de segundo de arco. */
+function corte(p0x, p0y, p1x, p1y, q0x, q0y, q1x, q1y) {
+  const rx = p1x - p0x, ry = p1y - p0y, sx2 = q1x - q0x, sy2 = q1y - q0y;
+  const den = rx * sy2 - ry * sx2;
+  const norm = Math.hypot(rx, ry) * Math.hypot(sx2, sy2);
+  if (norm < 1e-12 || Math.abs(den) / norm < 1e-9) return null;
+  const ox = q0x - p0x, oy = q0y - p0y;
+  const t = (ox * sy2 - oy * sx2) / den;
+  const u = (ox * ry - oy * rx) / den;
+  if (t <= 0 || t >= 1 || u < 0 || u > 1) return null;
+  return t;
+}
+
+/* Las mesas que un enlace cruza DE VERDAD, como placas para el núcleo. */
+function mesasCruzadas(txm, rxm, filas, banda) {
+  const D = Math.hypot(rxm.mx - txm.mx, rxm.my - txm.my);
+  if (D < 0.5) return [];
+  const out = [];
+  for (let k = 0; k < filas.length; k++) {
+    const f = filas[k];
+    const t = corte(txm.mx, txm.my, rxm.mx, rxm.my, f.ax, f.ay, f.bx, f.by);
+    if (t === null) continue;
+    out.push({ x: t * D, bot: banda.bot, top: banda.top, ground: banda.ground });
+  }
+  return out;
+}
+/* ══════════════════════════ CAMPO — fin ═══════════════════════════════ */
+
+const cv = document.getElementById("plot"), ctx = cv.getContext("2d");
+const W_M = 420, H_M = 220, CELL = 12;
+const sx = cv.width / W_M, sy = cv.height / H_M;
+let tx = { mx: 60, my: H_M / 2 };
+const el = id => document.getElementById(id);
+const state = () => ({
+  tilt: +el("tilt").value, pitch: +el("pitch").value, az: +el("az").value,
+  blk: +el("blk").value, st: +el("st").value,
+  ha: +el("ha").value, hx: +el("hx").value, thr: +el("thr").value,
+});
+
+function colorFor(m, thr) {
+  if (m < thr - 12) return "#7a1d1d";
+  if (m < thr) return lerp("#7a1d1d", "#e0a72c", (m - (thr - 12)) / 12);
+  if (m < thr + 22) return lerp("#e0a72c", "#3a9d57", (m - thr) / 22);
+  return "#3a9d57";
+}
+function lerp(a, b, t) { t = Math.max(0, Math.min(1, t)); const A = hx2(a), B = hx2(b);
+  return `rgb(${A.map((v, i) => Math.round(v + (B[i] - v) * t)).join(",")})`; }
+const hx2 = h => [1, 3, 5].map(i => parseInt(h.substr(i, 2), 16));
+
+let raf = null;
+function recompute() {
+  const s = state(), p = Z.defaultParams();
+  const filas = campo(W_M, H_M, s.pitch, s.az, s.blk, s.st);
+  const banda = Z.tableBand(0, s.hx, CHORD, s.tilt, OFF);
+  let covered = 0, total = 0, peor = 0;
+  for (let py = 0; py < cv.height; py += CELL) {
+    for (let px = 0; px < cv.width; px += CELL) {
+      const mx = (px + CELL / 2) / sx, my = (py + CELL / 2) / sy;
+      const tabs = mesasCruzadas(tx, { mx, my }, filas, banda);
+      const m = Z.predictLink({ x: tx.mx, y: tx.my, ground: 0, h: s.ha },
+                              { x: mx, y: my, ground: 0, h: s.ha },
+                              p, null, null, tabs).marginDb;
+      ctx.fillStyle = colorFor(m, s.thr); ctx.fillRect(px, py, CELL, CELL);
+      total++;
+      if (m >= s.thr) covered++; else if (tabs.length > peor) peor = tabs.length;
+    }
+  }
+  // las filas, DIBUJADAS como se calculan: segmentos finitos con su azimut
+  ctx.strokeStyle = "rgba(180,200,220,.30)"; ctx.lineWidth = 1.5;
+  for (const f of filas) {
+    ctx.beginPath();
+    ctx.moveTo(f.ax * sx, f.ay * sy); ctx.lineTo(f.bx * sx, f.by * sy); ctx.stroke();
+  }
+  const pxp = tx.mx * sx, pyp = tx.my * sy;
+  ctx.fillStyle = "#ffffff"; ctx.strokeStyle = "#185FA5"; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(pxp, pyp, 8, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = "#fff"; ctx.font = "600 13px sans-serif"; ctx.fillText("Tx", pxp + 12, pyp + 4);
+  el("cov").textContent = (100 * covered / total).toFixed(0) + " %";
+  el("wmax").textContent = peor;
+}
+function schedule() { if (!raf) raf = requestAnimationFrame(() => { raf = null; recompute(); }); }
+
+const ROT = { tilt: v => v + "°", pitch: v => (+v).toFixed(1) + " m", az: v => v + "°",
+              blk: v => v + " m", st: v => v + " m", ha: v => (+v).toFixed(1) + " m",
+              hx: v => (+v).toFixed(1) + " m", thr: v => v + " dB" };
+const CAP = { tilt: "vTilt", pitch: "vPitch", az: "vAz", blk: "vBlk", st: "vSt",
+              ha: "vHa", hx: "vHx", thr: "vThr" };
+Object.keys(CAP).forEach(id => el(id).addEventListener("input", () => {
+  el(CAP[id]).textContent = ROT[id](el(id).value);
   schedule();
 }));
 
-function setTxFromEvent(e){
-  const r=cv.getBoundingClientRect(),cxp=(e.touches?e.touches[0]:e);
-  tx.mx=Math.max(0,Math.min(W_M,(cxp.clientX-r.left)/r.width*W_M));
-  tx.my=Math.max(0,Math.min(H_M,(cxp.clientY-r.top)/r.height*H_M));
+function setTxFromEvent(e) {
+  const r = cv.getBoundingClientRect(), cxp = (e.touches ? e.touches[0] : e);
+  tx.mx = Math.max(0, Math.min(W_M, (cxp.clientX - r.left) / r.width * W_M));
+  tx.my = Math.max(0, Math.min(H_M, (cxp.clientY - r.top) / r.height * H_M));
   schedule();
 }
-let drag=false;
-cv.addEventListener("pointerdown",e=>{drag=true;setTxFromEvent(e);});
-cv.addEventListener("pointermove",e=>{if(drag)setTxFromEvent(e);});
-window.addEventListener("pointerup",()=>{drag=false;});
+let drag = false;
+cv.addEventListener("pointerdown", e => { drag = true; setTxFromEvent(e); });
+cv.addEventListener("pointermove", e => { if (drag) setTxFromEvent(e); });
+window.addEventListener("pointerup", () => { drag = false; });
 
 recompute();
 </script>
