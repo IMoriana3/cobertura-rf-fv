@@ -47,6 +47,9 @@
   #lect{margin-top:14px;border-top:1px solid var(--line);padding-top:12px;
         display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:6px 22px}
   #lect .l{display:flex;align-items:baseline;gap:8px;font-size:13px;font-variant-numeric:tabular-nums}
+  #lect .l.amb{cursor:pointer;border-radius:4px;padding:1px 4px;margin:0 -4px}
+  #lect .l.amb:hover{background:#1b2029}
+  #lect .l.amb.solo{background:#232a36;outline:1px solid #3d4756}
   #lect .d{width:9px;height:9px;border-radius:50%;flex:0 0 auto;position:relative;top:-1px}
   #lect .n{color:var(--ink);min-width:120px}
   #lect .m{font-weight:700;min-width:74px}
@@ -137,6 +140,12 @@
           <button data-m="28">28 · 64,7 m (fila real)</button>
         </div>
       </div>
+      <div><label>Color de cada seguidor:</label>
+        <div class="seg" id="segc">
+          <button data-c="margen" class="on">Margen del enlace</button>
+          <button data-c="ambito">De qué GW es</button>
+        </div>
+      </div>
       <div><label>Encuadre:</label>
         <div class="seg" id="segv">
           <button data-v="campo" class="on">Conjunto</button>
@@ -212,6 +221,9 @@ let ground="pec", showPat=true, showNcuLinks=true;
    noche, es cuando las palas están de canto. */
 let BETA=30;                       // ángulo del seguidor que manda en la escena
 let modoSol=true, playing=false;
+/* Cómo se colorea cada seguidor: por el margen de su enlace, o por el ámbito
+   (NCU, GW) al que pertenece. `SOLO` aísla un ámbito: el resto se apaga. */
+let VISTA="margen", SOLO=null;
 const STOW=5;                      // stow nocturno del proyecto: 5° al ESTE
 /* Caída de catálogo del látigo de la TCU: 0,225 hasta el conector + `antHang`. */
 const DROP0=0.225+D.antHang;
@@ -287,6 +299,17 @@ function pat(t,hA){
 /* ---- color por margen ---- */
 const hx=h=>[1,3,5].map(i=>parseInt(h.substr(i,2),16));
 function lerp(a,b,t){t=Math.max(0,Math.min(1,t));const A=hx(a),B=hx(b);return `rgb(${A.map((v,i)=>Math.round(v+(B[i]-v)*t)).join(",")})`;}
+/* Color de cada ámbito (NCU, GW). No es una escala: son etiquetas, así que
+   colores bien separados en tono y repetidos solo cuando se acaban. Las plantas
+   grandes llegan a 38 ámbitos (San José), de ahí el giro por golden ratio: dos
+   ámbitos consecutivos nunca salen parecidos. */
+const _amb={};
+function colorAmbito(key){
+  if(_amb[key]!==undefined) return _amb[key];
+  const i=Object.keys(_amb).length;
+  const h=(i*137.508)%360, l=[54,44,64][i%3], sa=[68,52,80][i%3];
+  return (_amb[key]="hsl("+h.toFixed(0)+","+sa+"%,"+l+"%)");
+}
 function colorFor(m){if(m>=25)return "#3a9d57";if(m>=8)return lerp("#e0a72c","#3a9d57",(m-8)/17);if(m>=0)return lerp("#d83a3a","#e0a72c",m/8);return "#d83a3a";}
 const estadoDe=m=> m<0?"sin enlace":(m<8?"al límite":(m<25?"justo":"holgado"));
 
@@ -1161,7 +1184,10 @@ function pintaPlanta(beta,hA){
                                        mast:cacheM[key]?cacheM[key].dato.name:"—"});
     G.n++; G.suma+=mg; if(mg<8)G.sin++; if(mg<G.peor)G.peor=mg;
     peor=Math.min(peor,mg); pmed+=mg; if(mg<8)sin++;
-    if(PLMESA){ _col.set(colorFor(mg));
+    if(PLMESA){
+      /* Apagado si se está aislando otro ámbito; si no, el color que toque. */
+      _col.set(SOLO && SOLO!==key ? "#2a2f39"
+               : VISTA==="ambito" ? colorAmbito(key) : colorFor(mg));
       PLMESA.list.forEach(g=>{ const j=g.idx.indexOf(i); if(j<0) return;
         for(let l=0;l<g.per;l++) g.im.setColorAt(j*g.per+l,_col); }); }
   }
@@ -1447,9 +1473,14 @@ function updatePlanta(sl){
     `<span class="x">${(100*r.sin/r.n).toFixed(1)} % por debajo de 8 dB de margen directo</span></div>`+
     /* El ámbito real es el (NCU,GW): una TCU solo ve SU gateway, así que "la
        malla" que la salva es la de su grupo, no la de la planta. */
-    Object.keys(r.grupos).sort().map(k=>{
-      const g=r.grupos[k], md=g.suma/g.n, c=colorFor(md);
-      return `<div class="l"><span class="d" style="background:${c}"></span>`+
+    Object.keys(r.grupos).sort((a,b)=>{
+      const A=a.split("."),B=b.split(".");
+      return (+A[0]-+B[0])||(+A[1]-+B[1]);
+    }).map(k=>{
+      const g=r.grupos[k], md=g.suma/g.n;
+      const c=(VISTA==="ambito"?colorAmbito(k):colorFor(md));
+      return `<div class="l amb${SOLO===k?" solo":""}" data-amb="${k}" title="Pincha para ver SOLO este gateway">`+
+             `<span class="d" style="background:${c}"></span>`+
              `<span class="n">NCU ${k.split(".")[0]} · GW ${k.split(".")[1]}</span>`+
              `<span class="m" style="color:${c}">${md.toFixed(1)} dB</span>`+
              `<span class="x">${g.n} filas · ${g.sin} bajo 8 dB · peor ${g.peor.toFixed(1)} · mástil ${g.mast}</span></div>`;
@@ -1466,6 +1497,9 @@ function updatePlanta(sl){
     `Cada seguidor se colorea por el margen de su salto DIRECTO al mástil de <b>su</b> coordinador — el par (NCU, GW): `+
     `no todas las TCU hablan con todas las NCU, cada NCU lleva dos gateways y cada TCU cuelga de uno. `+
     `Verde = llega sola; rojo = depende de la malla, y de la malla de SU gateway, no de la de la planta. `+
+    `El reparto viene en el propio layout —cada seguidor trae su <code>ncu</code> y su <code>gw</code>, `+
+    `los mismos del <i>coords_&lt;planta&gt;_NCU&lt;n&gt;_GW&lt;g&gt;.csv</i> de Cobertura 3D—: para ver CUÁLES son de cada uno, `+
+    `pon el color en <b>«De qué GW es»</b> o pincha su fila en el desglose de abajo y se queda solo ese. `+
     (PLANTA.az?`Eje a ${PLANTA.az.toFixed(1)}°: las filas y los cruces se calculan en el marco del eje. `:``)+
     (PLANTA.cot
       ? `<b>Con las cotas MEDIDAS</b>: cada fila a su altura y con su pendiente N-S, y el rayo corre sobre ese terreno — la mesa que apantalla lo hace a SU cota, no a la de nadie. `
@@ -1561,6 +1595,13 @@ if(webgl){
   segClick("segr", b=>{ PTX=+b.dataset.p; update(); });
   segClick("segm", b=>{ MODS=+b.dataset.m; if(!PLANTA){ buildField(); update(); } });   // el tramo es del corte de estudio; en planta manda el layout
   segClick("segv", b=>{ frame(b.dataset.v); });
+  segClick("segc", b=>{ VISTA=b.dataset.c; update(); });
+  /* La leyenda es el filtro: pinchar un (NCU,GW) deja solo ese; volver a
+     pincharlo lo suelta. Es la respuesta a «qué TCU son de este gateway». */
+  $("lect").addEventListener("click",e=>{
+    const l=e.target.closest(".amb"); if(!l) return;
+    SOLO=(SOLO===l.dataset.amb)?null:l.dataset.amb; update();
+  });
   segClick("segpl", b=>{ cargaPlanta(b.dataset.p).then(casillas); });
 
   cv.addEventListener("pointerdown",ev=>{
