@@ -386,13 +386,45 @@
   }
   S.SOLO_OESTE = SOLO_OESTE;
 
+  /* ====================================================================
+   * LOS PILOTES: dónde se apoya el tubo a lo largo de su eje
+   * ====================================================================
+   * `parts()` deja los postes fuera («los pone CADA app»), y con ellos se
+   * quedaba fuera DÓNDE van. La regla estaba escrita solo en `terreno.html`, y
+   * el simulador de cobertura RF, que no la tenía, se inventaba dos apoyos en la
+   * X del amortiguador: un tubo de 64 m sujeto por tres puntos, sin los
+   * intermedios. Como el criterio es UNO, vive aquí.
+   *
+   * Retícula genérica de la casa: cuatro apoyos, a ±28 y ±9 m del centro en el
+   * seguidor completo de 28 módulos por ala, y PROPORCIONALES al largo en los
+   * acortados (Ayora tiene 28/21/14, San José 32/16) — un medio con la retícula
+   * del completo se queda con las punteras al aire. El slew va aparte, en el
+   * centro, y lo pone la app con la corona.
+   *
+   * NO sustituye a la retícula MEDIDA cuando la hay: El Burgo tiene la suya por
+   * tipo de seguidor, sacada de los círculos del Tierras.dwg, y esa manda.
+   * ==================================================================== */
+  S.pilotesX = function (mods) {
+    var k = (mods || D.modsPerStr) / 28;
+    return [-28 * k, -9 * k, 9 * k, 28 * k];
+  };
+  /* El pie del amortiguador se apoya en un poste que EXISTE: el segundo por cada
+     extremo de la retícula que tenga esa fila. Si va a una X inventada, queda
+     colgado en el vano o atravesando el terreno. */
+  S.damperPostX = function (xs) { return [xs[1], xs[xs.length - 2]]; };
+
   S.buildBeam = function (THREE, opts) {
     opts = opts || {};
     var mats = opts.materials || S.materials(THREE);
     var west = opts.west !== false;
     var skip = opts.skip || {};
     var spin = new THREE.Group(), stat = new THREE.Group(), modCols = [], dampers = [];
-    S.parts(THREE, { size:opts.size||'largo', detail:opts.detail||'full' }).forEach(function (p) {
+    /* `damperX` SE PASA. El comentario de los amortiguadores dice que la X la
+       pone cada app por aquí, y `buildBeam` se la comía: la app colocaba sus
+       postes en la retícula y el pie del amortiguador se quedaba en la X que
+       `parts()` se estima sola, a 70 cm del poste más cercano, colgado del vano. */
+    S.parts(THREE, { size:opts.size||'largo', detail:opts.detail||'full',
+                     damperX:opts.damperX }).forEach(function (p) {
       if (p.motorLink) return;                                   // cable motor↔TCU: lo gestiona la app por frame (pendiente)
       if (p.damperLink) { dampers.push({ a:p.a, b:p.b }); return; }   // amortiguadores: en AMBAS vigas; render per-frame en la app
       if (skip[p.key]) return;
@@ -578,6 +610,6 @@
     };
   };
 
-  S.VERSION = '0.4.21';
+  S.VERSION = '0.4.22';
   root.Seguidor = S;
 })(typeof window !== 'undefined' ? window : this);
