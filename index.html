@@ -890,10 +890,28 @@ function buildTerreno(){
    y en su huella; un enlace a lo largo de una fila no cruza ningún panel. */
 function filasPlanta(){
   if(!PLANTA) return null;
-  const U=PLANTA._un||unidades(), m={};
-  U.forEach(t=>{ const q=proj(t.x,t.n); const k=Math.round(q.u*10)/10;
-                 (m[k]=m[k]||[]).push({u:q.u, v:q.v, mr:t.mr}); });
-  return Object.keys(m).map(Number).sort((a,b)=>a-b).map(u=>({x:u, trk:m[u]}));
+  const U=PLANTA._un||unidades();
+  const P2=U.map(t=>{ const q=proj(t.x,t.n); return {u:q.u, v:q.v, mr:t.mr}; })
+            .sort((a,b)=>a.u-b.u);
+  if(!P2.length) return [];
+  /* Agrupar con TOLERANCIA, no por clave redondeada. Los seguidores de una
+     misma línea no comparten u al milímetro —en Bagnarelli se desvían 2,7 cm—,
+     así que redondear a 0,1 partía una línea en dos cuando caía sobre el borde
+     del redondeo: salían 7 líneas separadas 11, 11, 0,1, 10,9... y esa línea
+     fantasma entraba como una mesa MÁS en la difracción. El umbral es medio
+     paso, medido de la propia planta (mediana de los huecos), como hace el
+     simulador de backtracking. */
+  const hue=[];
+  for(let i=1;i<P2.length;i++){ const d=P2[i].u-P2[i-1].u; if(d>0.5) hue.push(d); }
+  hue.sort((a,b)=>a-b);
+  const paso=hue.length?hue[hue.length>>1]:6;
+  const tol=Math.max(0.5,paso/2);
+  const lin=[[P2[0]]];
+  for(let i=1;i<P2.length;i++){
+    const L=lin[lin.length-1];
+    if(P2[i].u-L[L.length-1].u<tol) L.push(P2[i]); else lin.push([P2[i]]);
+  }
+  return lin.map(g=>({x:g.reduce((s2,t)=>s2+t.u,0)/g.length, trk:g}));
 }
 
 /* Mesas que cruza un salto en planta: se recorre el enlace y se apunta cada
