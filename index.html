@@ -1041,25 +1041,40 @@ function buildPlanta(){
   buildTerreno();
   PLANTA._un=null;
   const UN=PLANTA._un=unidades();   // filas medidas (con cotas) o seguidores del layout
-  const N=UN.length;
-  const plan=Seguidor.instancePlan(THREE,{detail:"mass",size:"largo",west:true});
-  plan.forEach(tp=>{
-    if(tp.motorLink||tp.damperLink||tp.antenna) return;          // los gestiona la app por frame; en planta se omiten
-    const geom=tp.geom(THREE);
-    let mat=mats[tp.mat];
-    /* La mesa deja de ser vidrio con células: en planta ES el mapa de cobertura,
-       y sobre la textura oscura del panel el color por instancia no se lee. */
-    /* En planta la mesa ES el mapa de cobertura, no un panel: se pinta SIN luz
-       ni tone mapping, para que el color sea exactamente el de la leyenda. Con
-       un material iluminado, un verde holgado salía crema y no se leía. */
-    if(tp.key==="mesa") mat=new THREE.MeshBasicMaterial({color:0xffffff,toneMapped:false});
-    const im=new THREE.InstancedMesh(geom,mat,N*tp.locals.length);
-    im.frustumCulled=false; im.castShadow=!!tp.cast; im.receiveShadow=true;
-    im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    plantaG.add(im);
-    PLI.push({key:tp.key,spin:tp.spin,locals:tp.locals,im:im});
-    if(tp.key==="mesa") PLMESA={im:im,per:tp.locals.length};
+  /* TAMAÑO EXACTO DE CADA MESA. Antes se montaba UNA mesa canónica y se escalaba
+     por `mr`: el largo salía bien pero los módulos quedaban estirados o
+     encogidos, que no es lo que hay en el campo. Ahora las filas se agrupan por
+     MÓDULOS POR ALA —el que sale de su largo, medido cuando hay levantamiento— y
+     cada grupo tiene su propio plan de instancias con esa cuenta. Cada mesa se
+     dibuja con los módulos que tiene. */
+  const gru={};
+  UN.forEach((t,i)=>{
+    const largo=SPANP*t.mr;
+    const mo=Math.max(2,Math.round((largo-D.gapDrive)/2/D.pitch));
+    (gru[mo]=gru[mo]||[]).push(i);
   });
+  PLANTA._mods=Object.keys(gru).map(Number).sort((a,b)=>a-b);
+  PLMESA={list:[]};
+  PLANTA._mods.forEach(k=>{
+    const idx=gru[k], N=idx.length;
+    Seguidor.setModsPerStr(k);
+    const plan=Seguidor.instancePlan(THREE,{detail:"mass",size:"largo",west:true});
+    plan.forEach(tp=>{
+      if(tp.motorLink||tp.damperLink||tp.antenna) return;   // los gestiona la app por frame; en planta se omiten
+      const geom=tp.geom(THREE);
+      let mat=mats[tp.mat];
+      /* En planta la mesa ES el mapa de cobertura, no un panel: se pinta SIN luz
+         ni tone mapping, para que el color sea exactamente el de la leyenda. */
+      if(tp.key==="mesa") mat=new THREE.MeshBasicMaterial({color:0xffffff,toneMapped:false});
+      const im=new THREE.InstancedMesh(geom,mat,N*tp.locals.length);
+      im.frustumCulled=false; im.castShadow=!!tp.cast; im.receiveShadow=true;
+      im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      plantaG.add(im);
+      PLI.push({key:tp.key,spin:tp.spin,locals:tp.locals,im:im,terr:!!tp.terrainScaled,idx:idx});
+      if(tp.key==="mesa") PLMESA.list.push({im:im,per:tp.locals.length,idx:idx});
+    });
+  });
+  Seguidor.setModsPerStr(PLANTA.mods);
   // los equipos, en sus coordenadas del DWG
   const eq={materials:mats.equipos, antMaterial:mats.antena, shadows:true};
   PLANTA.ncus.forEach((c,i)=>{
@@ -1101,6 +1116,7 @@ function pintaPlanta(beta,hA){
   let peor=1e9, pmed=0, sin=0;
   const NTOT=(PLANTA._un||unidades()).length;
   const UN=PLANTA._un||(PLANTA._un=unidades());
+  PLI.forEach(L=>{ L._n=0; });
   for(let i=0;i<UN.length;i++){
     const t=UN[i];
     /* Cota medida + pendiente N-S de la fila. El tubo del modelo va en +X, así
@@ -1112,14 +1128,22 @@ function pintaPlanta(beta,hA){
     _mB.makeRotationY(Math.PI/2-(t.rot||0));
     _mB.premultiply(_mT);
     if(t.tilt) _mB.multiply(new THREE.Matrix4().makeRotationZ(-t.tilt));
-    _mS.makeScale(t.mr,1,1);
-    _mB.multiply(_mS);
+    // sin escala de largo: cada mesa se monta ya con SUS módulos
     for(let k=0;k<PLI.length;k++){
-      const L=PLI[k], base=i*L.locals.length;
+      const L=PLI[k];
+      if(L.idx[L._n]!==i) continue;              // esta fila no es de este grupo de módulos
+      const base=(L._n++)*L.locals.length;
       for(let l=0;l<L.locals.length;l++){
         const m=new THREE.Matrix4().copy(_mB);
         if(L.spin) m.multiply(_mR);
-        m.multiply(L.locals[l]);
+        if(L.terr){
+          /* El poste del slew nace con 1 m y el modelo lo marca `terrainScaled`
+             para que la app lo estire: sin estirarlo se quedaba colgado en el
+             aire a media altura. Va del bracket (−0,28) al SUELO. */
+          const h=Math.max(0.3,HTUBE-0.28);
+          m.multiply(new THREE.Matrix4().makeTranslation(0,-0.28-h/2,0));
+          m.multiply(new THREE.Matrix4().makeScale(1,h,1));
+        }else m.multiply(L.locals[l]);
         L.im.setMatrixAt(base+l,m);
       }
     }
@@ -1138,10 +1162,11 @@ function pintaPlanta(beta,hA){
     G.n++; G.suma+=mg; if(mg<8)G.sin++; if(mg<G.peor)G.peor=mg;
     peor=Math.min(peor,mg); pmed+=mg; if(mg<8)sin++;
     if(PLMESA){ _col.set(colorFor(mg));
-      for(let l=0;l<PLMESA.per;l++) PLMESA.im.setColorAt(i*PLMESA.per+l,_col); }
+      PLMESA.list.forEach(g=>{ const j=g.idx.indexOf(i); if(j<0) return;
+        for(let l=0;l<g.per;l++) g.im.setColorAt(j*g.per+l,_col); }); }
   }
   PLI.forEach(L=>{ L.im.instanceMatrix.needsUpdate=true; });
-  if(PLMESA&&PLMESA.im.instanceColor) PLMESA.im.instanceColor.needsUpdate=true;
+  if(PLMESA) PLMESA.list.forEach(g=>{ if(g.im.instanceColor) g.im.instanceColor.needsUpdate=true; });
   return {peor:peor, medio:pmed/NTOT, sin:sin, n:NTOT, grupos:grupos};
 }
 
@@ -1534,7 +1559,7 @@ if(webgl){
 
   segClick("seg",  b=>{ ground=b.dataset.g; update(); });
   segClick("segr", b=>{ PTX=+b.dataset.p; update(); });
-  segClick("segm", b=>{ MODS=+b.dataset.m; buildField(); update(); });
+  segClick("segm", b=>{ MODS=+b.dataset.m; if(!PLANTA){ buildField(); update(); } });   // el tramo es del corte de estudio; en planta manda el layout
   segClick("segv", b=>{ frame(b.dataset.v); });
   segClick("segpl", b=>{ cargaPlanta(b.dataset.p).then(casillas); });
 
@@ -1585,7 +1610,10 @@ if(webgl){
     .forEach(id=>$(id).addEventListener("input",update));
   /* La altura de la viga cambia el largo del poste y la cota del pie del
      amortiguador, que son geometría: hay que rehacer el campo, no recolocarlo. */
-  $("htube").addEventListener("input",()=>{ readParams(); buildField(); update(); });
+  /* Reconstruir, sí, pero LO QUE TOCA: con una planta cargada esto llamaba a
+     buildField() —el corte de 6 filas— encima de la planta, y se llevaba la
+     escena por delante. `rehacer()` es quien sabe cuál de los dos toca. */
+  $("htube").addEventListener("input",()=>{ readParams(); rehacer(); });
   window.addEventListener("resize",resize);
 }
 </script>

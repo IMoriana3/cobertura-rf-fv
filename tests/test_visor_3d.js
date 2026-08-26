@@ -558,6 +558,39 @@ const SONDA = `(() => {
   }
   await page.click('[data-p=""]'); await page.waitForTimeout(1200);
 
+  /* ---- 18e. cada mesa a su tamaño, y los mandos sin llevarse la planta ---- */
+  await page.evaluate(() => cargaPlanta('elburgo'));
+  for (let i = 0; i < 60; i++) {
+    if (await page.evaluate(() => !!(PLANTA && PLANTA._un && PLANTA._un.length))) break;
+    await page.waitForTimeout(500);
+  }
+  await page.waitForTimeout(1500);
+  {
+    const t = await page.evaluate(() => {
+      const L = PLANTA._un.map(u => +(SPANP * u.mr).toFixed(1)), s2 = {};
+      L.forEach(v => { s2[v] = (s2[v] || 0) + 1; });
+      return { mods: PLANTA._mods, largos: s2, inst: PLI.length };
+    });
+    /* Antes se montaba UNA mesa canónica y se escalaba: el largo salía bien pero
+       los módulos quedaban estirados. Ahora hay un plan de instancias por cuenta
+       de módulos — El Burgo tiene medios de 14 y completos de 28. */
+    check('cada mesa se monta con SUS módulos, no con una escalada',
+          t.mods.length >= 2 && t.mods.indexOf(28) >= 0, JSON.stringify(t.mods));
+    check('y los largos que salen son los del layout',
+          Object.keys(t.largos).length === t.mods.length, JSON.stringify(t.largos));
+  }
+  {
+    /* Con una planta cargada, la altura de viga llamaba a buildField() —el corte
+       de 6 filas— encima de la planta y se llevaba la escena por delante. */
+    await set('htube', 1.9); await page.waitForTimeout(2500);
+    const t = await page.evaluate(() => ({ planta: !!PLANTA, un: (PLANTA && PLANTA._un || []).length,
+                                           inst: PLI.length, err: 0 }));
+    check('mover la altura de viga con una planta cargada NO la destruye',
+          t.planta && t.un > 200 && t.inst > 0, JSON.stringify(t));
+    await set('htube', 1.5); await page.waitForTimeout(2000);
+  }
+  await page.click('[data-p=""]'); await page.waitForTimeout(1500);
+
   /* ---- 19. el rizado de dos rayos, dicho y no escondido ---- */
   await page.click('[data-p=""]'); await page.waitForTimeout(1500);
   {
