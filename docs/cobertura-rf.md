@@ -10,9 +10,19 @@ y localiza el punto único de fallo.
   enlace bifila, coloreado por margen real en dB, con el **modelo real del
   seguidor** (`seguidor.js`, la fuente única que comparten el gemelo digital y
   Cobertura 3D): viga de torsión, correas, módulos, slew drive, TCU, seccionador,
-  pilas, amortiguadores y el eje de transmisión de la bifila. Geometría
-  parametrizable (inclinación, caída de antena, paso de filas, altura de viga,
-  altura de módulo, tramo dibujado, suelo, radio).
+  pilas, amortiguadores y el eje de transmisión de la bifila — y con los otros
+  dos extremos de la malla: la **NCU** en su poste de 2,95 m (látigo a 3,15 m) y
+  la **HSU** en su torre de 8 m (látigos a ~8,3 m), cotas de sus planos vía
+  `equipos.js`. Dibuja los saltos TCU↔TCU, los tres TCU→NCU y el HSU→NCU, cada
+  uno con su margen y su desglose. Geometría parametrizable (inclinación, caída
+  de antena, paso de filas, altura de viga, altura de módulo, tramo dibujado,
+  distancia y altura de la NCU, distancia de la HSU, suelo, radio).
+- La **mesa como obstáculo**: una fila no es un muro desde el suelo, es una placa
+  entre dos cotas. Con la antena de la TCU por debajo del canto bajo, el salto
+  entre vecinos pasa POR DEBAJO de las filas; con la de la NCU por encima de la
+  cresta, el salto al coordinador las CRUZA. Esa es la diferencia entre 1,4 y
+  44 dB de difracción, y ahora vive en el núcleo (regla de `terreno.html`,
+  encadenada con el Deygout de siempre).
 - El dibujo y la física comparten cotas: la cara del módulo sale de `DIMS.off` y
   la antena cuelga los 0,725 m del catálogo (conector de la TCU + coax), no una
   cota inventada en la página.
@@ -31,7 +41,8 @@ y localiza el punto único de fallo.
 
 ## Componentes
 
-- Render: `index.html` + `seguidor.js` + `lib/` (three.js vendorizado)
-- QA del visor: `tests/test_visor_3d.js` (28 comprobaciones en Chromium)
+- Render: `index.html` + `seguidor.js` + `equipos.js` + `lib/` (three.js vendorizado)
+- QA del visor: `tests/test_visor_3d.js` (48 comprobaciones en Chromium)
+- QA del núcleo: `tests/test_nucleo.py` (19, incluida la paridad `.py` ↔ `.js`)
 - Núcleo + diagnóstico: `python/`
 - Port JS + demo de cobertura: `web/`

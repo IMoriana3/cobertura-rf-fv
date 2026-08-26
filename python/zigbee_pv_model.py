@@ -25,7 +25,7 @@ vegetación (ITU-R P.833, opcional a futuro).
 from __future__ import annotations
 import math
 import cmath
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 C = 299_792_458.0  # m/s
 
@@ -69,7 +69,14 @@ def reflection_coefficient(theta_graze: float, eps_r: float, sigma: float,
     theta_graze: ángulo de incidencia rasante [rad] (0 = horizonte).
     eps_r, sigma: permitividad relativa y conductividad [S/m] del suelo.
     pol: 'v' (vertical) o 'h' (horizontal).
+
+    eps_r = math.inf -> CONDUCTOR PERFECTO: Gamma = +1, sin dependencia del
+    ángulo. Es el caso de referencia (cota superior del rebote) que ofrece el
+    visor junto a la tierra real; tenerlo aquí evita que cada página se escriba
+    su propio "dos rayos con suelo perfecto".
     """
+    if math.isinf(eps_r):
+        return complex(1.0, 0.0)
     lam = wavelength(f_hz)
     eps = complex(eps_r, -60.0 * lam * sigma)  # permitividad compleja
     s = math.sin(theta_graze)
@@ -153,6 +160,105 @@ def row_top_elev(ground: float, axis_height: float, panel_chord: float, tilt_deg
 
 
 # --------------------------------------------------------------------------
+# La MESA como obstáculo
+# --------------------------------------------------------------------------
+# Una fila de seguidores no es un muro desde el suelo: es una PLACA inclinada
+# que ocupa una banda de altura [bot, top] sobre una huella de ±hw alrededor del
+# eje de su fila. Al inclinarse, su borde bajo BAJA y su cresta SUBE, así que un
+# rayo rasante puede pasar por DEBAJO limpio — que es lo que hace el salto
+# TCU<->TCU con la antena a la cota de catálogo, y lo que NO hace el salto
+# TCU->NCU, que sube a la cabeza de un poste de 2,95 m y cruza la banda de todas
+# las filas intermedias.
+#
+# La regla de despeje es la de `terreno.html` (Cobertura 3D, `linkClearance`),
+# contrastada contra la malla MEDIDA de El Burgo: tratar el campo como un muro
+# omnidireccional dejaba el 95 % de la planta aislada, contra los 52 enlaces
+# vivos que hay. El encadenado entre filas es el Deygout de siempre (P.526).
+@dataclass
+class TableBand:
+    """Banda que ocupa una mesa. Cotas absolutas; `x` = distancia al Tx."""
+    x: float
+    bot: float
+    top: float
+    ground: float = 0.0
+    hw: float = 0.0
+
+
+def table_band(x: float, ground: float, axis_h: float, chord: float,
+               tilt_deg: float, off: float = 0.0) -> TableBand:
+    a = math.radians(abs(tilt_deg))
+    c = ground + axis_h + off * math.cos(a)
+    h = (chord / 2.0) * math.sin(a)
+    return TableBand(x=x, bot=c - h, top=c + h, ground=ground,
+                     hw=(chord / 2.0) * math.cos(a))
+
+
+def band_clearance(los: float, b: TableBand) -> float:
+    """+ libre, − tapado. Por debajo del borde bajo limita el suelo o la placa."""
+    if los >= b.top:
+        return los - b.top
+    if los <= b.bot:
+        return min(los - b.ground, b.bot - los)
+    return -min(los - b.bot, b.top - los)
+
+
+def band_edge(los: float, b: TableBand) -> float:
+    """Borde por el que difracta: el que roza el rayo."""
+    if los >= b.top:
+        return b.top
+    if los <= b.bot:
+        return b.bot
+    return b.bot if (los - b.bot) < (b.top - los) else b.top
+
+
+def diffraction_loss_tables_db(D_m: float, tx_elev: float, rx_elev: float,
+                               tables: list[TableBand], f_hz: float = 2.45e9,
+                               depth: int = 0, max_depth: int = 3) -> float:
+    """Deygout sobre mesas (placas), no sobre cimas. Con UNA mesa a mitad de vano
+    reproduce el cálculo de una sola fila intermedia."""
+    if not tables or depth >= max_depth or D_m <= 0:
+        return 0.0
+    best_v, best_i = -1e9, -1
+    for i, t in enumerate(tables):
+        if t.x <= 0 or t.x >= D_m:
+            continue
+        los = tx_elev + (rx_elev - tx_elev) * (t.x / D_m)
+        v = _v_param(-band_clearance(los, t), t.x, D_m - t.x, f_hz)
+        if v > best_v:
+            best_v, best_i = v, i
+    if best_i < 0 or best_v <= -0.78:
+        return 0.0
+    t0 = tables[best_i]
+    los0 = tx_elev + (rx_elev - tx_elev) * (t0.x / D_m)
+    edge = band_edge(los0, t0)
+    loss = knife_edge_loss_db(best_v)
+    left = [t for t in tables if t.x < t0.x]
+    right = [replace(t, x=t.x - t0.x) for t in tables if t.x > t0.x]
+    loss += diffraction_loss_tables_db(t0.x, tx_elev, edge, left, f_hz, depth + 1, max_depth)
+    loss += diffraction_loss_tables_db(D_m - t0.x, edge, rx_elev, right, f_hz, depth + 1, max_depth)
+    return loss
+
+
+# --------------------------------------------------------------------------
+# Cotas de antena de catálogo (m sobre el suelo)
+# --------------------------------------------------------------------------
+# Fuente única para que el visor, el diagnóstico y el siting hablen de los
+# mismos equipos. Las tres, tal como las dibuja `terreno.html` en Cobertura 3D:
+#   TCU — cuelga de la viga, así que su cota depende de la altura del tubo: se
+#         da la CAÍDA bajo el eje (0,225 hasta el conector + 0,50 de coax).
+#   NCU — látigo en la CABEZA del poste C 100×60 de 2,95 m del que cuelga el
+#         armario 415×515×230 (plano DR_NCU_v0 / «Montaje NCU»).
+#   HSU — 2 látigos en la cabeza de la torre de celosía autoportante de 8 m
+#         (plano FTR.24.00145_5_C, «Montaje HSU»).
+ANTENNAS = {
+    "tcu": {"drop_below_tube": 0.725},
+    "ncu": {"mast_h": 2.95, "h": 3.15,
+            "cab_w": 0.415, "cab_h": 0.515, "cab_d": 0.230, "cab_y": 1.15},
+    "hsu": {"tower_h": 8.0, "h": 8.33, "leg_r": 0.15},
+}
+
+
+# --------------------------------------------------------------------------
 # Balance de enlace
 # --------------------------------------------------------------------------
 @dataclass
@@ -176,21 +282,25 @@ def _phi(x: float) -> float:
 
 def predict_link(tx: dict, rx: dict, p: LinkParams = LinkParams(),
                  terrain: list[tuple[float, float]] | None = None,
-                 obstacles: list[tuple[float, float]] | None = None) -> dict:
+                 obstacles: list[tuple[float, float]] | None = None,
+                 tables: list[TableBand] | None = None) -> dict:
     """
     Predice un enlace Tx->Rx.
     tx, rx: dicts con {x, y, ground, h}.  terrain/obstacles: puntos (x, cota).
+    tables: mesas (placas entre bot y top), ver diffraction_loss_tables_db.
     Devuelve RSSI predicho, margen, prob. de enlace y desglose de pérdidas.
     """
     d = math.hypot(rx["x"] - tx["x"], rx["y"] - tx["y"])
     pl_2ray = two_ray_pl_db(d, tx["h"], rx["h"], p.f_hz, p.eps_r, p.sigma_ground, p.pol)
 
+    tx_elev = tx["ground"] + tx["h"]
+    rx_elev = rx["ground"] + rx["h"]
     pl_diff = 0.0
     pts = list(terrain or []) + list(obstacles or [])
     if pts:
-        tx_elev = tx["ground"] + tx["h"]
-        rx_elev = rx["ground"] + rx["h"]
         pl_diff = diffraction_loss_db(d, tx_elev, rx_elev, pts, p.f_hz)
+    if tables:
+        pl_diff += diffraction_loss_tables_db(d, tx_elev, rx_elev, tables, p.f_hz)
 
     pl_total = pl_2ray + pl_diff + p.l_mod_db
     prx = p.ptx_dbm + p.gtx_dbi + p.grx_dbi - pl_total
