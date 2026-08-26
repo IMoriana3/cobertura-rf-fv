@@ -524,16 +524,22 @@ const SONDA = `(() => {
   }
   await page.waitForTimeout(1200);
   {
-    const t = await page.evaluate(() => ({
-      az: PLANTA.az, lineas: (PLANTA._filas || []).length,
-      rot: (PLANTA._un || [])[0].rot }));
+    const t = await page.evaluate(() => {
+      const u = (PLANTA._filas || []).map(f => f.x), sep = [];
+      for (let i = 0; i < u.length - 1; i++) sep.push(+(u[i + 1] - u[i]).toFixed(2));
+      return { az: PLANTA.az, lineas: u.length, sep, rot: (PLANTA._un || [])[0].rot };
+    });
     /* `rot` del layout viene en GRADOS. Tomarlo como radianes daba 1358°. */
     check('Bagnarelli trae su azimut de eje (23,7°)', Math.abs(t.az - 23.7) < 0.01, t.az);
     check('y llega al render en RADIANES', Math.abs(t.rot - 23.7 * Math.PI / 180) < 1e-9, t.rot);
-    /* Con el eje girado, agrupar por X daría una línea por seguidor. En el marco
-       del eje salen las 6-7 líneas reales de la implantación. */
-    check('las filas se agrupan en el MARCO DEL EJE, no por X',
-          t.lineas <= 8, t.lineas + ' líneas para 17 seguidores');
+    /* La implantación real, la que documenta el simulador de backtracking: SEIS
+       líneas a pitch 11,0 m. Ni cinco ni siete — agrupar por clave redondeada
+       partía una línea en dos (separaciones 11, 11, 0,1, 10,9) y esa línea
+       fantasma entraba como una mesa MÁS en la difracción. */
+    check('las filas se agrupan en el MARCO DEL EJE: 6 líneas, no una por seguidor',
+          t.lineas === 6, t.lineas + ' líneas para 17 seguidores');
+    check('y a los 11,0 m de paso que tiene la planta',
+          t.sep.length === 5 && t.sep.every(d => Math.abs(d - 11) < 0.15), JSON.stringify(t.sep));
   }
   await page.evaluate(() => cargaPlanta('elburgo'));
   for (let i = 0; i < 60; i++) {
@@ -551,6 +557,39 @@ const SONDA = `(() => {
           g.length === 4, g.join(' | '));
   }
   await page.click('[data-p=""]'); await page.waitForTimeout(1200);
+
+  /* ---- 18e. cada mesa a su tamaño, y los mandos sin llevarse la planta ---- */
+  await page.evaluate(() => cargaPlanta('elburgo'));
+  for (let i = 0; i < 60; i++) {
+    if (await page.evaluate(() => !!(PLANTA && PLANTA._un && PLANTA._un.length))) break;
+    await page.waitForTimeout(500);
+  }
+  await page.waitForTimeout(1500);
+  {
+    const t = await page.evaluate(() => {
+      const L = PLANTA._un.map(u => +(SPANP * u.mr).toFixed(1)), s2 = {};
+      L.forEach(v => { s2[v] = (s2[v] || 0) + 1; });
+      return { mods: PLANTA._mods, largos: s2, inst: PLI.length };
+    });
+    /* Antes se montaba UNA mesa canónica y se escalaba: el largo salía bien pero
+       los módulos quedaban estirados. Ahora hay un plan de instancias por cuenta
+       de módulos — El Burgo tiene medios de 14 y completos de 28. */
+    check('cada mesa se monta con SUS módulos, no con una escalada',
+          t.mods.length >= 2 && t.mods.indexOf(28) >= 0, JSON.stringify(t.mods));
+    check('y los largos que salen son los del layout',
+          Object.keys(t.largos).length === t.mods.length, JSON.stringify(t.largos));
+  }
+  {
+    /* Con una planta cargada, la altura de viga llamaba a buildField() —el corte
+       de 6 filas— encima de la planta y se llevaba la escena por delante. */
+    await set('htube', 1.9); await page.waitForTimeout(2500);
+    const t = await page.evaluate(() => ({ planta: !!PLANTA, un: (PLANTA && PLANTA._un || []).length,
+                                           inst: PLI.length, err: 0 }));
+    check('mover la altura de viga con una planta cargada NO la destruye',
+          t.planta && t.un > 200 && t.inst > 0, JSON.stringify(t));
+    await set('htube', 1.5); await page.waitForTimeout(2000);
+  }
+  await page.click('[data-p=""]'); await page.waitForTimeout(1500);
 
   /* ---- 19. el rizado de dos rayos, dicho y no escondido ---- */
   await page.click('[data-p=""]'); await page.waitForTimeout(1500);
