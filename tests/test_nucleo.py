@@ -105,7 +105,7 @@ check("sin mesas de por medio no hay difracción",
 # ---------------------------------------------------------------- cotas de catálogo
 check("cotas de antena de catálogo declaradas (TCU/NCU/HSU)",
       set(m.ANTENNAS) == {"tcu", "ncu", "hsu"} and
-      cerca(m.ANTENNAS["ncu"]["h"], 3.15) and cerca(m.ANTENNAS["hsu"]["h"], 8.33),
+      cerca(m.ANTENNAS["ncu"]["h"], 3.15) and cerca(m.ANTENNAS["hsu"]["h"], 6.50),
       m.ANTENNAS)
 check("la caída de la TCU es la del modelo del seguidor (0,225 + 0,50)",
       cerca(m.ANTENNAS["tcu"]["drop_below_tube"], 0.725), m.ANTENNAS["tcu"])
@@ -118,7 +118,7 @@ CASOS = [
     (5 * P + 12 - P, HA, HNCU, math.inf, [P, 2 * P, 3 * P, 4 * P]),
     (5 * P + 12 - P, HA, HNCU, 15.0, [P, 2 * P, 3 * P, 4 * P]),
     (110.0, HA, HNCU, math.inf, []),
-    (7.9, m.ANTENNAS["hsu"]["h"], HNCU, math.inf, []),
+    (7.9, m.ANTENNAS["hsu"]["h"], HNCU, math.inf, []),   # HSU -> NCU: los dos fuera del campo
 ]
 
 node = shutil.which("node")

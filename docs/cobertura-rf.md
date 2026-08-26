@@ -12,7 +12,7 @@ y localiza el punto único de fallo.
   Cobertura 3D): viga de torsión, correas, módulos, slew drive, TCU, seccionador,
   pilas, amortiguadores y el eje de transmisión de la bifila — y con los otros
   dos extremos de la malla: la **NCU** en su poste de 2,95 m (látigo a 3,15 m) y
-  la **HSU** en su torre de 8 m (látigos a ~8,3 m), cotas de sus planos vía
+  la **HSU** en su torre de 8 m (látigos en su brazo, a 6,50 m), cotas vía
   `equipos.js`. Dibuja los saltos TCU↔TCU, los tres TCU→NCU y el HSU→NCU, cada
   uno con su margen y su desglose. Geometría parametrizable (inclinación, caída
   de antena, paso de filas, altura de viga, altura de módulo, tramo dibujado,

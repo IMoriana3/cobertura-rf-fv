@@ -15,7 +15,8 @@ Lo que ves son los **tres extremos de la malla Zigbee** de una planta:
 - la **NCU** (el coordinador) en su poste C de 2,95 m, con el armario colgado de
   los carriles y el látigo en la cabeza, a **3,15 m**;
 - la **HSU** (la meteo) en su torre de celosía autoportante de 8 m, con el
-  anemómetro ultrasónico y sus dos látigos a **~8,3 m**.
+  anemómetro ultrasónico en la cabeza y sus dos látigos en el brazo de
+  **6,50 m** — que es donde van, no arriba junto al anemo.
 
 Las cotas de la NCU y la HSU salen de sus planos (`DR_NCU_v0` y
 `FTR.24.00145_5_C`) vía `equipos.js`, y son las mismas que dibuja Cobertura 3D.

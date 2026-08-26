@@ -248,13 +248,15 @@ def diffraction_loss_tables_db(D_m: float, tx_elev: float, rx_elev: float,
 #         da la CAÍDA bajo el eje (0,225 hasta el conector + 0,50 de coax).
 #   NCU — látigo en la CABEZA del poste C 100×60 de 2,95 m del que cuelga el
 #         armario 415×515×230 (plano DR_NCU_v0 / «Montaje NCU»).
-#   HSU — 2 látigos en la cabeza de la torre de celosía autoportante de 8 m
-#         (plano FTR.24.00145_5_C, «Montaje HSU»).
+#   HSU — 2 látigos en su BRAZO a media torre (6,50 m) de la celosía
+#         autoportante de 8 m (plano FTR.24.00145_5_C, «Montaje HSU»).
 ANTENNAS = {
     "tcu": {"drop_below_tube": 0.725},
     "ncu": {"mast_h": 2.95, "h": 3.15,
             "cab_w": 0.415, "cab_h": 0.515, "cab_d": 0.230, "cab_y": 1.15},
-    "hsu": {"tower_h": 8.0, "h": 8.33, "leg_r": 0.15},
+    # los látigos van en su BRAZO a media torre (6,50 m), no en la cabeza junto
+    # al anemómetro: cota de montaje confirmada (ago-2026)
+    "hsu": {"tower_h": 8.0, "h": 6.50, "leg_r": 0.15},
 }
 
 

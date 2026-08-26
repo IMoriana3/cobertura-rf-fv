@@ -23,8 +23,8 @@ para validar contra ray tracing.
   `backtracking.html`, donde está contrastado contra pvlib.
 - `equipos.js` — los otros dos extremos de la malla: la **NCU** (armario
   415×515×230 colgado de un poste C de 2,95 m, látigo en la cabeza a 3,15 m) y
-  la **HSU** (torre de celosía autoportante de 8 m, ultrasónico y dos látigos a
-  ~8,3 m). Cotas de los planos `DR_NCU_v0` y `FTR.24.00145_5_C`, las mismas que
+  la **HSU** (torre de celosía autoportante de 8 m, ultrasónico en cabeza y dos
+  látigos en su brazo a 6,50 m). Cotas de los planos `DR_NCU_v0` y `FTR.24.00145_5_C`, las mismas que
   dibuja `terreno.html` en Cobertura 3D.
 - `python/` — núcleo físico + driver de diagnóstico para correr sobre tus datos.
 - `web/` — port JS del núcleo (para integrar el cálculo en cualquier HTML) y una
@@ -122,7 +122,7 @@ plano, y los saltos entre ellos.
 |---|---|---|
 | **TCU** | ~0,78 m (viga a 1,50 − caída 0,725) | `seguidor.js`: conector a 0,225 bajo el eje + 0,50 de coax |
 | **NCU** | **3,15 m** | `equipos.js`: cabeza del poste C de 2,95 m (plano DR_NCU_v0) |
-| **HSU** | **8,33 m** | `equipos.js`: cabeza de la torre de 8 m (plano FTR.24.00145_5_C) |
+| **HSU** | **6,50 m** | `equipos.js`: su brazo a media torre — la torre es de 8 m (plano FTR.24.00145_5_C), pero los látigos no van en la cabeza |
 
 Esa tabla es el resultado. Una TCU tiene la antena **por debajo** del canto bajo
 de su mesa (1,03 m a 30°), y la NCU la tiene **por encima** de la cresta (2,22 m).
@@ -137,6 +137,14 @@ Así que:
   visor los dibuja los tres a la vez: se ve de un vistazo **hasta dónde llega el
   coordinador directo** y desde dónde hace falta la malla.
 - **HSU → NCU** — las dos fuera del campo, sin mesas de por medio.
+
+Un apunte sobre la antena de la HSU: **no está en la cabeza de la torre**. Va en
+su propio brazo a **6,50 m** (cota de montaje confirmada, ago-2026). El módulo
+la dibujaba arriba porque así estaba en la copia embebida de `terreno.html`, de
+donde salieron estas cotas — y ahí compartía altura con el anemómetro
+ultrasónico, así que el enlace parecía salir del anemo. La corrección no es
+estética: 8,33 → 6,50 m es la altura de antena con la que se calcula el salto,
+y lo mueve de 63,6 a 68,9 dB.
 
 Un resultado que sale de tener las dos cosas juntas y que no es intuitivo:
 **subir la antena de la NCU no siempre mejora**. Por debajo del canto bajo de la

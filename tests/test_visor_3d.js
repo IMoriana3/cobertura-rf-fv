@@ -185,7 +185,10 @@ const SONDA = `(() => {
 
   /* ---- 5. NCU y HSU: cotas de plano y en el corte de la física ---- */
   check('la antena de la NCU, a la cota de su plano', near(s.ncuPos[1], s.ncuCat, 1e-9), s.ncuPos[1] + ' vs ' + s.ncuCat);
-  check('la antena de la HSU, a la cota de su plano', near(s.hsuPos[1], s.hsuCat, 1e-9), s.hsuPos[1] + ' vs ' + s.hsuCat);
+  check('la antena de la HSU, a la cota de montaje (6,50 m, en su brazo)',
+        near(s.hsuPos[1], s.hsuCat, 1e-9) && near(s.hsuCat, 6.50, 1e-9), s.hsuPos[1] + ' vs ' + s.hsuCat);
+  check('los látigos de la HSU NO están en la cabeza, junto al ultrasónico',
+        s.hsuTop - s.hsuPos[1] > 1.5, 'cabeza ' + s.hsuTop.toFixed(2) + ', antena ' + s.hsuPos[1]);
   check('el poste de la NCU llega a su cabeza (2,95 + látigo)', s.ncuTop > 3.3 && s.ncuTop < 3.5, s.ncuTop);
   check('la torre de la HSU llega a sus 8 m + cabeza', s.hsuTop > 8.4 && s.hsuTop < 8.7, s.hsuTop);
   check('NCU y HSU van en el MISMO corte que las TCU',
