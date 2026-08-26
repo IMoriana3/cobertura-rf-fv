@@ -41,9 +41,10 @@ cobertura-rf-fv/
 ├── secc.json                   # malla del STEP del seccionador DC (DS132EL)
 ├── equipos.js                  # modelos de la NCU y la HSU (cotas de plano)
 ├── sol.js                      # sol + seguimiento + estética de los 3D de la casa
+├── plantas/                    # layouts reales (copia de cobertura-zigbee)
 ├── lib/                        # three.js r128 + OrbitControls (vendorizados)
 ├── tests/
-│   ├── test_visor_3d.js        # QA del visor en Chromium (77 comprobaciones)
+│   ├── test_visor_3d.js        # QA del visor en Chromium (88 comprobaciones)
 │   └── test_nucleo.py          # núcleo + PARIDAD .py <-> .js (19 comprobaciones)
 ├── README.md
 ├── INSTRUCCIONES.md            # cómo usarlo paso a paso
@@ -154,6 +155,49 @@ mesa, el salto largo pierde 14,5 dB por difracción; por encima de la cresta,
 44 dB. Cruzar la cresta multiplica la difracción por tres. (Y el margen total
 tampoco es monótono con la altura, porque el modelo de dos rayos mete sus nulos
 de interferencia por el camino: los dos efectos están en la lectura, separados.)
+
+## Plantas reales
+
+El corte de estudio (6 filas) sirve para entender el mecanismo; la pregunta de
+siting se hace sobre una planta. El selector carga el `<planta>_layout.json` de
+Cobertura Zigbee —los seguidores en sus coordenadas del DWG, las NCU, las HSU y
+los repetidores— y dibuja con el **modelo instanciado** (`Seguidor.instancePlan`):
+un `InstancedMesh` por tipo de pieza, que es lo que permite 754 seguidores.
+
+Cada seguidor se colorea por el **margen de su salto DIRECTO a su NCU** (la que
+dice el layout), con el núcleo y las mesas que ese rayo cruza. Verde = llega
+solo; rojo = ese seguidor depende de la malla. En El Burgo I, con las NCU donde
+están: margen medio 22,6 dB y **23 de 215 seguidores (10,7 %) por debajo de
+8 dB** de margen directo.
+
+La NCU y la HSU se **colocan a mano** de dos formas sincronizadas: arrastrando
+por el suelo (para tantear) y escribiendo su coordenada E/N del DWG (para
+reproducirlo). Al soltar, la cobertura se recalcula entera.
+
+Terreno **plano** en esta fase. Las cotas medidas fila a fila existen para Ayora
+y San José (`<planta>_cotas.json`) y son la siguiente vuelta: cambian el despeje
+del rayo, así que no se dan por buenas hasta dibujarlas.
+
+## El rizado de dos rayos (por qué alejar puede MEJORAR)
+
+El rayo directo y el rebotado en el suelo se suman o se cancelan según la
+diferencia de camino, así que el margen **ondula** con la distancia: hay nulos
+en `d = 2·h1·h2/(k·λ)` y crestas entre ellos. Por eso alejar un equipo tres
+metros puede subir el margen diez dB. Es física del modelo —y del campo—, no un
+fallo, pero un dB suelto cerca de un nulo no es una promesa.
+
+Lo caro es el suelo que elijas. Barriendo la HSU entre 50 y 70 m del coordinador:
+
+| Suelo | Margen | Rizado |
+|---|---|---|
+| Conductor perfecto | 15,5 … 58,9 dB | **43,4 dB** |
+| Tierra real (húmeda) | 48,6 … 54,8 dB | **6,2 dB** |
+
+El conductor perfecto es un **espejo**: una cota superior de referencia, no un
+suelo. Para decidir un emplazamiento, el caso útil es la tierra real. El visor
+avisa del rizado cuando pasa de 5 dB en 3 m, y la lectura da además la
+**probabilidad de enlace** (que ya lleva dentro el desvanecimiento log-normal),
+que es el número que no se rompe al moverte un metro.
 
 ## El día
 

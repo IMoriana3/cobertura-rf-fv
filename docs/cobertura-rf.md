@@ -17,6 +17,12 @@ y localiza el punto único de fallo.
   uno con su margen y su desglose. Geometría parametrizable (inclinación, caída
   de antena, paso de filas, altura de viga, altura de módulo, tramo dibujado,
   distancia y altura de la NCU, distancia de la HSU, suelo, radio).
+- **Plantas reales**: el selector carga el layout de El Burgo, Ayora, Fayón,
+  Páramo, Polvorín, Túnez o Bagnarelli y dibuja los seguidores instanciados en
+  sus coordenadas del DWG, con sus NCU, HSU y repetidores. Cada seguidor se
+  colorea por el margen de su salto directo a su NCU: en El Burgo, 23 de 215
+  (10,7 %) por debajo de 8 dB, o sea que dependen de la malla. La NCU y la HSU
+  se colocan arrastrando o escribiendo su coordenada.
 - **El día**: los seguidores se mueven con el sol (NOAA + `singleaxis` de pvlib
   con backtracking, stow nocturno a 5° al este) con la estética de los 3D de la
   casa, y el margen de cada salto se recalcula a cada hora. El ángulo de las
@@ -49,7 +55,7 @@ y localiza el punto único de fallo.
 
 - Render: `index.html` + `seguidor.js` + `equipos.js` + `sol.js` + `lib/` (three.js vendorizado)
   + el CAD real de la TCU (`tcu.glb`) y del seccionador (`secc.json`), los mismos del gemelo
-- QA del visor: `tests/test_visor_3d.js` (77 comprobaciones en Chromium)
+- QA del visor: `tests/test_visor_3d.js` (88 comprobaciones en Chromium)
 - QA del núcleo: `tests/test_nucleo.py` (19, incluida la paridad `.py` ↔ `.js`)
 - Núcleo + diagnóstico: `python/`
 - Port JS + demo de cobertura: `web/`

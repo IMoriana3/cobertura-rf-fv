@@ -407,6 +407,71 @@ const SONDA = `(() => {
   check('con el sol, el deslizador se bloquea (lo manda la hora)',
         await page.evaluate(() => document.getElementById('tilt').disabled));
 
+  /* ---- 18. planta real: layout, equipos donde dice el DWG y colocación ---- */
+  await page.click('[data-p="fayon"]'); await page.waitForTimeout(2500);
+  {
+    const t = await page.evaluate(() => ({
+      trk: PLANTA.trk.length, ncus: PLANTA.ncus.length, hsus: PLANTA.meteo.length,
+      eq: PLEQ.length, inst: PLI.length,
+      pos: PLEQ.map(e => [e.tipo, +e.g.position.x.toFixed(2), +(-e.g.position.z).toFixed(2)]),
+      lect: [...document.querySelectorAll('#lect .m')].map(e => e.textContent) }));
+    check('carga el layout de la planta', t.trk === 24 && t.ncus === 1 && t.hsus === 1,
+          JSON.stringify([t.trk, t.ncus, t.hsus]));
+    check('los equipos van en su coordenada del DWG',
+          Math.abs(t.pos[0][1] - 50.49) < 0.01 && Math.abs(t.pos[0][2] - (-44.25)) < 0.01, JSON.stringify(t.pos));
+    check('los seguidores se dibujan instanciados (un mesh por tipo de pieza)', t.inst > 4, t.inst);
+    check('la lectura resume la cobertura de la planta', t.lect.length === 3, t.lect.join(' / '));
+  }
+  {
+    /* Colocar a mano: arrastre y casillas son el MISMO camino, y mover la NCU
+       tiene que mover el resultado — si no, el mando no está conectado. */
+    const antes = await page.evaluate(() => parseFloat(document.querySelector('#lect .m').textContent));
+    await page.evaluate(() => { const e = PLEQ.find(q => q.tipo === 'ncu'); mueveEquipo(e, e.dato.x - 300, e.dato.n + 200); update(); });
+    await page.waitForTimeout(800);
+    const t = await page.evaluate(() => ({
+      m: parseFloat(document.querySelector('#lect .m').textContent),
+      x: +document.getElementById('ncuX').value, n: +document.getElementById('ncuN').value,
+      px: +PLEQ.find(q => q.tipo === 'ncu').g.position.x.toFixed(2) }));
+    /* OJO: NO se exige que alejarla empeore. Con suelo perfecto el rizado de dos
+       rayos hace que alejar un equipo pueda MEJORAR el margen — esta misma
+       comprobación lo cazó (17,5 -> 18,7 dB al irse 360 m). Lo que se exige aquí
+       es que el mando esté CONECTADO: mover la NCU mueve el resultado. La caída
+       monotona con la distancia se comprueba abajo, con tierra real, que es
+       donde el rizado no la tapa. */
+    check('mover la NCU mueve la cobertura de la planta', Math.abs(t.m - antes) > 0.5, antes + ' -> ' + t.m);
+    check('las casillas siguen al arrastre', Math.abs(t.x - t.px) < 0.11, t.x + ' vs ' + t.px);
+    await page.evaluate(() => { const e = document.getElementById('ncuX'); e.value = 50.5; e.dispatchEvent(new Event('change')); });
+    await page.waitForTimeout(600);
+    const v = await page.evaluate(() => +PLEQ.find(q => q.tipo === 'ncu').g.position.x.toFixed(2));
+    check('y escribir la coordenada mueve el equipo', Math.abs(v - 50.5) < 0.01, v);
+    // con TIERRA REAL, sin el rizado por medio, alejarla sí empeora
+    await page.click('[data-g="real"]'); await page.waitForTimeout(600);
+    const cerca = await page.evaluate(() => parseFloat(document.querySelector('#lect .m').textContent));
+    await page.evaluate(() => { const e = PLEQ.find(q => q.tipo === 'ncu'); mueveEquipo(e, e.dato.x - 600, e.dato.n); update(); });
+    await page.waitForTimeout(800);
+    const lejos = await page.evaluate(() => parseFloat(document.querySelector('#lect .m').textContent));
+    check('con tierra real, alejar la NCU 600 m SÍ empeora', lejos < cerca - 5, cerca + ' -> ' + lejos);
+    await page.click('[data-g="pec"]'); await page.waitForTimeout(300);
+  }
+
+  /* ---- 19. el rizado de dos rayos, dicho y no escondido ---- */
+  await page.click('[data-p=""]'); await page.waitForTimeout(1500);
+  {
+    /* Es lo que hace que alejar un equipo pueda MEJORAR el margen. Con suelo
+       perfecto el rebote es un espejo y el rizado es enorme; con tierra real,
+       pequeño. La página tiene que decirlo, no dejar un dB suelto. */
+    await set('dhsu', 50); await page.waitForTimeout(250);
+    const pec = await page.evaluate(() => { const l = [...document.querySelectorAll('#lect .l')].pop();
+      return { m: parseFloat(l.querySelector('.m').textContent), x: l.querySelector('.x').textContent }; });
+    await page.click('[data-g="real"]'); await page.waitForTimeout(300);
+    const real = await page.evaluate(() => { const l = [...document.querySelectorAll('#lect .l')].pop();
+      return { m: parseFloat(l.querySelector('.m').textContent), x: l.querySelector('.x').textContent }; });
+    check('con suelo perfecto el rizado se avisa', /± *\d+ dB en 3 m/.test(pec.x), pec.x);
+    check('con tierra real el rizado casi desaparece y no se avisa', !/± *\d+ dB en 3 m/.test(real.x), real.x);
+    check('la lectura da la probabilidad de enlace, no solo el dB', /p=\d+ %/.test(real.x), real.x);
+    await page.click('[data-g="pec"]'); await page.waitForTimeout(250);
+  }
+
   check('sin errores de consola al final', errs.length === 0, errs.join(' | '));
   await browser.close();
   console.log('\n' + ok + ' OK, ' + ko + ' FAIL');

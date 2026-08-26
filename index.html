@@ -107,6 +107,28 @@
           <button data-p="19" class="on">XBee-PRO RR (+19 dBm)</button>
         </div>
       </div>
+      <div><label>Planta:</label>
+        <div class="seg" id="segpl">
+          <button data-p="" class="on">Corte de estudio</button>
+          <button data-p="fayon">Fayón · 24</button>
+          <button data-p="tunez">Túnez · 19</button>
+          <button data-p="bagnarelli">Bagnarelli · 17</button>
+          <button data-p="polvorin">Polvorín · 119</button>
+          <button data-p="elburgo">El Burgo · 215</button>
+          <button data-p="paramo">Páramo · 396</button>
+          <button data-p="ayora">Ayora · 754</button>
+        </div>
+      </div>
+      <div id="eqbox" style="display:none"><label>Colocar a mano (m, E/N del DWG):</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
+          <span style="font-size:13px;color:var(--muted)">NCU</span>
+          <input id="ncuX" type="number" step="0.1" style="width:88px">
+          <input id="ncuN" type="number" step="0.1" style="width:88px">
+          <span style="font-size:13px;color:var(--muted)">HSU</span>
+          <input id="hsuX" type="number" step="0.1" style="width:88px">
+          <input id="hsuN" type="number" step="0.1" style="width:88px">
+        </div>
+      </div>
       <div><label>Tramo dibujado (módulos por ala):</label>
         <div class="seg" id="segm">
           <button data-m="7" class="on">7 · 16,6 m</button>
@@ -225,9 +247,30 @@ function mesas(xa,xb,ownerA,ownerB,beta){
 }
 function enlace(xa,ha,ownerA,xb,hb,ownerB,beta){
   const tabs=mesas(xa,xb,ownerA,ownerB,beta);
-  const r=Z.predictLink({x:xa,y:0,ground:0,h:ha},{x:xb,y:0,ground:0,h:hb},params(),null,null,tabs);
+  const p=params();
+  const r=Z.predictLink({x:xa,y:0,ground:0,h:ha},{x:xb,y:0,ground:0,h:hb},p,null,null,tabs);
   r.mesas=tabs.length;
+  r.rizado=rizado(Math.abs(xb-xa),ha,hb,p);
   return r;
+}
+
+/* RIZADO DE DOS RAYOS. El rayo directo y el rebotado en el suelo se suman o se
+   cancelan segun la diferencia de camino, asi que el margen ONDULA con la
+   distancia: hay nulos en d = 2*h1*h2/(k*lambda) y entre ellos crestas. Es
+   fisica del modelo, no un fallo — pero significa que un dB suelto cerca de un
+   nulo NO es una promesa: tres metros lo mueven diez dB.
+   Se mide moviendo el enlace +-3 m y viendo cuanto baila. Con «conductor
+   perfecto» el rebote es un espejo y el rizado es brutal (decenas de dB); con
+   tierra real el suelo se traga parte y se queda en pocos dB — por eso, para
+   decidir un emplazamiento, el caso util es la tierra real. */
+function rizado(d,ha,hb,p){
+  let mn=1e9,mx=-1e9;
+  for(let i=-30;i<=30;i++){
+    const dd=Math.max(1,d+i*0.1);
+    const v=p.ptxDbm+p.gtxDbi+p.grxDbi-Z.twoRayPlDb(dd,ha,hb,p.fHz,p.epsR,p.sigmaGround,p.pol)-p.rxSensDbm;
+    if(v<mn)mn=v; if(v>mx)mx=v;
+  }
+  return mx-mn;
 }
 
 /* ---- patrón del dipolo sobre el suelo (dibujo) ---- */
@@ -628,6 +671,90 @@ function patternGeom(hA){
   return g;
 }
 
+/* ============================================================================
+ * PLANTA REAL
+ * ============================================================================
+ * El corte de estudio (6 filas) sirve para entender el mecanismo; la pregunta
+ * de siting se hace sobre una planta. Aquí se carga el `<planta>_layout.json`
+ * de Cobertura Zigbee —los seguidores en sus coordenadas del DWG, las NCU, las
+ * HSU y los repetidores— y se dibuja con el MODELO instanciado
+ * (`Seguidor.instancePlan`): un InstancedMesh por tipo de pieza y N copias, que
+ * es lo que permite poner 754 seguidores sin fundir la GPU.
+ *
+ * Módulos por string: criterio de la casa — `LAYOUT.mods` si el layout lo trae,
+ * si no 28 (El Burgo). Cada seguidor lleva su `mr`: por debajo de 1 es un
+ * "medio" y se escala a lo largo del tubo, como hace Cobertura 3D.
+ *
+ * Terreno PLANO en esta fase. Las cotas medidas fila a fila existen para Ayora
+ * y San José (`<planta>_cotas.json`) y son la siguiente vuelta: cambian el
+ * despeje del rayo, así que no se dan por buenas hasta que se dibujen.
+ * ==========================================================================*/
+let PLANTA=null, plantaG=null, PLNOM="";
+const _mB=new THREE.Matrix4(), _mR=new THREE.Matrix4(), _mS=new THREE.Matrix4(), _mT=new THREE.Matrix4();
+
+function cargaPlanta(nom){
+  PLNOM=nom;
+  if(!nom){ PLANTA=null; rehacer(); return Promise.resolve(); }
+  return fetch("plantas/"+nom+"_layout.json",{cache:"no-store"})
+    .then(r=>{ if(!r.ok) throw 0; return r.json(); })
+    .then(j=>{
+      const mods=j.mods||28;
+      PLANTA={
+        nom:nom, titulo:j.title||nom, mods:mods,
+        trk:(j.trackers||[]).map(t=>{
+          const medio=/^medio/i.test(t.t||"");
+          const mr=(typeof t.mr==="number"&&t.mr>0&&t.mr<1)?t.mr:(medio?0.504:1);
+          return {x:t.x, n:t.n, rot:t.rot||0, mr:mr, medio:mr<1, ncu:t.ncu||1, id:t.id};
+        }),
+        ncus:(j.ncus||[]).map(c=>({x:c.x,n:c.n,name:c.name})),
+        meteo:(j.meteo||[]).map(c=>({x:c.x,n:c.n,name:c.name})),
+        reps:(j.reps||[]).map(c=>({x:c.x,n:c.n,name:c.name}))
+      };
+      rehacer();
+    })
+    .catch(()=>{ PLANTA=null; PLNOM=""; rehacer();
+      $("note").innerHTML="<b>No se pudo cargar la planta.</b> Los layouts se piden por red: con doble clic (file://) no llegan. Sírvelo y vuelve a probar."; });
+}
+
+/* Filas ordenadas por X: para saber qué mesas cruza un enlace. Es el criterio
+   de `terreno.html` — sólo apantalla la fila DONDE ESTÁ, en su banda de altura
+   y en su huella; un enlace a lo largo de una fila no cruza ningún panel. */
+function filasPlanta(){
+  if(!PLANTA) return null;
+  const m={}; PLANTA.trk.forEach(t=>{ const k=Math.round(t.x*10)/10; (m[k]=m[k]||[]).push(t); });
+  return Object.keys(m).map(Number).sort((a,b)=>a-b).map(x=>({x:x, trk:m[x]}));
+}
+
+/* Mesas que cruza un salto en planta: se recorre el enlace y se apunta cada
+   fila cuya huella pisa, con su distancia al Tx. */
+function mesasEnPlanta(ax,an,bx,bn,beta,hw){
+  if(!PLANTA||!PLANTA._filas) return [];
+  const F=PLANTA._filas, D2=Math.hypot(bx-ax,bn-an);
+  if(D2<1e-6) return [];
+  const lo=Math.min(ax,bx)-hw, hi=Math.max(ax,bx)+hw, out=[];
+  for(let i=0;i<F.length;i++){
+    const f=F[i];
+    if(f.x<lo||f.x>hi) continue;
+    // ¿a qué distancia del Tx corta el enlace el plano x = f.x?
+    if(Math.abs(bx-ax)<1e-9) continue;                       // enlace a lo largo de la fila: no cruza
+    const u=(f.x-ax)/(bx-ax);
+    if(u<=0.01||u>=0.99) continue;                           // los extremos son sus propias filas
+    const nn=an+(bn-an)*u;
+    // ...y ¿hay mesa de esa fila a esa altura N?
+    let hay=false;
+    for(let k=0;k<f.trk.length;k++){
+      const t=f.trk[k], L=SPANP*t.mr/2;
+      if(nn>=t.n-L-1&&nn<=t.n+L+1){ hay=true; break; }
+    }
+    if(!hay) continue;
+    const b=Z.tableBand(0,HTUBE,CHORD,beta,M0);
+    b.x=u*D2;
+    out.push(b);
+  }
+  return out;
+}
+let SPANP=64.7;
+
 /* ------------------------------ el sol ------------------------------ */
 /* Marco: +X = este, +Z = sur (el tubo va N-S), +Y arriba. El ángulo positivo
    del seguidor deja la cara mirando al ESTE — la misma convención que `pvlib`
@@ -702,6 +829,106 @@ function layout(){
   hsu.pos.set(xHSU()+hsu.local.x, hsu.local.y, ZANT+hsu.local.z);
 
   // la luz y su caja de sombra las coloca `applySol`: dependen de la hora
+}
+
+/* ---------------------- render de la planta (instanciado) ---------------------- */
+let PLI=[], PLEQ=[], PLMESA=null;
+function buildPlanta(){
+  const mats=materials();
+  while(fieldG.children.length){ const c=fieldG.children.pop(); disposeTree(c); }
+  rows=[]; pairs=[]; chordTargets=[]; links=null; ncu=null; hsu=null; PLI=[]; PLEQ=[]; PLMESA=null; patKey="";
+  plantaG=new THREE.Group(); fieldG.add(plantaG);
+
+  const prev=D.modsPerStr;
+  Seguidor.setModsPerStr(PLANTA.mods);
+  SPANP=D.span; BUILT_SPAN=D.span;
+  PLANTA._filas=filasPlanta();
+  const N=PLANTA.trk.length;
+  const plan=Seguidor.instancePlan(THREE,{detail:"mass",size:"largo",west:true});
+  plan.forEach(tp=>{
+    if(tp.motorLink||tp.damperLink||tp.antenna) return;          // los gestiona la app por frame; en planta se omiten
+    const geom=tp.geom(THREE);
+    let mat=mats[tp.mat];
+    /* La mesa deja de ser vidrio con células: en planta ES el mapa de cobertura,
+       y sobre la textura oscura del panel el color por instancia no se lee. */
+    /* En planta la mesa ES el mapa de cobertura, no un panel: se pinta SIN luz
+       ni tone mapping, para que el color sea exactamente el de la leyenda. Con
+       un material iluminado, un verde holgado salía crema y no se leía. */
+    if(tp.key==="mesa") mat=new THREE.MeshBasicMaterial({color:0xffffff,toneMapped:false});
+    const im=new THREE.InstancedMesh(geom,mat,N*tp.locals.length);
+    im.frustumCulled=false; im.castShadow=!!tp.cast; im.receiveShadow=true;
+    im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    plantaG.add(im);
+    PLI.push({key:tp.key,spin:tp.spin,locals:tp.locals,im:im});
+    if(tp.key==="mesa") PLMESA={im:im,per:tp.locals.length};
+  });
+  // los equipos, en sus coordenadas del DWG
+  const eq={materials:mats.equipos, antMaterial:mats.antena, shadows:true};
+  PLANTA.ncus.forEach((c,i)=>{
+    const b=Equipos.buildNCU(THREE,eq); b.group.rotation.y=Math.PI;
+    b.group.position.set(c.x,0,-c.n); plantaG.add(b.group);
+    const d=new THREE.Mesh(new THREE.SphereGeometry(0.055,12,8),mats.antena); d.position.copy(b.antPos); b.group.add(d);
+    PLEQ.push({tipo:"ncu",i:i,g:b.group,dato:c,ant:b.antPos.clone()});
+  });
+  PLANTA.meteo.forEach((c,i)=>{
+    const b=Equipos.buildHSU(THREE,Object.assign({panelMaterial:mats.glass},eq));
+    b.group.position.set(c.x,0,-c.n); plantaG.add(b.group);
+    const d=new THREE.Mesh(new THREE.SphereGeometry(0.055,12,8),mats.antena); d.position.copy(b.antPos); b.group.add(d);
+    PLEQ.push({tipo:"hsu",i:i,g:b.group,dato:c,ant:b.antPos.clone()});
+  });
+  links=new THREE.Group(); links.frustumCulled=false; plantaG.add(links);
+  Seguidor.setModsPerStr(prev);
+  buildLabelsPlanta();
+}
+function buildLabelsPlanta(){
+  labelBox.innerHTML=""; labels=[];
+  PLEQ.forEach(e=>{ labels.push(mkLabel(e.dato.name||e.tipo.toUpperCase(),
+    e.tipo==="ncu"?"#e8ecf2":"#cfd8e3",-26)); });
+}
+
+/* Coloca los seguidores y colorea cada uno por el margen de SU salto directo a
+   SU NCU (la que dice el layout). Verde = llega directo; rojo = ese seguidor
+   depende de la malla. */
+const _col=new THREE.Color();
+function pintaPlanta(beta,hA){
+  const rad=beta*Math.PI/180;
+  _mR.makeRotationX(rad);
+  const hw=(CHORD/2)*Math.cos(Math.abs(rad));
+  const p=params();
+  const ncuPos=PLEQ.filter(e=>e.tipo==="ncu").map(e=>({
+    x:e.g.position.x+ (e.g.rotation.y?-e.ant.x:e.ant.x),
+    n:-(e.g.position.z+(e.g.rotation.y?-e.ant.z:e.ant.z)), h:HNCU }));
+  let peor=1e9, pmed=0, sin=0;
+  for(let i=0;i<PLANTA.trk.length;i++){
+    const t=PLANTA.trk[i];
+    _mT.makeTranslation(t.x,HTUBE,-t.n);
+    _mB.makeRotationY(Math.PI/2+(t.rot||0));
+    _mS.makeScale(t.mr,1,1);
+    _mB.premultiply(_mT); _mB.multiply(_mS);
+    for(let k=0;k<PLI.length;k++){
+      const L=PLI[k], base=i*L.locals.length;
+      for(let l=0;l<L.locals.length;l++){
+        const m=new THREE.Matrix4().copy(_mB);
+        if(L.spin) m.multiply(_mR);
+        m.multiply(L.locals[l]);
+        L.im.setMatrixAt(base+l,m);
+      }
+    }
+    // el salto directo a su NCU
+    let mg=-99;
+    if(ncuPos.length){
+      const c=ncuPos[Math.min(t.ncu-1,ncuPos.length-1)]||ncuPos[0];
+      const tabs=mesasEnPlanta(t.x,t.n,c.x,c.n,beta,hw);
+      const d=Math.hypot(c.x-t.x,c.n-t.n);
+      mg=Z.predictLink({x:0,y:0,ground:0,h:hA},{x:d,y:0,ground:0,h:c.h},p,null,null,tabs).marginDb;
+    }
+    peor=Math.min(peor,mg); pmed+=mg; if(mg<8)sin++;
+    if(PLMESA){ _col.set(colorFor(mg));
+      for(let l=0;l<PLMESA.per;l++) PLMESA.im.setColorAt(i*PLMESA.per+l,_col); }
+  }
+  PLI.forEach(L=>{ L.im.instanceMatrix.needsUpdate=true; });
+  if(PLMESA&&PLMESA.im.instanceColor) PLMESA.im.instanceColor.needsUpdate=true;
+  return {peor:peor, medio:pmed/PLANTA.trk.length, sin:sin, n:PLANTA.trk.length};
 }
 
 /* ------------------------------ estado dinámico ------------------------------ */
@@ -843,6 +1070,10 @@ function frame(which){
   }else if(which==="hsu"){
     controls.target.set(hsu.pos.x,4.3,ZANT);
     camera.position.set(hsu.pos.x+8.5,5.6,ZANT+11.5);
+  }else if(PLANTA){
+    const e=extentPlanta(), d=Math.max(e.w,e.h)*0.85+60;
+    controls.target.set(e.cx,HTUBE,e.cz);
+    camera.position.set(e.cx-d*0.35,HTUBE+d*0.55,e.cz+d*0.75);
   }else{
     const total=xHSU()+4;
     const d=Math.max(total,span)*0.92+12;
@@ -886,11 +1117,14 @@ function tick(t){
 }
 
 /* ------------------------------ interfaz ------------------------------ */
+function rehacer(){ if(PLANTA) buildPlanta(); else buildField(); update(); frame("campo"); }
+
 function update(){
   readParams();
   const sl=sunState();
   if(modoSol) BETA=sl.theta; else BETA=+$("tilt").value;
   $("tilt").disabled=modoSol;
+  if(PLANTA){ updatePlanta(sl); return; }
   layout();
   applySol(sl);
   const st=applyState();
@@ -919,15 +1153,95 @@ function update(){
     return `<div class="l"><span class="d" style="background:${c}"></span>`+
            `<span class="n">${e.n}</span>`+
            `<span class="m" style="color:${c}">${m.toFixed(1)} dB</span>`+
-           `<span class="x">${estadoDe(m)} · ${e.r.distanceM.toFixed(1)} m · `+
-           `${e.r.mesas} mesa${e.r.mesas===1?"":"s"} · dos rayos ${e.r.pl2rayDb.toFixed(1)} + difr. ${e.r.plDiffDb.toFixed(1)} dB</span></div>`;
+           `<span class="x">${estadoDe(m)} · p=${(100*e.r.pLink).toFixed(0)} % · ${e.r.distanceM.toFixed(1)} m · `+
+           `${e.r.mesas} mesa${e.r.mesas===1?"":"s"} · dos rayos ${e.r.pl2rayDb.toFixed(1)} + difr. ${e.r.plDiffDb.toFixed(1)} dB`+
+           (e.r.rizado>5?` · <b style="color:#e0a72c">±${e.r.rizado.toFixed(0)} dB en 3 m</b>`:``)+
+           `</span></div>`;
   }).join("");
 
-  $("note").innerHTML=`Tx ${PTX} dBm · Rx ${SENS} dBm · antena ${GANT} dBi en los dos extremos; dos rayos + difracción multiobstáculo (Deygout) sobre `+
+  const riz=st.lect.some(e=>e.r.rizado>5);
+  $("note").innerHTML=(riz?`<b style="color:#e0a72c">Ojo al rizado.</b> El rayo directo y el rebotado en el suelo se suman o se cancelan segun la distancia, `+
+      `asi que el margen ONDULA: hay nulos cada pocos metros y entre ellos crestas. Por eso alejar un equipo puede MEJORARLO. `+
+      `Es fisica del modelo, pero un dB suelto cerca de un nulo no es una promesa — mira la probabilidad p, que ya lleva dentro el desvanecimiento. `+
+      `Con <b>conductor perfecto</b> el suelo es un espejo y el rizado se dispara; con <b>tierra real</b> se queda en pocos dB, y es el caso con el que se decide un emplazamiento.<br>`:``)+
+    `Tx ${PTX} dBm · Rx ${SENS} dBm · antena ${GANT} dBi en los dos extremos; dos rayos + difracción multiobstáculo (Deygout) sobre `+
     `${ground==="pec"?"suelo perfecto":"tierra real"}, con el núcleo del repo (<code>web/zigbee_pv_model.js</code>). `+
     `Seguidor <code>seguidor.js</code> v${Seguidor.VERSION}, ${MODS} módulos por ala (tramo de ${SPAN().toFixed(1)} m); `+
     `NCU y HSU <code>equipos.js</code> v${Equipos.VERSION} (poste de ${ED.ncuMastH.toFixed(2)} m y torre de ${ED.hsuTowerH.toFixed(0)} m). `+
     `Los saltos a la NCU son DIRECTOS: si salen en rojo, ese seguidor necesita la malla.`;
+}
+
+/* La planta tiene su propio ciclo: no hay 6 filas que recolocar, hay N
+   seguidores que reorientar y recolorear, y los equipos donde los pongas. */
+function updatePlanta(sl){
+  const drop=+$("drop").value, hA=Math.max(0.15,HTUBE-drop);
+  const ext=extentPlanta();
+  groundMesh.position.set(ext.cx,-0.01,ext.cz);
+  groundMesh.material.map.repeat.set(2600/8,2600/8);
+  scene.fog.near=ext.diag*1.2+60; scene.fog.far=scene.fog.near*6;
+  solPlanta(sl,ext);
+  const r=pintaPlanta(BETA,hA);
+  PLEQ.forEach((e,i)=>{
+    const gy=e.tipo==="ncu"?ED.ncuAntY:ED.hsuTowerH;
+    labels[i].pos.set(e.g.position.x,gy+0.6,e.g.position.z);
+  });
+  while(links.children.length){ const c=links.children.pop(); c.geometry.dispose(); c.material.dispose(); }
+
+  $("vTilt").textContent=(modoSol?BETA.toFixed(1)+"° (sol)":BETA.toFixed(0)+"°");
+  const hh=String(Math.floor(sl.min/60)).padStart(2,"0"), mm=String(sl.min%60).padStart(2,"0");
+  $("vHora").textContent=hh+":"+mm;
+  $("vDia").textContent=new Date(Date.UTC(2026,0,1)+(+$("dia").value-1)*86400000)
+                          .toLocaleDateString("es-ES",{day:"numeric",month:"short",timeZone:"UTC"});
+  $("vLat").textContent=(+$("lat").value).toFixed(1)+"°";
+  $("vDrop").textContent=drop.toFixed(2)+" m · antena "+hA.toFixed(2)+" m";
+  $("vHtube").textContent=HTUBE.toFixed(2)+" m"; $("vChord").textContent=CHORD.toFixed(2)+" m";
+  $("vHncu").textContent=HNCU.toFixed(2)+" m";
+  $("lect").innerHTML=
+    `<div class="l"><span class="d" style="background:${colorFor(r.medio)}"></span><span class="n">Margen medio</span>`+
+    `<span class="m" style="color:${colorFor(r.medio)}">${r.medio.toFixed(1)} dB</span>`+
+    `<span class="x">salto DIRECTO de cada seguidor a su NCU</span></div>`+
+    `<div class="l"><span class="d" style="background:${colorFor(r.peor)}"></span><span class="n">El peor</span>`+
+    `<span class="m" style="color:${colorFor(r.peor)}">${r.peor.toFixed(1)} dB</span>`+
+    `<span class="x">de ${r.n} seguidores</span></div>`+
+    `<div class="l"><span class="d" style="background:${colorFor(r.sin?0:30)}"></span><span class="n">Necesitan la malla</span>`+
+    `<span class="m" style="color:${colorFor(r.sin?0:30)}">${r.sin}</span>`+
+    `<span class="x">${(100*r.sin/r.n).toFixed(1)} % por debajo de 8 dB de margen directo</span></div>`;
+  $("sunl").innerHTML = sl.noche
+    ? `<b>Noche</b> — sol a ${sl.elev.toFixed(1)}°, seguidores en stow a ${STOW}°.`
+    : `Sol a <b>${sl.elev.toFixed(1)}°</b> y ${sl.az.toFixed(0)}° de azimut; los seguidores van a <b>${BETA.toFixed(1)}°</b>.`;
+  $("note").innerHTML=`<b>${PLANTA.titulo}</b> — ${PLANTA.trk.length} seguidores, ${PLANTA.ncus.length} NCU y `+
+    `${PLANTA.meteo.length} HSU en sus coordenadas del DWG, con ${PLANTA.mods} módulos por string. `+
+    `Cada seguidor se colorea por el margen de su salto DIRECTO a su NCU (dos rayos + difracción por las mesas que cruza, `+
+    `núcleo del repo). Verde = llega solo; rojo = ese seguidor depende de la malla. `+
+    `<b>Terreno plano</b> en esta fase: las cotas medidas fila a fila (Ayora, San José) son la siguiente vuelta. `+
+    `Arrastra la NCU o la HSU por el suelo, o escribe su coordenada.`;
+}
+
+function extentPlanta(){
+  let x0=1e9,x1=-1e9,n0=1e9,n1=-1e9;
+  PLANTA.trk.forEach(t=>{ x0=Math.min(x0,t.x);x1=Math.max(x1,t.x);n0=Math.min(n0,t.n);n1=Math.max(n1,t.n); });
+  PLEQ.forEach(e=>{ const x=e.g.position.x,n=-e.g.position.z;
+    x0=Math.min(x0,x);x1=Math.max(x1,x);n0=Math.min(n0,n);n1=Math.max(n1,n); });
+  const w=x1-x0, h=n1-n0;
+  return {x0,x1,n0,n1,cx:(x0+x1)/2,cz:-(n0+n1)/2,w,h,diag:Math.hypot(w,h)+SPANP};
+}
+function solPlanta(sl,ext){
+  const c=Sol.skyColors(sl.elev), look=Sol.sunLook(sl.elev);
+  const k=Sol.paintSky(SKY.cv,c.top,c.hor);
+  if(k!==SKY.key){ SKY.key=k; SKY.tex.needsUpdate=true; }
+  scene.fog.color.setRGB(c.hor[0],c.hor[1],c.hor[2]);
+  const R=ext.diag*0.6+20;
+  sun.target.position.set(ext.cx,HTUBE,ext.cz);
+  const v=Sol.sunVector(Math.max(sl.elev,1.5),sl.az);
+  sun.position.copy(sun.target.position).addScaledVector(new THREE.Vector3(v.x,v.y,v.z),Math.max(120,R*2.2));
+  if(sl.noche){ sun.intensity=0.02; hemi.intensity=0.10; }
+  else{ sun.color.setRGB(look.color[0],look.color[1],look.color[2]);
+        sun.intensity=look.intensity; hemi.intensity=look.hemi; }
+  const el=Math.max(sl.elev,1.5)*Math.PI/180;
+  const vy=Math.max(R*0.5,R*Math.sin(el)+ext.h*0.6*Math.cos(el));
+  const sc=sun.shadow.camera;
+  sc.left=-R; sc.right=R; sc.top=vy; sc.bottom=-vy; sc.near=1; sc.far=R*5+200;
+  sc.updateProjectionMatrix();
 }
 
 function segClick(id,fn){
@@ -936,6 +1250,40 @@ function segClick(id,fn){
     [...$(id).children].forEach(x=>x.classList.toggle("on",x===b));
     fn(b);
   });
+}
+
+/* ---------------- colocar la NCU y la HSU a mano ----------------
+   Dos caminos para lo mismo, sincronizados: ARRASTRAR por el suelo (para
+   tantear un emplazamiento) y ESCRIBIR la coordenada E/N del DWG (para
+   reproducirlo y pegarlo en un informe). Se agarra el equipo con el ratón; el
+   plano de arrastre es el suelo, y al soltar se recalcula la cobertura. */
+const _ray=new THREE.Raycaster(), _pt=new THREE.Vector2();
+const _plano=new THREE.Plane(new THREE.Vector3(0,1,0),0), _hit=new THREE.Vector3();
+let arrastrando=null;
+function equipoEn(ev){
+  if(!PLEQ.length) return null;
+  const r=cv.getBoundingClientRect();
+  _pt.set(((ev.clientX-r.left)/r.width)*2-1, -((ev.clientY-r.top)/r.height)*2+1);
+  _ray.setFromCamera(_pt,camera);
+  for(const e of PLEQ){ if(_ray.intersectObject(e.g,true).length) return e; }
+  return null;
+}
+function sueloEn(ev){
+  const r=cv.getBoundingClientRect();
+  _pt.set(((ev.clientX-r.left)/r.width)*2-1, -((ev.clientY-r.top)/r.height)*2+1);
+  _ray.setFromCamera(_pt,camera);
+  return _ray.ray.intersectPlane(_plano,_hit)?_hit.clone():null;
+}
+function mueveEquipo(e,x,n){
+  e.g.position.set(x,0,-n); e.dato.x=x; e.dato.n=n;
+  if(e===PLEQ.find(q=>q.tipo==="ncu")){ $("ncuX").value=x.toFixed(1); $("ncuN").value=n.toFixed(1); }
+  if(e===PLEQ.find(q=>q.tipo==="hsu")){ $("hsuX").value=x.toFixed(1); $("hsuN").value=n.toFixed(1); }
+}
+function casillas(){
+  const a=PLEQ.find(q=>q.tipo==="ncu"), b=PLEQ.find(q=>q.tipo==="hsu");
+  $("eqbox").style.display=PLEQ.length?"":"none";
+  if(a){ $("ncuX").value=a.dato.x.toFixed(1); $("ncuN").value=a.dato.n.toFixed(1); }
+  if(b){ $("hsuX").value=b.dato.x.toFixed(1); $("hsuN").value=b.dato.n.toFixed(1); }
 }
 
 if(webgl){
@@ -956,6 +1304,26 @@ if(webgl){
   segClick("segr", b=>{ PTX=+b.dataset.p; update(); });
   segClick("segm", b=>{ MODS=+b.dataset.m; buildField(); update(); });
   segClick("segv", b=>{ frame(b.dataset.v); });
+  segClick("segpl", b=>{ cargaPlanta(b.dataset.p).then(casillas); });
+
+  cv.addEventListener("pointerdown",ev=>{
+    const e=equipoEn(ev); if(!e) return;
+    arrastrando=e; controls.enabled=false; cv.setPointerCapture(ev.pointerId);
+  });
+  cv.addEventListener("pointermove",ev=>{
+    if(!arrastrando) return;
+    const p=sueloEn(ev); if(!p) return;
+    mueveEquipo(arrastrando,p.x,-p.z); update();
+  });
+  const suelta=()=>{ if(!arrastrando) return; arrastrando=null; controls.enabled=true; update(); };
+  cv.addEventListener("pointerup",suelta); cv.addEventListener("pointercancel",suelta);
+
+  ["ncuX","ncuN","hsuX","hsuN"].forEach(id=>$(id).addEventListener("change",()=>{
+    const a=PLEQ.find(q=>q.tipo==="ncu"), b=PLEQ.find(q=>q.tipo==="hsu");
+    if(a) mueveEquipo(a,+$("ncuX").value||0,+$("ncuN").value||0);
+    if(b) mueveEquipo(b,+$("hsuX").value||0,+$("hsuN").value||0);
+    update();
+  }));
   segClick("segd", b=>{ modoSol=(b.dataset.d==="sol"); if(!modoSol)$("tilt").value=BETA.toFixed(0); update(); });
   $("bt").addEventListener("change",update);
   /* Saltos a las tres horas que enseñan el día: al amanecer las palas están de
