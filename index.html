@@ -117,6 +117,7 @@
           <button data-p="elburgo">El Burgo · 215</button>
           <button data-p="paramo">Páramo · 396</button>
           <button data-p="ayora">Ayora · 754</button>
+          <button data-p="sanjose">San José · 2289</button>
         </div>
       </div>
       <div id="eqbox" style="display:none"><label>Colocar a mano (m, E/N del DWG):</label>
@@ -704,7 +705,12 @@ const _mB=new THREE.Matrix4(), _mR=new THREE.Matrix4(), _mS=new THREE.Matrix4(),
 /* Qué plantas tienen levantamiento en el repo. Se declara en vez de tantear:
    pedir un fichero que no existe deja un 404 en la consola de cada carga, y una
    consola con ruido es una consola que nadie mira. */
-const CON_COTAS={ayora:1};
+const CON_COTAS={ayora:1, sanjose:1};
+/* Módulos por string POR PLANTA, el criterio de Cobertura 3D: lo dice el
+   layout si lo trae, si no este registro, si no 28 (El Burgo). San José son 32
+   por ala -> filas de 74 m en vez de 64,7, y sus cotas medidas lo confirman
+   (74,4 m de media). Con el 28 por defecto, sus mesas saldrían cortas. */
+const MODS_PLANTA={sanjose:32};
 function cargaCotas(nom){
   if(!CON_COTAS[nom]) return Promise.resolve(null);
   return fetch("plantas/"+nom+"_cotas.json",{cache:"no-store"})
@@ -719,13 +725,15 @@ function cargaPlanta(nom){
       fetch("plantas/"+nom+"_layout.json",{cache:"no-store"}).then(r=>{ if(!r.ok) throw 0; return r.json(); }),
       cargaCotas(nom)])
     .then(([j,cot])=>{
-      const mods=j.mods||28;
+      const mods=j.mods||MODS_PLANTA[nom]||28;
+      const az=(j.trackers&&j.trackers.length)?(j.trackers[0].rot||0):0;   // GRADOS
       PLANTA={
-        nom:nom, titulo:j.title||nom, mods:mods,
+        nom:nom, titulo:j.title||nom, mods:mods, az:az,
         trk:(j.trackers||[]).map(t=>{
           const medio=/^medio/i.test(t.t||"");
           const mr=(typeof t.mr==="number"&&t.mr>0&&t.mr<1)?t.mr:(medio?0.504:1);
-          return {x:t.x, n:t.n, rot:t.rot||0, mr:mr, medio:mr<1, ncu:t.ncu||1, id:t.id};
+          return {x:t.x, n:t.n, rot:t.rot||0, mr:mr, medio:mr<1,
+                  ncu:t.ncu||1, gw:t.gw||1, id:t.id};
         }),
         ncus:(j.ncus||[]).map(c=>({x:c.x,n:c.n,name:c.name})),
         meteo:(j.meteo||[]).map(c=>({x:c.x,n:c.n,name:c.name})),
@@ -733,14 +741,21 @@ function cargaPlanta(nom){
         cot:null
       };
       if(cot&&cot.t&&cot.t.length===PLANTA.trk.length){
-        const filas=[];
-        cot.t.forEach((t,i)=>{ (t.f||[]).forEach(f=>{
-          if(!f||!f.n||!f.y||f.n.length<2||f.y.length<2) return;
-          const asc=f.n[0]<=f.n[1];
-          filas.push({x:f.x, n0:asc?f.n[0]:f.n[1], n1:asc?f.n[1]:f.n[0],
-                      y0:asc?f.y[0]:f.y[1], y1:asc?f.y[1]:f.y[0],
-                      ncu:PLANTA.trk[i].ncu, art:!!f.art});
-        }); });
+        const filas=[], sinCota=[];
+        cot.t.forEach((t,i)=>{
+          /* El levantamiento puede tener huecos: San José trae 103 seguidores
+             sin medir. No se pueden perder por el camino — se apuntan y luego
+             se plantan en la cota que dicta el terreno de alrededor. */
+          const ff=(t&&t.f)||[];
+          if(!ff.length){ sinCota.push(i); return; }
+          ff.forEach(f=>{
+            if(!f||!f.n||!f.y||f.n.length<2||f.y.length<2) return;
+            const asc=f.n[0]<=f.n[1];
+            filas.push({x:f.x, n0:asc?f.n[0]:f.n[1], n1:asc?f.n[1]:f.n[0],
+                        y0:asc?f.y[0]:f.y[1], y1:asc?f.y[1]:f.y[0],
+                        ncu:PLANTA.trk[i].ncu, gw:PLANTA.trk[i].gw, art:!!f.art});
+          });
+        });
         if(filas.length){
           filas.forEach(f=>{ f.nm=(f.n0+f.n1)/2; f.ym=(f.y0+f.y1)/2;
                              f.len=Math.abs(f.n1-f.n0);
@@ -749,12 +764,42 @@ function cargaPlanta(nom){
           PLANTA.cot.xs=[...new Set(filas.map(f=>Math.round(f.x*100)/100))].sort((a,b)=>a-b);
           PLANTA.cot.porX={};
           filas.forEach(f=>{ const k=Math.round(f.x*100)/100; (PLANTA.cot.porX[k]=PLANTA.cot.porX[k]||[]).push(f); });
+          PLANTA.cot.sinCota=sinCota;
         }
       }
+      /* La latitud la manda la PLANTA: San José está en el hemisferio SUR
+         (−16,6°) y con la latitud del deslizador el sol iría al revés y los
+         seguidores con él. Se escribe en el mando, que sigue siendo editable. */
+      if(typeof j.clat==="number"){ $("lat").value=j.clat.toFixed(1); }
       rehacer();
     })
-    .catch(()=>{ PLANTA=null; PLNOM=""; rehacer();
-      $("note").innerHTML="<b>No se pudo cargar la planta.</b> Los layouts se piden por red: con doble clic (file://) no llegan. Sírvelo y vuelve a probar."; });
+    .catch(err=>{ PLANTA=null; PLNOM=""; rehacer();
+      /* Antes este catch se tragaba TODO —incluido un fallo mío dentro del
+         `then`— y la planta se quedaba en blanco sin decir por qué. Ahora dice
+         qué pasó y lo deja en la consola. */
+      console.error("carga de planta:",err);
+      $("note").innerHTML="<b>No se pudo cargar la planta.</b> "+
+        (err&&err.message?("Error: "+err.message+". ")
+                        :"Los layouts se piden por red: con doble clic (file://) no llegan. Sírvelo y vuelve a probar."); });
+}
+
+/* AZIMUT DE EJE. `t.rot` del layout viene en GRADOS (Cobertura 3D hace
+   `(n.rot||0)*DEG`), y casi todas las plantas lo traen a 0 — por eso no se
+   notaba. Bagnarelli no: su eje va a 23,7 grados, el mismo que documenta el
+   simulador de backtracking. Con el eje girado dejan de valer dos cosas: el
+   render, si el valor se toma como radianes (23,7 rad = 1358 grados), y la
+   FISICA, que agrupaba las filas por X y buscaba los cruces en planos de X
+   constante — con el eje girado, una fila no esta a X constante.
+   Asi que todo lo que sea "a traves de las filas / a lo largo del tubo" pasa al
+   MARCO DEL EJE: u = a traves, v = a lo largo. Con azimut 0 es la identidad y
+   las plantas que ya estaban no se mueven. */
+function proj(x,n){
+  const a=(PLANTA?PLANTA.az:0)*Math.PI/180, c=Math.cos(a), s2=Math.sin(a);
+  return {u:x*c-n*s2, v:x*s2+n*c};
+}
+function unproj(u,v){
+  const a=(PLANTA?PLANTA.az:0)*Math.PI/180, c=Math.cos(a), s2=Math.sin(a);
+  return {x:u*c+v*s2, n:-u*s2+v*c};
 }
 
 /* Cota del terreno en (x,n). La define la fila más cercana en X, interpolando a
@@ -781,12 +826,40 @@ function cotaEn(x,n){
   return best.y0+(best.y1-best.y0)*u;
 }
 
+/* QUÉ COORDINADOR VE CADA TCU. No todas las TCU hablan con todas las NCU: cada
+   NCU lleva DOS gateways y cada TCU cuelga de UNO — el ámbito real es el par
+   (NCU, GW), que es el que lanza Cobertura Zigbee («cada uno es una IP:puerto»).
+   Y según la planta, los dos gateways de una NCU están en el mismo mástil o en
+   dos distintos: El Burgo tiene 2 mástiles y CUATRO grupos (1,1) (1,2) (2,1)
+   (2,2); Ayora los separa y los nombra «NCU 4.1» y «NCU 4.2».
+   Así que el mástil se busca por nombre: primero «NCU n.g», luego «NCU n» (los
+   dos gateways comparten mástil) y, si el nombre no se deja leer —San José usa
+   códigos de obra—, se cae al orden del listado y se dice. */
+function mastilDe(ncu,gw,masts){
+  if(!masts.length) return null;
+  const num=s2=>{ const m=/(\d+)(?:\.(\d+))?/.exec(s2||""); return m?[+m[1],m[2]?+m[2]:null]:null; };
+  let laxo=null;
+  for(const m of masts){
+    const q=num(m.dato.name);
+    if(!q) continue;
+    if(q[0]===ncu && q[1]===gw) return m;          // «NCU n.g»: mástil de ESE gateway
+    if(q[0]===ncu && q[1]===null) laxo=laxo||m;    // «NCU n»: los dos gateways ahí
+  }
+  return laxo || masts[Math.min(Math.max(ncu,1)-1,masts.length-1)];
+}
+
 /* Lo que se dibuja y se calcula: con cotas, la FILA medida (un bifila son dos);
    sin ellas, el seguidor del layout sobre terreno plano. */
 function unidades(){
-  if(PLANTA.cot) return PLANTA.cot.filas.map(f=>({
-    x:f.x, n:f.nm, y:f.ym, tilt:f.tilt, mr:Math.min(1.2,f.len/SPANP), rot:0, ncu:f.ncu}));
-  return PLANTA.trk.map(t=>({x:t.x, n:t.n, y:0, tilt:0, mr:t.mr, rot:t.rot||0, ncu:t.ncu}));
+  if(!PLANTA.cot) return PLANTA.trk.map(t=>({x:t.x, n:t.n, y:0, tilt:0, mr:t.mr, rot:(t.rot||0)*Math.PI/180, ncu:t.ncu, gw:t.gw}));
+  const u=PLANTA.cot.filas.map(f=>({
+    x:f.x, n:f.nm, y:f.ym, tilt:f.tilt, mr:Math.min(1.2,f.len/SPANP),
+    rot:PLANTA.az*Math.PI/180, ncu:f.ncu, gw:f.gw, med:1}));
+  (PLANTA.cot.sinCota||[]).forEach(i=>{                 // sin medir: a la cota de alrededor, y declarado
+    const t=PLANTA.trk[i];
+    u.push({x:t.x, n:t.n, y:cotaEn(t.x,t.n), tilt:0, mr:t.mr, rot:(t.rot||0)*Math.PI/180, ncu:t.ncu, gw:t.gw, med:0});
+  });
+  return u;
 }
 
 /* El terreno, de las cotas medidas: una malla muestreada sobre la extensión de
@@ -817,14 +890,20 @@ function buildTerreno(){
    y en su huella; un enlace a lo largo de una fila no cruza ningún panel. */
 function filasPlanta(){
   if(!PLANTA) return null;
-  const m={}; PLANTA.trk.forEach(t=>{ const k=Math.round(t.x*10)/10; (m[k]=m[k]||[]).push(t); });
-  return Object.keys(m).map(Number).sort((a,b)=>a-b).map(x=>({x:x, trk:m[x]}));
+  const U=PLANTA._un||unidades(), m={};
+  U.forEach(t=>{ const q=proj(t.x,t.n); const k=Math.round(q.u*10)/10;
+                 (m[k]=m[k]||[]).push({u:q.u, v:q.v, mr:t.mr}); });
+  return Object.keys(m).map(Number).sort((a,b)=>a-b).map(u=>({x:u, trk:m[u]}));
 }
 
 /* Mesas que cruza un salto en planta: se recorre el enlace y se apunta cada
    fila cuya huella pisa, con su distancia al Tx. */
-function mesasEnPlanta(ax,an,bx,bn,beta,hw){
+/* Recibe coordenadas del MUNDO y trabaja en el marco del eje: "cruzar una fila"
+   es cruzar su plano u = cte, este el eje donde este. */
+function mesasEnPlanta(ax0,an0,bx0,bn0,beta,hw){
   if(!PLANTA||!PLANTA._filas) return [];
+  const A=proj(ax0,an0), B=proj(bx0,bn0);
+  const ax=A.u, an=A.v, bx=B.u, bn=B.v;
   const F=PLANTA._filas, D2=Math.hypot(bx-ax,bn-an);
   if(D2<1e-6) return [];
   const lo=Math.min(ax,bx)-hw, hi=Math.max(ax,bx)+hw, out=[];
@@ -840,10 +919,12 @@ function mesasEnPlanta(ax,an,bx,bn,beta,hw){
     let hay=false;
     for(let k=0;k<f.trk.length;k++){
       const t=f.trk[k], L=SPANP*t.mr/2;
-      if(nn>=t.n-L-1&&nn<=t.n+L+1){ hay=true; break; }
+      if(nn>=t.v-L-1&&nn<=t.v+L+1){ hay=true; break; }
     }
     if(!hay) continue;
-    const b=Z.tableBand(cotaEn(f.x,nn),HTUBE,CHORD,beta,M0);   // la mesa apantalla a SU cota
+    // de vuelta al mundo para preguntar la cota
+    const aa=PLANTA.az*Math.PI/180, cc=Math.cos(aa), ss=Math.sin(aa);
+    const b=Z.tableBand(cotaEn(f.x*cc+nn*ss,-f.x*ss+nn*cc),HTUBE,CHORD,beta,M0);   // la mesa apantalla a SU cota
     b.x=u*D2;
     out.push(b);
   }
@@ -861,7 +942,7 @@ function sunState(){
   const ms=Date.UTC(2026,0,1)+(dia-1)*86400000+min*60000;
   const p=Sol.solarPos(ms,lat,0);
   const gcr=Math.max(0.05,Math.min(0.95,CHORD/P));      // la GCR sale de la geometría de esta página
-  const th=Sol.singleaxis(p.zen,p.az,{axisTilt:0,axisAz:0,maxAngle:55,
+  const th=Sol.singleaxis(p.zen,p.az,{axisTilt:0,axisAz:(PLANTA?PLANTA.az:0),maxAngle:55,
                                       backtrack:$("bt").checked,gcr:gcr,crossAxisTilt:0});
   const noche=!isFinite(th);
   return {elev:p.elev,az:p.az,theta:noche?STOW:th,noche:noche,gcr:gcr,min:min};
@@ -994,10 +1075,11 @@ function pintaPlanta(beta,hA){
   _mR.makeRotationX(rad);
   const hw=(CHORD/2)*Math.cos(Math.abs(rad));
   const p=params();
-  const ncuPos=PLEQ.filter(e=>e.tipo==="ncu").map(e=>({
-    x:e.g.position.x+ (e.g.rotation.y?-e.ant.x:e.ant.x),
-    n:-(e.g.position.z+(e.g.rotation.y?-e.ant.z:e.ant.z)),
-    y:e.g.position.y, h:HNCU }));   // y = cota del terreno bajo el poste
+  const masts=PLEQ.filter(e=>e.tipo==="ncu");
+  const posDe=e=>({ x:e.g.position.x+(e.g.rotation.y?-e.ant.x:e.ant.x),
+                    n:-(e.g.position.z+(e.g.rotation.y?-e.ant.z:e.ant.z)),
+                    y:e.g.position.y, h:HNCU });
+  const cacheM={}, grupos={};
   let peor=1e9, pmed=0, sin=0;
   const NTOT=(PLANTA._un||unidades()).length;
   const UN=PLANTA._un||(PLANTA._un=unidades());
@@ -1007,7 +1089,9 @@ function pintaPlanta(beta,hA){
        que la pendiente a lo largo es un giro en Z, y el largo real de la mesa
        entra como escala en ese mismo eje. */
     _mT.makeTranslation(t.x,t.y+HTUBE,-t.n);
-    _mB.makeRotationY(Math.PI/2+(t.rot||0));
+    /* Azimut medido en compas (0 = norte, + al este). El tubo del modelo va en
+       +X y el norte de la escena es -Z, asi que el giro es pi/2 - az. */
+    _mB.makeRotationY(Math.PI/2-(t.rot||0));
     _mB.premultiply(_mT);
     if(t.tilt) _mB.multiply(new THREE.Matrix4().makeRotationZ(-t.tilt));
     _mS.makeScale(t.mr,1,1);
@@ -1023,19 +1107,24 @@ function pintaPlanta(beta,hA){
     }
     // el salto directo a su NCU, con las cotas por medio
     let mg=-99;
-    if(ncuPos.length){
-      const c=ncuPos[Math.min(t.ncu-1,ncuPos.length-1)]||ncuPos[0];
+    const key=(t.ncu||1)+"."+(t.gw||1);
+    if(masts.length){
+      const m=cacheM[key]||(cacheM[key]=mastilDe(t.ncu||1,t.gw||1,masts));
+      const c=posDe(m);
       const tabs=mesasEnPlanta(t.x,t.n,c.x,c.n,beta,hw);
       const d=Math.hypot(c.x-t.x,c.n-t.n);
       mg=Z.predictLink({x:0,y:0,ground:t.y,h:hA},{x:d,y:0,ground:c.y,h:c.h},p,null,null,tabs).marginDb;
     }
+    const G=grupos[key]||(grupos[key]={n:0,sin:0,peor:1e9,suma:0,
+                                       mast:cacheM[key]?cacheM[key].dato.name:"—"});
+    G.n++; G.suma+=mg; if(mg<8)G.sin++; if(mg<G.peor)G.peor=mg;
     peor=Math.min(peor,mg); pmed+=mg; if(mg<8)sin++;
     if(PLMESA){ _col.set(colorFor(mg));
       for(let l=0;l<PLMESA.per;l++) PLMESA.im.setColorAt(i*PLMESA.per+l,_col); }
   }
   PLI.forEach(L=>{ L.im.instanceMatrix.needsUpdate=true; });
   if(PLMESA&&PLMESA.im.instanceColor) PLMESA.im.instanceColor.needsUpdate=true;
-  return {peor:peor, medio:pmed/NTOT, sin:sin, n:NTOT};
+  return {peor:peor, medio:pmed/NTOT, sin:sin, n:NTOT, grupos:grupos};
 }
 
 /* ------------------------------ estado dinámico ------------------------------ */
@@ -1312,16 +1401,29 @@ function updatePlanta(sl){
     `<span class="x">de ${r.n} seguidores</span></div>`+
     `<div class="l"><span class="d" style="background:${colorFor(r.sin?0:30)}"></span><span class="n">Necesitan la malla</span>`+
     `<span class="m" style="color:${colorFor(r.sin?0:30)}">${r.sin}</span>`+
-    `<span class="x">${(100*r.sin/r.n).toFixed(1)} % por debajo de 8 dB de margen directo</span></div>`;
+    `<span class="x">${(100*r.sin/r.n).toFixed(1)} % por debajo de 8 dB de margen directo</span></div>`+
+    /* El ámbito real es el (NCU,GW): una TCU solo ve SU gateway, así que "la
+       malla" que la salva es la de su grupo, no la de la planta. */
+    Object.keys(r.grupos).sort().map(k=>{
+      const g=r.grupos[k], md=g.suma/g.n, c=colorFor(md);
+      return `<div class="l"><span class="d" style="background:${c}"></span>`+
+             `<span class="n">NCU ${k.split(".")[0]} · GW ${k.split(".")[1]}</span>`+
+             `<span class="m" style="color:${c}">${md.toFixed(1)} dB</span>`+
+             `<span class="x">${g.n} filas · ${g.sin} bajo 8 dB · peor ${g.peor.toFixed(1)} · mástil ${g.mast}</span></div>`;
+    }).join("");
   $("sunl").innerHTML = sl.noche
     ? `<b>Noche</b> — sol a ${sl.elev.toFixed(1)}°, seguidores en stow a ${STOW}°.`
     : `Sol a <b>${sl.elev.toFixed(1)}°</b> y ${sl.az.toFixed(0)}° de azimut; los seguidores van a <b>${BETA.toFixed(1)}°</b>.`;
   const nun=(PLANTA._un||unidades()).length;
   $("note").innerHTML=`<b>${PLANTA.titulo}</b> — ${PLANTA.trk.length} seguidores`+
-    (PLANTA.cot?` (${nun} filas medidas)`:``)+`, ${PLANTA.ncus.length} NCU y `+
+    (PLANTA.cot?` (${nun} filas, ${PLANTA.cot.filas.length} con cota medida`+
+       ((PLANTA.cot.sinCota||[]).length?` y ${PLANTA.cot.sinCota.length} sin levantamiento, plantados en la cota de alrededor`:``)+`)`:``)+
+    `, ${PLANTA.ncus.length} NCU y `+
     `${PLANTA.meteo.length} HSU en sus coordenadas del DWG, con ${PLANTA.mods} módulos por string. `+
-    `Cada seguidor se colorea por el margen de su salto DIRECTO a su NCU (dos rayos + difracción por las mesas que cruza, `+
-    `núcleo del repo). Verde = llega solo; rojo = ese seguidor depende de la malla. `+
+    `Cada seguidor se colorea por el margen de su salto DIRECTO al mástil de <b>su</b> coordinador — el par (NCU, GW): `+
+    `no todas las TCU hablan con todas las NCU, cada NCU lleva dos gateways y cada TCU cuelga de uno. `+
+    `Verde = llega sola; rojo = depende de la malla, y de la malla de SU gateway, no de la de la planta. `+
+    (PLANTA.az?`Eje a ${PLANTA.az.toFixed(1)}°: las filas y los cruces se calculan en el marco del eje. `:``)+
     (PLANTA.cot
       ? `<b>Con las cotas MEDIDAS</b>: cada fila a su altura y con su pendiente N-S, y el rayo corre sobre ese terreno — la mesa que apantalla lo hace a SU cota, no a la de nadie. `
       : `<b>Terreno plano</b>: esta planta no trae cotas medidas en el repo. `)+

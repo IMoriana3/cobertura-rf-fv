@@ -420,7 +420,9 @@ const SONDA = `(() => {
     check('los equipos van en su coordenada del DWG',
           Math.abs(t.pos[0][1] - 50.49) < 0.01 && Math.abs(t.pos[0][2] - (-44.25)) < 0.01, JSON.stringify(t.pos));
     check('los seguidores se dibujan instanciados (un mesh por tipo de pieza)', t.inst > 4, t.inst);
-    check('la lectura resume la cobertura de la planta', t.lect.length === 3, t.lect.join(' / '));
+    /* Tres filas de resumen + UNA POR (NCU,GW): Fayón tiene un solo grupo, así
+       que son cuatro. El ámbito no es la planta, es el gateway. */
+    check('la lectura resume la planta y desglosa por gateway', t.lect.length === 4, t.lect.join(' / '));
   }
   {
     /* Colocar a mano: arrastre y casillas son el MISMO camino, y mover la NCU
@@ -485,6 +487,68 @@ const SONDA = `(() => {
     /* Lo que justifica meterlas: en plano salían 16 filas por debajo de 8 dB;
        con el relieve real son muchas más. El terreno no es decoración. */
     check('el relieve cambia el resultado, y mucho', t.sin > 60, t.sin + ' filas por debajo de 8 dB');
+  }
+  await page.click('[data-p=""]'); await page.waitForTimeout(1200);
+
+  /* ---- 18c. San José: 32 módulos por ala, huecos del levantamiento y sur ---- */
+  await page.evaluate(() => cargaPlanta('sanjose'));
+  for (let i = 0; i < 90; i++) {
+    if (await page.evaluate(() => !!(PLANTA && PLANTA._un && PLANTA._un.length))) break;
+    await page.waitForTimeout(1000);
+  }
+  await page.waitForTimeout(2000);
+  {
+    const t = await page.evaluate(() => {
+      const U = PLANTA._un || [], med = U.filter(u => u.med);
+      return { mods: PLANTA.mods, trk: PLANTA.trk.length, filas: PLANTA.cot.filas.length,
+               sin: PLANTA.cot.sinCota.length, un: U.length,
+               largo: med.reduce((s, u) => s + u.mr, 0) / med.length * SPANP,
+               lat: +document.getElementById('lat').value };
+    });
+    check('San José son 32 módulos por ala, no los 28 de El Burgo', t.mods === 32, t.mods);
+    check('y sus filas miden ~74 m, como las midieron', Math.abs(t.largo - 74.4) < 1.5, t.largo.toFixed(1));
+    /* El levantamiento tiene huecos: 103 seguidores sin medir. No se pueden
+       perder por el camino — se plantan en la cota de alrededor y se declaran. */
+    check('los seguidores sin levantamiento no se pierden',
+          t.sin > 0 && t.un === t.filas + t.sin, t.filas + ' + ' + t.sin + ' = ' + t.un);
+    /* Está en el hemisferio SUR: con la latitud del deslizador el sol iría al
+       revés y los seguidores con él. */
+    check('la latitud la manda la planta (San José, hemisferio sur)', t.lat < 0, t.lat);
+  }
+
+  /* ---- 18d. azimut de eje y (NCU, GW) ---- */
+  await page.evaluate(() => cargaPlanta('bagnarelli'));
+  for (let i = 0; i < 60; i++) {
+    if (await page.evaluate(() => !!(PLANTA && PLANTA._un && PLANTA._un.length))) break;
+    await page.waitForTimeout(500);
+  }
+  await page.waitForTimeout(1200);
+  {
+    const t = await page.evaluate(() => ({
+      az: PLANTA.az, lineas: (PLANTA._filas || []).length,
+      rot: (PLANTA._un || [])[0].rot }));
+    /* `rot` del layout viene en GRADOS. Tomarlo como radianes daba 1358°. */
+    check('Bagnarelli trae su azimut de eje (23,7°)', Math.abs(t.az - 23.7) < 0.01, t.az);
+    check('y llega al render en RADIANES', Math.abs(t.rot - 23.7 * Math.PI / 180) < 1e-9, t.rot);
+    /* Con el eje girado, agrupar por X daría una línea por seguidor. En el marco
+       del eje salen las 6-7 líneas reales de la implantación. */
+    check('las filas se agrupan en el MARCO DEL EJE, no por X',
+          t.lineas <= 8, t.lineas + ' líneas para 17 seguidores');
+  }
+  await page.evaluate(() => cargaPlanta('elburgo'));
+  for (let i = 0; i < 60; i++) {
+    if (await page.evaluate(() => !!(PLANTA && PLANTA._un && PLANTA._un.length))) break;
+    await page.waitForTimeout(500);
+  }
+  await page.waitForTimeout(1500);
+  {
+    const t = await page.evaluate(() => Array.prototype.map.call(
+      document.querySelectorAll('#lect .l'), e => e.querySelector('.n').textContent));
+    /* No todas las TCU hablan con todas las NCU: cada NCU lleva DOS gateways y
+       cada TCU cuelga de uno. El Burgo tiene 2 mástiles y CUATRO grupos. */
+    const g = t.filter(x => /NCU \d+ · GW \d+/.test(x));
+    check('la cobertura se desglosa por (NCU, GW), que es el ámbito real',
+          g.length === 4, g.join(' | '));
   }
   await page.click('[data-p=""]'); await page.waitForTimeout(1200);
 
