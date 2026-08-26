@@ -12,11 +12,27 @@ y localiza el punto único de fallo.
   Cobertura 3D): viga de torsión, correas, módulos, slew drive, TCU, seccionador,
   pilas, amortiguadores y el eje de transmisión de la bifila — y con los otros
   dos extremos de la malla: la **NCU** en su poste de 2,95 m (látigo a 3,15 m) y
-  la **HSU** en su torre de 8 m (látigos a ~8,3 m), cotas de sus planos vía
+  la **HSU** en su torre de 8 m (látigos en su brazo, a 6,50 m), cotas vía
   `equipos.js`. Dibuja los saltos TCU↔TCU, los tres TCU→NCU y el HSU→NCU, cada
   uno con su margen y su desglose. Geometría parametrizable (inclinación, caída
   de antena, paso de filas, altura de viga, altura de módulo, tramo dibujado,
   distancia y altura de la NCU, distancia de la HSU, suelo, radio).
+- **Plantas reales**: el selector carga el layout de El Burgo, Ayora, Fayón,
+  Páramo, Polvorín, Túnez o Bagnarelli y dibuja los seguidores instanciados en
+  sus coordenadas del DWG, con sus NCU, HSU y repetidores. Cada seguidor se
+  colorea por el margen de su salto directo a su NCU: en El Burgo, 23 de 215
+  (10,7 %) por debajo de 8 dB, o sea que dependen de la malla. La NCU y la HSU
+  se colocan arrastrando o escribiendo su coordenada.
+- **Pendientes medidas** (Ayora): las 1.508 filas a su cota y con su pendiente
+  N-S del levantamiento, el terreno dibujado de esas mismas cotas y cada mesa
+  apantallando a la suya. Cambia el resultado de 16 a 130 filas por debajo de
+  8 dB — un mapa sobre terreno plano de una planta que no lo es engaña.
+- **El día**: los seguidores se mueven con el sol (NOAA + `singleaxis` de pvlib
+  con backtracking, stow nocturno a 5° al este) con la estética de los 3D de la
+  casa, y el margen de cada salto se recalcula a cada hora. El ángulo de las
+  palas mueve el salto directo al coordinador de 5 dB al alba a 56 dB a
+  mediodía: el peor rato no es la noche, es el sol rasante. El salto entre
+  vecinos aguanta todo el día porque pasa por debajo de las mesas.
 - La **mesa como obstáculo**: una fila no es un muro desde el suelo, es una placa
   entre dos cotas. Con la antena de la TCU por debajo del canto bajo, el salto
   entre vecinos pasa POR DEBAJO de las filas; con la de la NCU por encima de la
@@ -41,8 +57,9 @@ y localiza el punto único de fallo.
 
 ## Componentes
 
-- Render: `index.html` + `seguidor.js` + `equipos.js` + `lib/` (three.js vendorizado)
-- QA del visor: `tests/test_visor_3d.js` (48 comprobaciones en Chromium)
+- Render: `index.html` + `seguidor.js` + `equipos.js` + `sol.js` + `lib/` (three.js vendorizado)
+  + el CAD real de la TCU (`tcu.glb`) y del seccionador (`secc.json`), los mismos del gemelo
+- QA del visor: `tests/test_visor_3d.js` (95 comprobaciones en Chromium)
 - QA del núcleo: `tests/test_nucleo.py` (19, incluida la paridad `.py` ↔ `.js`)
 - Núcleo + diagnóstico: `python/`
 - Port JS + demo de cobertura: `web/`

@@ -50,9 +50,21 @@ const SONDA = `(() => {
   const g0 = glassOf(rows[0].spin);
   g0.updateWorldMatrix(true, false);
   const nrm = new THREE.Vector3(0,1,0).transformDirection(g0.matrixWorld);
+  /* "Esta viga lleva TCU" se mira por el SILLÍN de fijación (chapa 0,05 x 0,012
+     x 0,21), que está tanto con la caja paramétrica como con el CAD real. Mirar
+     la caja hacía que la comprobación dependiera de si el glb había llegado. */
   const conTcu = rows.filter(r => { let f = false; r.spin.traverse(n => {
     const p = n.geometry && n.geometry.parameters;
-    if (p && eq(p.width,0.50) && eq(p.height,0.26) && eq(p.depth,0.36)) f = true; }); return f; }).length;
+    if (p && eq(p.width,0.05) && eq(p.height,0.012) && eq(p.depth,0.21)) f = true; }); return f; }).length;
+  const cad = { tcu: !!CAD.tcu, secc: !!CAD.secc, listo: CAD.listo,
+    conn: CAD.conn ? CAD.conn.toArray() : null, ancla: ANCLA.toArray(),
+    glb: (() => { let n = 0; rows.forEach(r => r.spin.traverse(o => {
+           if (o.isMesh && o.material && /^mat_/.test(o.material.name || '')) n++; })); return n; })(),
+    cajaTcu: (() => { let n = 0; rows.forEach(r => r.spin.traverse(o => {
+           const q = o.geometry && o.geometry.parameters;
+           if (q && eq(q.width,0.50) && eq(q.height,0.26) && eq(q.depth,0.36)) n++; })); return n; })(),
+    seccStep: (() => { let n = 0; rows.forEach(r => r.spin.traverse(o => {
+           if (o.geometry === CAD.secc) n++; })); return n; })() };
   const sc = sun.shadow.camera;
   let tube = null;
   rows[0].spin.traverse(n => { const p = n.geometry && n.geometry.parameters;
@@ -62,7 +74,7 @@ const SONDA = `(() => {
 
   // el látigo de la NCU y los de la HSU, medidos en el MUNDO
   const bbTop = o => { const b = new THREE.Box3().setFromObject(o); return b.max.y; };
-  const beta = +document.getElementById('tilt').value;
+  const beta = BETA;          // el que manda: el deslizador solo cuando el modo es manual
   const hA = Math.max(0.15, HTUBE - +document.getElementById('drop').value);
   const band = ZigbeePV.tableBand(0, HTUBE, CHORD, beta, M0);
 
@@ -105,8 +117,30 @@ const SONDA = `(() => {
     lect: [...document.querySelectorAll('#lect .l')].map(e => ({
       n: e.querySelector('.n').textContent, m: parseFloat(e.querySelector('.m').textContent),
       x: e.querySelector('.x').textContent })),
+    cad,
     shadowR: sc.right, span: SPAN(), pitch: P, htube: HTUBE, chord: CHORD, M0: M0,
-    hA, hncu: HNCU, dncu: DNCU
+    hA, hncu: HNCU, dncu: DNCU,
+    // el día
+    beta: BETA, modoSol, sol: sunState(),
+    sunY: sun.position.y, sunInt: sun.intensity, cielo: SKY.key,
+    /* Dónde arranca el enlace, medido contra las PIEZAS: la distancia del
+       extremo al látigo más cercano y al anemómetro. Es la comprobación que
+       faltaba — el enlace salía en la coordenada buena pero visualmente parecía
+       nacer del anemo, que está a la misma altura. */
+    anclaje: (() => {
+      const cerca = (p, g, pred) => { let d = 1e9;
+        g.traverse(o => { if (!o.isMesh || !pred(o)) return;
+          o.updateWorldMatrix(true, false);
+          const c = new THREE.Vector3().setFromMatrixPosition(o.matrixWorld);
+          d = Math.min(d, c.distanceTo(p)); });
+        return d; };
+      const esLatigo = o => { const q = o.geometry.parameters;
+        return q && q.radiusTop !== undefined && Math.abs(q.radiusTop - 0.005) < 1e-9; };
+      const esAnemo = o => { const q = o.geometry.parameters;
+        return q && q.radiusTop !== undefined && (Math.abs(q.radiusTop - 0.05) < 1e-9 || Math.abs(q.radiusTop - 0.045) < 1e-9); };
+      return { hsuLatigo: cerca(hsu.pos, hsu.g, esLatigo), hsuAnemo: cerca(hsu.pos, hsu.g, esAnemo),
+               ncuLatigo: cerca(ncu.pos, ncu.g, esLatigo) };
+    })()
   };
 })()`;
 
@@ -118,7 +152,13 @@ const SONDA = `(() => {
   page.on('pageerror', e => errs.push('pageerror: ' + e.message));
   page.on('console', m => { if (m.type() === 'error' && !/favicon/.test(m.text())) errs.push(m.text()); });
   await page.goto(URL, { waitUntil: 'networkidle' });
-  await page.waitForTimeout(1800);
+  /* El CAD (tcu.glb + secc.json) llega por red y la escena se rehace al
+     llegar. Sin esperarlo, medio banco saldría distinto según la carga. */
+  for (let i = 0; i < 60; i++) {
+    if (await page.evaluate(() => typeof CAD !== 'undefined' && CAD.listo)) break;
+    await page.waitForTimeout(500);
+  }
+  await page.waitForTimeout(600);
 
   const set = (id, v) => page.evaluate(([id, v]) => {
     const e = document.getElementById(id); e.value = v; e.dispatchEvent(new Event('input')); }, [id, v]);
@@ -136,8 +176,8 @@ const SONDA = `(() => {
   /* ---- 2. render y física, el MISMO seguidor ---- */
   check('la cara del módulo está a DIMS.off del eje del tubo', near(s.off, s.off0, 1e-6), s.off + ' vs ' + s.off0);
   check('la física usa esa misma cota (M0 = DIMS.off)', near(s.M0, s.off0, 1e-9), s.M0 + ' vs ' + s.off0);
-  { // el canto bajo de la mesa que apantalla, recalculado a mano
-    const b = 30 * Math.PI / 180;
+  { // el canto bajo de la mesa que apantalla, recalculado a mano con el ángulo vigente
+    const b = Math.abs(s.beta) * Math.PI / 180;   // la banda es simétrica: `tableBand` usa |tilt|
     const bot = s.htube + s.off0 * Math.cos(b) - (s.chord / 2) * Math.sin(b);
     const top = s.htube + s.off0 * Math.cos(b) + (s.chord / 2) * Math.sin(b);
     check('la mesa es una PLACA entre dos cotas, no un muro',
@@ -164,7 +204,10 @@ const SONDA = `(() => {
 
   /* ---- 5. NCU y HSU: cotas de plano y en el corte de la física ---- */
   check('la antena de la NCU, a la cota de su plano', near(s.ncuPos[1], s.ncuCat, 1e-9), s.ncuPos[1] + ' vs ' + s.ncuCat);
-  check('la antena de la HSU, a la cota de su plano', near(s.hsuPos[1], s.hsuCat, 1e-9), s.hsuPos[1] + ' vs ' + s.hsuCat);
+  check('la antena de la HSU, a la cota de montaje (6,50 m, en su brazo)',
+        near(s.hsuPos[1], s.hsuCat, 1e-9) && near(s.hsuCat, 6.50, 1e-9), s.hsuPos[1] + ' vs ' + s.hsuCat);
+  check('los látigos de la HSU NO están en la cabeza, junto al ultrasónico',
+        s.hsuTop - s.hsuPos[1] > 1.5, 'cabeza ' + s.hsuTop.toFixed(2) + ', antena ' + s.hsuPos[1]);
   check('el poste de la NCU llega a su cabeza (2,95 + látigo)', s.ncuTop > 3.3 && s.ncuTop < 3.5, s.ncuTop);
   check('la torre de la HSU llega a sus 8 m + cabeza', s.hsuTop > 8.4 && s.hsuTop < 8.7, s.hsuTop);
   check('NCU y HSU van en el MISMO corte que las TCU',
@@ -203,7 +246,8 @@ const SONDA = `(() => {
           s.ghost + ' vs ' + s.nSolid);
   }
 
-  /* ---- 9. el tilt llega al modelo, con su signo ---- */
+  /* ---- 9. el tilt llega al modelo, con su signo (en manual: con el sol lo manda la hora) ---- */
+  await page.click('[data-d="man"]'); await page.waitForTimeout(150);
   for (const beta of [30, -40, 0]) {
     await set('tilt', beta); await page.waitForTimeout(120);
     const t = await page.evaluate(SONDA);
@@ -214,14 +258,16 @@ const SONDA = `(() => {
           t.normal.map(v => v.toFixed(4)).join(','));
   }
   await set('tilt', 30);
+  await page.click('[data-d="sol"]'); await page.waitForTimeout(150);
 
   /* ---- 10. los mandos de NCU/HSU mueven la escena Y el cálculo ---- */
   await set('dncu', 60); await page.waitForTimeout(200);
   {
     const t = await page.evaluate(SONDA);
     check('alejar la NCU la mueve en la escena', near(t.ncuPos[0], (t.filas - 1) * t.pitch + 60, 0.1), t.ncuPos[0]);
-    check('alejar la NCU cambia la distancia del salto',
-          /60\.\d m|6[0-9]\.\d m/.test(t.lect[4].x), t.lect[4].x);
+    const dist = x => parseFloat(/·\s*([\d.]+) m/.exec(x)[1]);
+    check('alejar la NCU alarga el salto', dist(t.lect[4].x) > dist(s.lect[4].x) + 40,
+          dist(s.lect[4].x) + ' m -> ' + dist(t.lect[4].x) + ' m');
   }
   await set('dncu', 12); await page.waitForTimeout(200);
   /* El MECANISMO, no el total: subir la antena de la NCU por encima de la cresta
@@ -230,6 +276,10 @@ const SONDA = `(() => {
      El margen no es monótono, y eso también es física: el modelo de dos rayos
      mete sus nulos de interferencia por el camino. Se comprueba lo primero. */
   {
+    /* Con el ángulo que toque a esa hora la banda puede ser fina y el contraste
+       se estrecha. La afirmación es sobre la geometría de referencia (30°), así
+       que se fija a mano y se devuelve el mando al sol al terminar. */
+    await page.click('[data-d="man"]'); await set('tilt', 30); await page.waitForTimeout(150);
     const alto = await page.evaluate(SONDA);           // 3,15 m: por encima de la cresta
     await set('hncu', 1.0); await page.waitForTimeout(200);
     const bajo = await page.evaluate(SONDA);           // 1,00 m: por debajo del canto bajo
@@ -239,7 +289,7 @@ const SONDA = `(() => {
     check('el salto más corto a la NCU no cruza ninguna mesa: difracción 0',
           near(alto.rec.find(r => r.n === 'ncu2').dif, 0, 1e-9), alto.rec.find(r => r.n === 'ncu2').dif);
   }
-  await set('hncu', 3.15); await page.waitForTimeout(200);
+  await set('hncu', 3.15); await page.click('[data-d="sol"]'); await page.waitForTimeout(200);
 
   /* ---- 11. altura de módulo: escala el MÓDULO, no el tubo ---- */
   await set('chord', 4.5); await page.waitForTimeout(150);
@@ -260,6 +310,200 @@ const SONDA = `(() => {
     await page.click('[data-m="' + mods + '"]'); await page.waitForTimeout(1200);
     const t = await page.evaluate(SONDA);
     check('tramo de ' + mods + ' módulos por ala = ' + largo + ' m', near(t.span, largo, 0.02), t.span);
+  }
+
+  /* ---- 14. la señal va de ANTENA a ANTENA, no del anemómetro ---- */
+  await page.click('[data-m="7"]'); await page.waitForTimeout(1200);
+  s = await page.evaluate(SONDA);
+  check('el enlace de la HSU arranca EN el látigo', s.anclaje.hsuLatigo < 0.06, s.anclaje.hsuLatigo);
+  check('y no en el anemómetro ultrasónico, que está a la misma altura',
+        s.anclaje.hsuAnemo > 0.15, s.anclaje.hsuAnemo);
+  check('el enlace de la NCU arranca EN su látigo', s.anclaje.ncuLatigo < 0.06, s.anclaje.ncuLatigo);
+
+  /* ---- 14b. la TCU y el seccionador son los MISMOS que en los 3D ---- */
+  check('carga el CAD real de la TCU (tcu.glb)', s.cad.tcu === true);
+  check('carga la malla del STEP del seccionador (secc.json)', s.cad.secc === true);
+  check('las tres vigas del motor montan las 17 primitivas del glb',
+        s.cad.glb === 3 * 17, s.cad.glb);
+  check('y ya no queda ninguna caja paramétrica de TCU', s.cad.cajaTcu === 0, s.cad.cajaTcu);
+  /* Tres, no seis: el seccionador DC va SOLO en la viga del motor, junto a la
+     TCU (`SOLO_OESTE` en seguidor.js). La gemela lleva el eje de transmisión y
+     punto. */
+  check('el seccionador de las tres vigas del motor usa la malla del STEP',
+        s.cad.seccStep === 3, s.cad.seccStep);
+  {
+    /* El coax sale del conector DORADO real del glb, no de la estimación que
+       había (tcuX − 0,16, −0,225). Y lo que entra en la física —la ALTURA del
+       elemento— la sigue fijando el deslizador de caída: cambia el punto de
+       salida, no la cota. */
+    check('el coax sale del conector dorado del CAD, no de la estimación',
+          s.cad.conn !== null && Math.abs(s.cad.ancla[1] + 0.225) > 0.02,
+          'ancla ' + s.cad.ancla.map(v => v.toFixed(3)).join(','));
+    check('y la altura de la antena la sigue fijando la caída (la física no se mueve)',
+          near(s.antY, s.htube - 0.72, 1e-6), s.antY);
+    const d1 = Math.hypot(s.ants[1][0] - s.ants[0][0], s.ants[1][2] - s.ants[0][2]);
+    check('las tres antenas siguen separadas 2·paso exactos', near(d1, 2 * s.pitch, 1e-6), d1);
+  }
+
+  /* ---- 15. el día: el seguidor se mueve con el sol ---- */
+  const enHora = async (min) => { await set('hora', min); await page.waitForTimeout(150);
+                                  return page.evaluate(SONDA); };
+  {
+    await set('dia', 172); await set('lat', 41.5);     // 21 de junio
+    const alba = await enHora(420), medio = await enHora(720), tarde = await enHora(1020);
+    check('a mediodía el seguidor está casi plano', Math.abs(medio.beta) < 2, medio.beta);
+    check('por la mañana mira al ESTE (θ > 0, el canto bajo al este)', alba.beta > 20, alba.beta);
+    check('por la tarde mira al OESTE (θ < 0)', tarde.beta < -20, tarde.beta);
+    check('el sol sube y baja de verdad', alba.sol.elev < medio.sol.elev && tarde.sol.elev < medio.sol.elev,
+          [alba.sol.elev, medio.sol.elev, tarde.sol.elev].map(v => v.toFixed(1)).join(' / '));
+    check('la luz sigue al sol (más alta a mediodía)', medio.sunY > alba.sunY, medio.sunY.toFixed(1) + ' vs ' + alba.sunY.toFixed(1));
+    check('el cielo se repinta con la hora', alba.cielo !== medio.cielo, alba.cielo + ' | ' + medio.cielo);
+
+    /* Lo que hace útil el día: con las palas DE CANTO la banda de la mesa es un
+       muro y el salto al coordinador se cae; con las palas planas, casi no
+       apantalla. El peor rato no es la noche, es el alba. */
+    const mAlba = alba.lect[2].m, mMedio = medio.lect[2].m;
+    check('con las palas de canto el salto a la NCU se cae', mAlba < 15, mAlba + ' dB');
+    check('con las palas planas el mismo salto va holgado', mMedio > 40, mMedio + ' dB');
+    /* El salto entre vecinos aguanta el día entero. Ojo: NO siempre "pasa por
+       debajo" — con las palas muy de canto el borde bajo cae por debajo de la
+       antena y hasta ese salto empieza a cruzar mesa. Lo que se sostiene es que
+       aguanta, porque roza el borde en vez de atravesar la banda entera. */
+    check('el salto entre vecinos aguanta a las dos horas',
+          alba.lect[0].m > 40 && medio.lect[0].m > 40, alba.lect[0].m + ' / ' + medio.lect[0].m);
+    check('a mediodía la antena de la TCU sí queda bajo el canto de la mesa',
+          medio.hA < medio.band.bot, medio.hA + ' vs ' + medio.band.bot);
+
+    const noche = await enHora(60);
+    check('de noche los seguidores duermen en stow (5° al este)', Math.abs(noche.beta - 5) < 1e-6, noche.beta);
+    check('de noche la luz se apaga', noche.sunInt < 0.05, noche.sunInt);
+  }
+
+  /* ---- 16. backtracking: entra cuando hay sombra de fila que evitar ---- */
+  {
+    await set('hora', 420);
+    await set('pitch', 3); await page.waitForTimeout(200);      // GCR 0,79: las filas se pisan
+    const apretado = await page.evaluate(SONDA);
+    const wid = await page.evaluate(() => Sol.trueTrackAngle(90 - sunState().elev, sunState().az, 0, 0));
+    check('a paso corto el backtracking recoge el seguidor por debajo del astronómico',
+          apretado.beta < wid - 5, 'θ ' + apretado.beta.toFixed(1) + '° vs astronómico ' + wid.toFixed(1) + '°');
+    await page.evaluate(() => { const e = document.getElementById('bt'); e.checked = false; e.dispatchEvent(new Event('change')); });
+    await page.waitForTimeout(200);
+    const sinBt = await page.evaluate(SONDA);
+    check('sin backtracking el seguidor se va al astronómico (o a su tope)',
+          sinBt.beta > apretado.beta + 5, sinBt.beta.toFixed(1) + ' vs ' + apretado.beta.toFixed(1));
+    await page.evaluate(() => { const e = document.getElementById('bt'); e.checked = true; e.dispatchEvent(new Event('change')); });
+    await set('pitch', 6);
+  }
+
+  /* ---- 17. el mando manual sigue mandando ---- */
+  await page.click('[data-d="man"]'); await page.waitForTimeout(150);
+  await set('tilt', -33); await page.waitForTimeout(150);
+  s = await page.evaluate(SONDA);
+  check('en manual el ángulo es el del deslizador', near(s.beta, -33, 1e-9), s.beta);
+  check('en manual el deslizador NO está bloqueado',
+        await page.evaluate(() => !document.getElementById('tilt').disabled));
+  await page.click('[data-d="sol"]'); await page.waitForTimeout(150);
+  check('con el sol, el deslizador se bloquea (lo manda la hora)',
+        await page.evaluate(() => document.getElementById('tilt').disabled));
+
+  /* ---- 18. planta real: layout, equipos donde dice el DWG y colocación ---- */
+  await page.click('[data-p="fayon"]'); await page.waitForTimeout(2500);
+  {
+    const t = await page.evaluate(() => ({
+      trk: PLANTA.trk.length, ncus: PLANTA.ncus.length, hsus: PLANTA.meteo.length,
+      eq: PLEQ.length, inst: PLI.length,
+      pos: PLEQ.map(e => [e.tipo, +e.g.position.x.toFixed(2), +(-e.g.position.z).toFixed(2)]),
+      lect: [...document.querySelectorAll('#lect .m')].map(e => e.textContent) }));
+    check('carga el layout de la planta', t.trk === 24 && t.ncus === 1 && t.hsus === 1,
+          JSON.stringify([t.trk, t.ncus, t.hsus]));
+    check('los equipos van en su coordenada del DWG',
+          Math.abs(t.pos[0][1] - 50.49) < 0.01 && Math.abs(t.pos[0][2] - (-44.25)) < 0.01, JSON.stringify(t.pos));
+    check('los seguidores se dibujan instanciados (un mesh por tipo de pieza)', t.inst > 4, t.inst);
+    check('la lectura resume la cobertura de la planta', t.lect.length === 3, t.lect.join(' / '));
+  }
+  {
+    /* Colocar a mano: arrastre y casillas son el MISMO camino, y mover la NCU
+       tiene que mover el resultado — si no, el mando no está conectado. */
+    const antes = await page.evaluate(() => parseFloat(document.querySelector('#lect .m').textContent));
+    await page.evaluate(() => { const e = PLEQ.find(q => q.tipo === 'ncu'); mueveEquipo(e, e.dato.x - 300, e.dato.n + 200); update(); });
+    await page.waitForTimeout(800);
+    const t = await page.evaluate(() => ({
+      m: parseFloat(document.querySelector('#lect .m').textContent),
+      x: +document.getElementById('ncuX').value, n: +document.getElementById('ncuN').value,
+      px: +PLEQ.find(q => q.tipo === 'ncu').g.position.x.toFixed(2) }));
+    /* OJO: NO se exige que alejarla empeore. Con suelo perfecto el rizado de dos
+       rayos hace que alejar un equipo pueda MEJORAR el margen — esta misma
+       comprobación lo cazó (17,5 -> 18,7 dB al irse 360 m). Lo que se exige aquí
+       es que el mando esté CONECTADO: mover la NCU mueve el resultado. La caída
+       monotona con la distancia se comprueba abajo, con tierra real, que es
+       donde el rizado no la tapa. */
+    check('mover la NCU mueve la cobertura de la planta', Math.abs(t.m - antes) > 0.5, antes + ' -> ' + t.m);
+    check('las casillas siguen al arrastre', Math.abs(t.x - t.px) < 0.11, t.x + ' vs ' + t.px);
+    await page.evaluate(() => { const e = document.getElementById('ncuX'); e.value = 50.5; e.dispatchEvent(new Event('change')); });
+    await page.waitForTimeout(600);
+    const v = await page.evaluate(() => +PLEQ.find(q => q.tipo === 'ncu').g.position.x.toFixed(2));
+    check('y escribir la coordenada mueve el equipo', Math.abs(v - 50.5) < 0.01, v);
+    // con TIERRA REAL, sin el rizado por medio, alejarla sí empeora
+    await page.click('[data-g="real"]'); await page.waitForTimeout(600);
+    const cerca = await page.evaluate(() => parseFloat(document.querySelector('#lect .m').textContent));
+    await page.evaluate(() => { const e = PLEQ.find(q => q.tipo === 'ncu'); mueveEquipo(e, e.dato.x - 600, e.dato.n); update(); });
+    await page.waitForTimeout(800);
+    const lejos = await page.evaluate(() => parseFloat(document.querySelector('#lect .m').textContent));
+    check('con tierra real, alejar la NCU 600 m SÍ empeora', lejos < cerca - 5, cerca + ' -> ' + lejos);
+    await page.click('[data-g="pec"]'); await page.waitForTimeout(300);
+  }
+
+  /* ---- 18b. Ayora con las cotas MEDIDAS ---- */
+  await page.evaluate(() => cargaPlanta('ayora'));
+  for (let i = 0; i < 60; i++) {
+    if (await page.evaluate(() => PLANTA && PLANTA.cot && (PLANTA._un || []).length > 0)) break;
+    await page.waitForTimeout(1000);
+  }
+  await page.waitForTimeout(1500);
+  {
+    const t = await page.evaluate(() => {
+      const U = PLANTA._un || [], y = U.map(u => u.y), tl = U.map(u => Math.abs(u.tilt));
+      return { cot: !!PLANTA.cot, filas: PLANTA.cot.filas.length, un: U.length,
+               ymin: Math.min.apply(null, y), ymax: Math.max.apply(null, y),
+               pmax: Math.max.apply(null, tl) * 180 / Math.PI,
+               terreno: !!terreno,
+               eqY: PLEQ.map(e => e.g.position.y),
+               sin: parseInt([...document.querySelectorAll('#lect .m')][2].textContent, 10) };
+    });
+    check('Ayora trae sus cotas medidas', t.cot === true);
+    /* Con cotas la unidad pasa a ser la FILA: un bifila son dos, y el layout
+       solo daba una posición por unidad. 754 seguidores -> 1.508 filas. */
+    check('con cotas se dibuja FILA a fila (1.508, no 754)', t.filas === 1508 && t.un === 1508,
+          t.filas + ' / ' + t.un);
+    check('las filas van a su cota medida (91 m de desnivel)', t.ymax - t.ymin > 80,
+          t.ymin.toFixed(1) + ' … ' + t.ymax.toFixed(1) + ' m');
+    check('y con su pendiente N-S, que no es cero', t.pmax > 2, t.pmax.toFixed(2) + '°');
+    check('el terreno se dibuja con el relieve medido', t.terreno === true);
+    check('los equipos se apoyan en el terreno, no en el cero',
+          t.eqY.some(v => Math.abs(v) > 1), t.eqY.slice(0, 3).map(v => v.toFixed(1)).join(','));
+    /* Lo que justifica meterlas: en plano salían 16 filas por debajo de 8 dB;
+       con el relieve real son muchas más. El terreno no es decoración. */
+    check('el relieve cambia el resultado, y mucho', t.sin > 60, t.sin + ' filas por debajo de 8 dB');
+  }
+  await page.click('[data-p=""]'); await page.waitForTimeout(1200);
+
+  /* ---- 19. el rizado de dos rayos, dicho y no escondido ---- */
+  await page.click('[data-p=""]'); await page.waitForTimeout(1500);
+  {
+    /* Es lo que hace que alejar un equipo pueda MEJORAR el margen. Con suelo
+       perfecto el rebote es un espejo y el rizado es enorme; con tierra real,
+       pequeño. La página tiene que decirlo, no dejar un dB suelto. */
+    await set('dhsu', 50); await page.waitForTimeout(250);
+    const pec = await page.evaluate(() => { const l = [...document.querySelectorAll('#lect .l')].pop();
+      return { m: parseFloat(l.querySelector('.m').textContent), x: l.querySelector('.x').textContent }; });
+    await page.click('[data-g="real"]'); await page.waitForTimeout(300);
+    const real = await page.evaluate(() => { const l = [...document.querySelectorAll('#lect .l')].pop();
+      return { m: parseFloat(l.querySelector('.m').textContent), x: l.querySelector('.x').textContent }; });
+    check('con suelo perfecto el rizado se avisa', /± *\d+ dB en 3 m/.test(pec.x), pec.x);
+    check('con tierra real el rizado casi desaparece y no se avisa', !/± *\d+ dB en 3 m/.test(real.x), real.x);
+    check('la lectura da la probabilidad de enlace, no solo el dB', /p=\d+ %/.test(real.x), real.x);
+    await page.click('[data-g="pec"]'); await page.waitForTimeout(250);
   }
 
   check('sin errores de consola al final', errs.length === 0, errs.join(' | '));

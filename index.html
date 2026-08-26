@@ -55,8 +55,8 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Bifila · seguidores, NCU y HSU</h1>
-  <p class="sub">Tres seguidores bifila (6 filas) con el <b>modelo real de la casa</b> (<code>seguidor.js</code>), la <b>NCU</b> en su poste de 2,95 m y la <b>HSU</b> en su torre de 8 m (<code>equipos.js</code>, cotas de plano). Los saltos entre TCU pasan <i>por debajo</i> de las mesas; los que van a la NCU las <i>cruzan</i>. Coloreado por margen real. Gira con el ratón/dedo, rueda para acercarte.</p>
+  <h1>Bifila · seguidores, NCU y HSU, a lo largo del día</h1>
+  <p class="sub">Tres seguidores bifila (6 filas) con el <b>modelo real de la casa</b> (<code>seguidor.js</code>), la <b>NCU</b> en su poste de 2,95 m y la <b>HSU</b> en su torre de 8 m con los látigos en su brazo a 6,50 m (<code>equipos.js</code>, cotas de plano). Los saltos entre TCU pasan <i>por debajo</i> de las mesas; los que van a la NCU las <i>cruzan</i>. Los seguidores <b>se mueven con el sol</b>, y con ellos el margen: de canto al alba, planos a mediodía. Coloreado por margen real. Gira con el ratón/dedo, rueda para acercarte.</p>
 
   <div id="view">
     <canvas id="cv"></canvas>
@@ -87,6 +87,12 @@
         <input id="hncu" type="range" min="1" max="8" step="0.05" value="3.15"></div>
       <div><label>HSU: distancia a la NCU: <span class="val" id="vDhsu">8 m</span></label>
         <input id="dhsu" type="range" min="3" max="60" step="1" value="8"></div>
+      <div><label>Hora solar: <span class="val" id="vHora">13:00</span></label>
+        <input id="hora" type="range" min="0" max="1439" step="5" value="780"></div>
+      <div><label>Día del año: <span class="val" id="vDia">21 jun</span></label>
+        <input id="dia" type="range" min="1" max="365" step="1" value="172"></div>
+      <div><label>Latitud: <span class="val" id="vLat">41.5°</span></label>
+        <input id="lat" type="range" min="-45" max="60" step="0.5" value="41.5"></div>
     </div>
     <div class="row">
       <div><label>Suelo:</label>
@@ -99,6 +105,28 @@
         <div class="seg" id="segr">
           <button data-p="8">XBee RR (+8 dBm)</button>
           <button data-p="19" class="on">XBee-PRO RR (+19 dBm)</button>
+        </div>
+      </div>
+      <div><label>Planta:</label>
+        <div class="seg" id="segpl">
+          <button data-p="" class="on">Corte de estudio</button>
+          <button data-p="fayon">Fayón · 24</button>
+          <button data-p="tunez">Túnez · 19</button>
+          <button data-p="bagnarelli">Bagnarelli · 17</button>
+          <button data-p="polvorin">Polvorín · 119</button>
+          <button data-p="elburgo">El Burgo · 215</button>
+          <button data-p="paramo">Páramo · 396</button>
+          <button data-p="ayora">Ayora · 754</button>
+        </div>
+      </div>
+      <div id="eqbox" style="display:none"><label>Colocar a mano (m, E/N del DWG):</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
+          <span style="font-size:13px;color:var(--muted)">NCU</span>
+          <input id="ncuX" type="number" step="0.1" style="width:88px">
+          <input id="ncuN" type="number" step="0.1" style="width:88px">
+          <span style="font-size:13px;color:var(--muted)">HSU</span>
+          <input id="hsuX" type="number" step="0.1" style="width:88px">
+          <input id="hsuN" type="number" step="0.1" style="width:88px">
         </div>
       </div>
       <div><label>Tramo dibujado (módulos por ala):</label>
@@ -117,9 +145,25 @@
           <button data-v="hsu">HSU</button>
         </div>
       </div>
+      <div><label>Ángulo del seguidor:</label>
+        <div class="seg" id="segd">
+          <button data-d="sol" class="on">Sigue al sol</button>
+          <button data-d="man">Manual</button>
+        </div>
+      </div>
+      <div><label>Reproducir el día:</label>
+        <div class="seg" id="segp">
+          <button id="play">▶ Reproducir</button>
+          <button data-s="amanecer">Amanecer</button>
+          <button data-s="mediodia">Mediodía</button>
+          <button data-s="ocaso">Ocaso</button>
+        </div>
+      </div>
       <div><label class="chk"><input type="checkbox" id="pat" checked> Patrón de la antena</label></div>
       <div><label class="chk"><input type="checkbox" id="lnk" checked> Enlaces a la NCU</label></div>
+      <div><label class="chk"><input type="checkbox" id="bt" checked> Backtracking</label></div>
     </div>
+    <p class="note" id="sunl"></p>
     <div id="lect"></div>
     <p class="note" id="note"></p>
   </div>
@@ -127,8 +171,10 @@
 
 <script src="lib/three.min.js"></script>
 <script src="lib/OrbitControls.js"></script>
+<script src="lib/GLTFLoader.js"></script>
 <script src="seguidor.js"></script>
 <script src="equipos.js"></script>
+<script src="sol.js"></script>
 <script src="web/zigbee_pv_model.js"></script>
 <script>
 const $=id=>document.getElementById(id);
@@ -157,6 +203,15 @@ let P=6, HTUBE=1.5, CHORD=D.modH, MODS=7, DNCU=12, HNCU=ED.ncuAntY, DHSU=8;
 const NROWS=6, M0=D.off, LAM=Z.wavelength(), PRV=1.25;
 const GANT=3.0, SENS=-103; let PTX=19;
 let ground="pec", showPat=true, showNcuLinks=true;
+/* EL DÍA. El seguidor se mueve con el sol como en el resto de aplicaciones de la
+   casa: `sol.js` trae la posición solar (NOAA), el `singleaxis` de pvlib con su
+   backtracking y la receta de luz y cielo de los 3D. Aquí eso no es decoración:
+   el ángulo del seguidor es lo que sube y baja la banda de las mesas, así que el
+   margen de cada salto CAMBIA a lo largo del día — y el peor rato no es de
+   noche, es cuando las palas están de canto. */
+let BETA=30;                       // ángulo del seguidor que manda en la escena
+let modoSol=true, playing=false;
+const STOW=5;                      // stow nocturno del proyecto: 5° al ESTE
 /* Caída de catálogo del látigo de la TCU: 0,225 hasta el conector + `antHang`. */
 const DROP0=0.225+D.antHang;
 const ZANT=-(D.tcuX-0.16);           // los tres extremos viven en el mismo corte
@@ -192,9 +247,30 @@ function mesas(xa,xb,ownerA,ownerB,beta){
 }
 function enlace(xa,ha,ownerA,xb,hb,ownerB,beta){
   const tabs=mesas(xa,xb,ownerA,ownerB,beta);
-  const r=Z.predictLink({x:xa,y:0,ground:0,h:ha},{x:xb,y:0,ground:0,h:hb},params(),null,null,tabs);
+  const p=params();
+  const r=Z.predictLink({x:xa,y:0,ground:0,h:ha},{x:xb,y:0,ground:0,h:hb},p,null,null,tabs);
   r.mesas=tabs.length;
+  r.rizado=rizado(Math.abs(xb-xa),ha,hb,p);
   return r;
+}
+
+/* RIZADO DE DOS RAYOS. El rayo directo y el rebotado en el suelo se suman o se
+   cancelan segun la diferencia de camino, asi que el margen ONDULA con la
+   distancia: hay nulos en d = 2*h1*h2/(k*lambda) y entre ellos crestas. Es
+   fisica del modelo, no un fallo — pero significa que un dB suelto cerca de un
+   nulo NO es una promesa: tres metros lo mueven diez dB.
+   Se mide moviendo el enlace +-3 m y viendo cuanto baila. Con «conductor
+   perfecto» el rebote es un espejo y el rizado es brutal (decenas de dB); con
+   tierra real el suelo se traga parte y se queda en pocos dB — por eso, para
+   decidir un emplazamiento, el caso util es la tierra real. */
+function rizado(d,ha,hb,p){
+  let mn=1e9,mx=-1e9;
+  for(let i=-30;i<=30;i++){
+    const dd=Math.max(1,d+i*0.1);
+    const v=p.ptxDbm+p.gtxDbi+p.grxDbi-Z.twoRayPlDb(dd,ha,hb,p.fHz,p.epsR,p.sigmaGround,p.pol)-p.rxSensDbm;
+    if(v<mn)mn=v; if(v>mx)mx=v;
+  }
+  return mx-mn;
 }
 
 /* ---- patrón del dipolo sobre el suelo (dibujo) ---- */
@@ -223,9 +299,10 @@ const estadoDe=m=> m<0?"sin enlace":(m<8?"al límite":(m<25?"justo":"holgado"));
  * fila lleva un `yaw` de 90°: modelo (x,y,z) → escena (z, y, −x).
  * ==========================================================================*/
 const cv=$("cv"), labelBox=$("labels");
-let renderer,scene,camera,controls,sun,groundMesh,fieldG;
+let renderer,scene,camera,controls,sun,hemi,groundMesh,fieldG;
+const SKY={cv:null,tex:null,key:""};
 let rows=[], pairs=[], chordTargets=[], links=null, labels=[];
-let ncu=null, hsu=null;
+let ncu=null, hsu=null, AP=null;
 let webgl=true;
 
 try{ renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true}); }catch(e){ webgl=false; }
@@ -269,9 +346,14 @@ function initScene(){
   scene=new THREE.Scene();
   scene.fog=new THREE.Fog(0x97a9b4,120,900);   // bruma del horizonte: disuelve el borde del suelo
 
-  const skyMat=new THREE.MeshBasicMaterial({
-    map:gradTex([[0,"#0d243c"],[0.28,"#2b5478"],[0.44,"#7ea0b8"],[0.499,"#97a9b4"],[0.52,"#5e5b4c"],[1,"#1d1f19"]]),
-    side:THREE.BackSide, depthWrite:false, fog:false, toneMapped:false });
+  /* El cielo es un canvas que se REPINTA con la hora (receta de la casa, en
+     `sol.js`): horizonte encendido al alba y al ocaso, cénit oscuro, y bajo el
+     horizonte el rescoldo del crepúsculo. */
+  SKY.cv=document.createElement("canvas"); SKY.cv.width=4; SKY.cv.height=512;
+  Sol.paintSky(SKY.cv, Sol.skyColors(45).top, Sol.skyColors(45).hor);
+  SKY.tex=new THREE.CanvasTexture(SKY.cv); SKY.tex.encoding=THREE.sRGBEncoding;
+  const skyMat=new THREE.MeshBasicMaterial({map:SKY.tex,side:THREE.BackSide,
+                                            depthWrite:false, fog:false, toneMapped:false});
   scene.add(new THREE.Mesh(new THREE.SphereGeometry(1500,32,20),skyMat));
 
   // entorno para los metales: sin envmap, `metalness` alta renderiza NEGRO
@@ -281,10 +363,13 @@ function initScene(){
   const sunBlob=new THREE.Mesh(new THREE.SphereGeometry(190,14,10),
                                new THREE.MeshBasicMaterial({color:0xfff0d0}));
   sunBlob.position.copy(SUNDIR).multiplyScalar(1100); envScene.add(sunBlob);
+  /* El entorno se hornea UNA vez, con el cielo de mediodía: es lo que reflejan
+     los metales. Rehornearlo por frame costaría más de lo que aporta — el sol,
+     el cielo y las sombras sí se mueven. */
   scene.environment=pmrem.fromScene(envScene,0.03,1,3000).texture;
   pmrem.dispose();
 
-  scene.add(new THREE.HemisphereLight(0x9dc0e6,0x33301f,0.42));
+  hemi=new THREE.HemisphereLight(0x9dc0e6,0x33301f,0.42); scene.add(hemi);
   sun=new THREE.DirectionalLight(0xfff1d8,1.45);
   sun.castShadow=true;
   sun.shadow.mapSize.set(2048,2048);
@@ -323,6 +408,7 @@ function materials(){
   MATS.pattern=new THREE.LineBasicMaterial({color:0x39d0ff,transparent:true,opacity:0.32,
                                             fog:false,toneMapped:false});
   MATS.equipos=Equipos.materials(THREE);
+  MATS.apoyo=Seguidor.apoyoMaterials(THREE);
   return MATS;
 }
 
@@ -340,6 +426,76 @@ function disposeTree(o){
   o.traverse(n=>{ if(n.geometry) n.geometry.dispose(); });
 }
 
+/* ============================================================================
+ * EL CAD REAL DE LA TCU Y DEL SECCIONADOR
+ * `seguidor.js` trae de los dos una caja paramétrica: la que sirve para el
+ * sillín, los abarcones y las cotas. El gemelo digital y Cobertura 3D dibujan
+ * encima el CAD de verdad —`tcu.glb` (17 primitivas, con su seta roja y su
+ * conector DORADO de antena) y `secc.json` (la malla del STEP del DS132EL)—, y
+ * este visor no tenía por qué ser el único con las cajas.
+ *
+ * Se montan con la MISMA matriz que Cobertura 3D (`_TCUMOUNT`: giro de 90°,
+ * volteo y bajada a −0,16 para que la chapa superior no se meta en el tubo) y
+ * con su mismo retoque de materiales (los metales del glb salen NEGROS sin
+ * reflejo, así que se les baja `metalness`; la seta, roja).
+ *
+ * Y algo que no es solo dibujo: el conector dorado (`mat_14`) es el punto REAL
+ * del que sale el coax. La antena colgaba de una estimación (`tcuX − 0,16`);
+ * ahora cuelga de donde cuelga. La ALTURA del elemento —la que entra en la
+ * física— la sigue fijando el deslizador de caída, así que los márgenes no se
+ * mueven por esto: cambia el punto de salida, no la cota.
+ *
+ * Carga PROGRESIVA: son ficheros que se piden por red, así que abriendo la
+ * página con doble clic (file://) no llegan. Si fallan, se queda la caja
+ * paramétrica y el visor funciona igual — que es como se comporta `terreno.html`
+ * con su seccionador.
+ * ==========================================================================*/
+const CAD={tcu:null, tcuCtr:null, conn:null, secc:null, listo:false};
+/* De dónde SALE el coax, en el marco del modelo (sin basculación). Con el CAD
+   cargado es el conector dorado de verdad; sin él, la estimación de siempre. */
+function anclaAntena(){
+  if(CAD.conn&&CAD.tcuCtr) return CAD.conn.clone().sub(CAD.tcuCtr).applyMatrix4(TCUMOUNT);
+  return new THREE.Vector3(D.tcuX-0.16,-0.225,0);
+}
+const TCUMOUNT=(()=>{ const m=new THREE.Matrix4().makeRotationY(Math.PI/2);
+  m.multiply(new THREE.Matrix4().makeRotationX(Math.PI));
+  m.setPosition(D.tcuX,-0.16,0); return m; })();
+
+function vísteCAD(o){                       // el retoque de materiales de la casa
+  if(!o.isMesh) return;
+  const src=(o.material&&o.material.isMaterial)?o.material:null;
+  const m=src?src.clone():new THREE.MeshStandardMaterial({color:0xe8e4dc});
+  if(m.metalness!=null) m.metalness=Math.min(m.metalness,0.18); else m.metalness=0.15;
+  if(m.roughness==null||m.roughness<0.45) m.roughness=0.6;
+  if(src&&src.name==='mat_1'){ m.color=new THREE.Color(0xcc1417); m.metalness=0.10; m.roughness=0.5; }   // la SETA, roja
+  m.needsUpdate=true; o.material=m;
+  o.castShadow=true; o.receiveShadow=true;
+}
+
+function cargaCAD(){
+  const pend=[];
+  if(typeof THREE.GLTFLoader==='function'){
+    pend.push(new Promise(res=>{
+      new THREE.GLTFLoader().load('tcu.glb',gl=>{
+        const sc=gl.scene; sc.updateMatrixWorld(true);
+        const bb=new THREE.Box3().setFromObject(sc);
+        CAD.tcuCtr=bb.getCenter(new THREE.Vector3());
+        // conector de ANTENA = el material DORADO (mat_14), único en el glb
+        sc.traverse(o=>{ if(!o.isMesh||!o.material||!o.material.color||CAD.conn) return;
+          const c=o.material.color;
+          if(c.r>0.6&&c.g>0.30&&c.b<0.6&&(c.r-c.b)>0.35&&c.g<c.r)
+            CAD.conn=new THREE.Box3().setFromObject(o).getCenter(new THREE.Vector3());
+        });
+        CAD.tcu=sc; res();
+      }, undefined, ()=>res());
+    }));
+  }
+  pend.push(fetch('secc.json',{cache:'no-store'}).then(r=>{ if(!r.ok) throw 0; return r.json(); })
+    .then(j=>{ const g=new THREE.BufferGeometryLoader().parse(j); g.rotateY(Math.PI/2); CAD.secc=g; })
+    .catch(()=>{}));
+  return Promise.all(pend).then(()=>{ CAD.listo=true; });
+}
+
 /* ------------------------------ el campo ------------------------------ */
 let BUILT_SPAN=0;                            // largo del tramo YA construido: `D.span` vuelve al
 const SPAN=()=>BUILT_SPAN||D.span;           // canónico de 28 módulos en cuanto se suelta el modelo
@@ -350,6 +506,7 @@ function buildField(){
   while(fieldG.children.length){ const c=fieldG.children.pop(); disposeTree(c); }
   rows=[]; pairs=[]; chordTargets=[]; links=null; ncu=null; hsu=null; patKey="";
 
+  AP=Seguidor.apoyoGeoms(THREE,{postH:Math.max(0.4,HTUBE-0.253)});
   const prevMods=D.modsPerStr;
   Seguidor.setModsPerStr(MODS);
   BUILT_SPAN=D.span;
@@ -358,11 +515,30 @@ function buildField(){
   for(let i=0;i<NROWS;i++){
     const west=ANTROWS.indexOf(i)>=0;                  // la viga del MOTOR es la que lleva TCU + antena
     const beam=Seguidor.buildBeam(THREE,{west:west,detail:"full",size:"largo",materials:mats,
-                                         skip:{antena:1,antenatip:1,soporte:1}});
+                                         skip:{antena:1,antenatip:1,soporte:1,tcu:CAD.tcu?1:0}});
     const g=new THREE.Group();
     const yaw=new THREE.Group(); yaw.rotation.y=Math.PI/2;   // tubo del modelo (+X) → eje Z de la escena
     yaw.add(beam.spin,beam.static);
     g.add(yaw); fieldG.add(g);
+
+    // la TCU de verdad, en la viga del motor y basculando con el tubo
+    if(west&&CAD.tcu){
+      const cl=CAD.tcu.clone(true); cl.position.sub(CAD.tcuCtr); cl.traverse(vísteCAD);
+      const wrap=new THREE.Group(); wrap.add(cl); wrap.applyMatrix4(TCUMOUNT); beam.spin.add(wrap);
+    }
+    // y el seccionador: la malla del STEP sustituye a la caja, y con ella sobran
+    // el mando y la maneta paramétricos, que el STEP ya trae
+    if(CAD.secc){
+      beam.spin.traverse(n=>{
+        const p=n.geometry&&n.geometry.parameters; if(!p||p.width===undefined) return;
+        const cerca=(a,b)=>Math.abs(a-b)<1e-9;
+        if(cerca(p.width,0.28)&&cerca(p.height,0.09)&&cerca(p.depth,0.16)){
+          n.geometry.dispose(); n.geometry=CAD.secc;
+          n.material=new THREE.MeshStandardMaterial({color:0xe8ebec,roughness:.5,metalness:.08});
+        }else if((cerca(p.radiusTop,0.055)&&cerca(p.height,0.02))||
+                 (cerca(p.width,0.085)&&cerca(p.height,0.016)&&cerca(p.depth,0.03))) n.visible=false;
+      });
+    }
 
     // el deslizador de altura de módulo escala SOLO las piezas del módulo
     beam.spin.traverse(n=>{
@@ -370,22 +546,44 @@ function buildField(){
       if(p&&p.depth!==undefined&&Math.abs(p.depth-D.modH)<0.06) chordTargets.push(n);
     });
 
+    /* APOYOS. Ya no son una caja: son el apoyo entero de la casa —perfil C,
+       tambor con sus ranuras, horquilla PRE01, virola y CASQUILLO—, que vive en
+       `seguidor.js`. Lo único que decide esta página es DÓNDE van, que es lo
+       que de verdad cambia entre plantas. El casquillo abraza la viga, así que
+       cuelga del grupo que BASCULA; el resto es fijo. */
     const posts=[];
     const central=new THREE.Mesh(new THREE.BoxGeometry(0.22,1,0.32),mats.steel);
     central.castShadow=true; central.receiveShadow=true; yaw.add(central); posts.push({m:central,top:-0.28});
     [-dd,dd].forEach(x=>{
-      const pl=new THREE.Mesh(new THREE.BoxGeometry(0.14,1,0.22),mats.pila);
-      pl.castShadow=true; pl.receiveShadow=true; pl.position.x=x; yaw.add(pl); posts.push({m:pl,top:-0.06});
-      const rod=new THREE.Mesh(new THREE.BoxGeometry(0.20,0.13,0.34),mats.steel);   // sillín del rodamiento
-      rod.position.set(x,-0.095,0); rod.castShadow=true; yaw.add(rod);
+      const col=new THREE.Mesh(AP.poste,mats.apoyo.steel);
+      col.castShadow=col.receiveShadow=true; col.position.x=x;
+      if(x>0) col.rotation.y=Math.PI;                 // el hueco de la C, siempre al exterior
+      yaw.add(col); posts.push({m:col,top:-0.253,poste:1});
+      [[AP.tambor,mats.apoyo.hdpe],[AP.horquilla,mats.apoyo.steel],[AP.virola,mats.apoyo.steel]].forEach(([g,mm])=>{
+        const p=new THREE.Mesh(g,mm); p.position.x=x; p.castShadow=p.receiveShadow=true; yaw.add(p);
+      });
+      const cq=new THREE.Mesh(AP.casquillo,mats.apoyo.hdpe);   // el casquillo GIRA con la viga
+      cq.position.x=x; cq.castShadow=cq.receiveShadow=true; beam.spin.add(cq);
     });
 
+    /* AMORTIGUADORES largos: pie a 30 cm del suelo con su ménsula al poste, y
+       cima en la esquina inferior de la viga por una orejeta que bascula. */
     const damps=beam.dampers.map(dp=>{
-      const rodM=new THREE.Mesh(new THREE.CylinderGeometry(0.021,0.021,1,10),mats.motor);
-      const bodyM=new THREE.Mesh(new THREE.CylinderGeometry(0.038,0.038,1,12),mats.steel);
-      rodM.castShadow=bodyM.castShadow=true;
-      yaw.add(rodM,bodyM);
-      return {a:dp.a,b:dp.b,rod:rodM,body:bodyM};
+      const L=Seguidor.amortiguadorLargo(THREE,dp.b[0],HTUBE);   // el pie se mide desde el SUELO
+      const bodyM=new THREE.Mesh(new THREE.CylinderGeometry(L.body.r,L.body.r,1,L.body.seg),mats.motor);
+      const rodM =new THREE.Mesh(new THREE.CylinderGeometry(L.rod.r,L.rod.r,1,L.rod.seg),mats.apoyo.steel);
+      const men  =new THREE.Mesh(new THREE.CylinderGeometry(L.mensula.r,L.mensula.r,1,L.mensula.seg),mats.steel);
+      const ojo  =new THREE.Mesh(new THREE.CylinderGeometry(0.045,0.045,0.06,10),mats.steel);
+      const ore  =new THREE.Mesh(new THREE.BoxGeometry(L.orejeta.w,L.orejeta.h,L.orejeta.d),mats.steel);
+      bodyM.castShadow=rodM.castShadow=men.castShadow=ore.castShadow=true;
+      yaw.add(bodyM,rodM,men,ojo);
+      ore.position.set(L.x,-0.0375,0.0425);
+      ore.quaternion.setFromUnitVectors(_up,new THREE.Vector3(0,-0.075,0.085).normalize());
+      beam.spin.add(ore);                              // la orejeta bascula con la viga
+      // la ménsula y el ojo del pie son FIJOS: se colocan una vez
+      _a.set(dp.b[0],L.pieY,0); _b.set(L.pie[0],L.pie[1],L.pie[2]);
+      spanCyl(men,_a,_b); ojo.position.copy(_b);
+      return {a:L.pie,b:L.cima,rod:rodM,body:bodyM};
     });
 
     let ant=null;
@@ -413,18 +611,28 @@ function buildField(){
   }
 
   /* --- NCU y HSU: los otros dos extremos de la malla --- */
-  const eq={materials:mats.equipos, antMaterial:mats.antena};
+  // aquí no hay una pasada de sombras sobre el grupo, así que se piden al modelo
+  const eq={materials:mats.equipos, antMaterial:mats.antena, shadows:true};
+  /* Punto cian EN EL LÁTIGO de cada equipo, igual que en la TCU. Sin él, en la
+     HSU el enlace llegaba a la cabeza de la torre —donde también está el
+     anemómetro ultrasónico— y se leía como si la señal saliera del anemo. Va de
+     antena a antena, y ahora se ve dónde está cada una. */
+  const marca=(g,p)=>{ const d=new THREE.Mesh(new THREE.SphereGeometry(0.055,12,8),mats.antena);
+                       d.position.copy(p); g.add(d); return d; };
   const bn=Equipos.buildNCU(THREE,eq);
   bn.group.rotation.y=Math.PI;              // el armario mira al campo
   fieldG.add(bn.group);
+  marca(bn.group,bn.antPos);
   ncu={g:bn.group, local:bn.antPos.clone(), pos:new THREE.Vector3()};
 
   const bh=Equipos.buildHSU(THREE,Object.assign({panelMaterial:mats.glass},eq));
   fieldG.add(bh.group);
+  marca(bh.group,bh.antPos);
   hsu={g:bh.group, local:bh.antPos.clone(), pos:new THREE.Vector3()};
 
   links=new THREE.Group(); links.frustumCulled=false; fieldG.add(links);
 
+  ANCLA=anclaAntena();
   Seguidor.setModsPerStr(prevMods);
   buildLabels();
 }
@@ -463,6 +671,229 @@ function patternGeom(hA){
   return g;
 }
 
+/* ============================================================================
+ * PLANTA REAL
+ * ============================================================================
+ * El corte de estudio (6 filas) sirve para entender el mecanismo; la pregunta
+ * de siting se hace sobre una planta. Aquí se carga el `<planta>_layout.json`
+ * de Cobertura Zigbee —los seguidores en sus coordenadas del DWG, las NCU, las
+ * HSU y los repetidores— y se dibuja con el MODELO instanciado
+ * (`Seguidor.instancePlan`): un InstancedMesh por tipo de pieza y N copias, que
+ * es lo que permite poner 754 seguidores sin fundir la GPU.
+ *
+ * Módulos por string: criterio de la casa — `LAYOUT.mods` si el layout lo trae,
+ * si no 28 (El Burgo). Cada seguidor lleva su `mr`: por debajo de 1 es un
+ * "medio" y se escala a lo largo del tubo, como hace Cobertura 3D.
+ *
+ * Terreno PLANO en esta fase. Las cotas medidas fila a fila existen para Ayora
+ * y San José (`<planta>_cotas.json`) y son la siguiente vuelta: cambian el
+ * despeje del rayo, así que no se dan por buenas hasta que se dibujen.
+ * ==========================================================================*/
+let PLANTA=null, plantaG=null, PLNOM="";
+const _mB=new THREE.Matrix4(), _mR=new THREE.Matrix4(), _mS=new THREE.Matrix4(), _mT=new THREE.Matrix4();
+
+/* COTAS MEDIDAS. `<planta>_cotas.json` trae, por seguidor bifila, sus DOS filas
+   con los extremos (n0,n1) y las cotas medidas en esos extremos (y0,y1),
+   relativas a la base de la planta. De ahí sale todo lo que hacía falta y hasta
+   ahora se daba por plano: la cota de cada fila, su pendiente N-S —atan2(y1−y0,
+   n1−n0), la misma lectura que hace el simulador de backtracking— y el suelo
+   sobre el que corre cada rayo. En Ayora son 1.508 filas con 91 m de desnivel y
+   pendientes de hasta 8,4°: no es un matiz, cambia el despeje.
+   Ojo: con cotas, la unidad que se dibuja pasa a ser la FILA, no el seguidor —
+   un bifila son dos, y el layout solo daba una posición por unidad. */
+/* Qué plantas tienen levantamiento en el repo. Se declara en vez de tantear:
+   pedir un fichero que no existe deja un 404 en la consola de cada carga, y una
+   consola con ruido es una consola que nadie mira. */
+const CON_COTAS={ayora:1};
+function cargaCotas(nom){
+  if(!CON_COTAS[nom]) return Promise.resolve(null);
+  return fetch("plantas/"+nom+"_cotas.json",{cache:"no-store"})
+    .then(r=>{ if(!r.ok) throw 0; return r.json(); })
+    .catch(()=>null);
+}
+
+function cargaPlanta(nom){
+  PLNOM=nom;
+  if(!nom){ PLANTA=null; rehacer(); return Promise.resolve(); }
+  return Promise.all([
+      fetch("plantas/"+nom+"_layout.json",{cache:"no-store"}).then(r=>{ if(!r.ok) throw 0; return r.json(); }),
+      cargaCotas(nom)])
+    .then(([j,cot])=>{
+      const mods=j.mods||28;
+      PLANTA={
+        nom:nom, titulo:j.title||nom, mods:mods,
+        trk:(j.trackers||[]).map(t=>{
+          const medio=/^medio/i.test(t.t||"");
+          const mr=(typeof t.mr==="number"&&t.mr>0&&t.mr<1)?t.mr:(medio?0.504:1);
+          return {x:t.x, n:t.n, rot:t.rot||0, mr:mr, medio:mr<1, ncu:t.ncu||1, id:t.id};
+        }),
+        ncus:(j.ncus||[]).map(c=>({x:c.x,n:c.n,name:c.name})),
+        meteo:(j.meteo||[]).map(c=>({x:c.x,n:c.n,name:c.name})),
+        reps:(j.reps||[]).map(c=>({x:c.x,n:c.n,name:c.name})),
+        cot:null
+      };
+      if(cot&&cot.t&&cot.t.length===PLANTA.trk.length){
+        const filas=[];
+        cot.t.forEach((t,i)=>{ (t.f||[]).forEach(f=>{
+          if(!f||!f.n||!f.y||f.n.length<2||f.y.length<2) return;
+          const asc=f.n[0]<=f.n[1];
+          filas.push({x:f.x, n0:asc?f.n[0]:f.n[1], n1:asc?f.n[1]:f.n[0],
+                      y0:asc?f.y[0]:f.y[1], y1:asc?f.y[1]:f.y[0],
+                      ncu:PLANTA.trk[i].ncu, art:!!f.art});
+        }); });
+        if(filas.length){
+          filas.forEach(f=>{ f.nm=(f.n0+f.n1)/2; f.ym=(f.y0+f.y1)/2;
+                             f.len=Math.abs(f.n1-f.n0);
+                             f.tilt=Math.atan2(f.y1-f.y0,f.n1-f.n0); });
+          PLANTA.cot={filas:filas, base:cot.base, xs:null};
+          PLANTA.cot.xs=[...new Set(filas.map(f=>Math.round(f.x*100)/100))].sort((a,b)=>a-b);
+          PLANTA.cot.porX={};
+          filas.forEach(f=>{ const k=Math.round(f.x*100)/100; (PLANTA.cot.porX[k]=PLANTA.cot.porX[k]||[]).push(f); });
+        }
+      }
+      rehacer();
+    })
+    .catch(()=>{ PLANTA=null; PLNOM=""; rehacer();
+      $("note").innerHTML="<b>No se pudo cargar la planta.</b> Los layouts se piden por red: con doble clic (file://) no llegan. Sírvelo y vuelve a probar."; });
+}
+
+/* Cota del terreno en (x,n). La define la fila más cercana en X, interpolando a
+   lo largo de su eje: es el mismo criterio con el que se midió (las cotas se
+   tomaron en los extremos de cada mesa), así que no se inventa un DEM que no
+   existe. Fuera de la banda de la fila se prolonga con su pendiente. */
+function cotaEn(x,n){
+  const C=PLANTA&&PLANTA.cot; if(!C) return 0;
+  const xs=C.xs;
+  let lo=0,hi=xs.length-1;
+  while(lo<hi){ const m=(lo+hi)>>1; if(xs[m]<x) lo=m+1; else hi=m; }
+  let best=null,bd=1e9;
+  for(const k of [xs[lo-1],xs[lo],xs[lo+1]]){
+    if(k===undefined) continue;
+    const arr=C.porX[k]; if(!arr) continue;
+    for(const f of arr){
+      const dn=(n<f.n0)?f.n0-n:(n>f.n1?n-f.n1:0);
+      const d=Math.abs(k-x)+dn*0.25;
+      if(d<bd){ bd=d; best=f; }
+    }
+  }
+  if(!best) return 0;
+  const u=(best.n1===best.n0)?0:(n-best.n0)/(best.n1-best.n0);
+  return best.y0+(best.y1-best.y0)*u;
+}
+
+/* Lo que se dibuja y se calcula: con cotas, la FILA medida (un bifila son dos);
+   sin ellas, el seguidor del layout sobre terreno plano. */
+function unidades(){
+  if(PLANTA.cot) return PLANTA.cot.filas.map(f=>({
+    x:f.x, n:f.nm, y:f.ym, tilt:f.tilt, mr:Math.min(1.2,f.len/SPANP), rot:0, ncu:f.ncu}));
+  return PLANTA.trk.map(t=>({x:t.x, n:t.n, y:0, tilt:0, mr:t.mr, rot:t.rot||0, ncu:t.ncu}));
+}
+
+/* El terreno, de las cotas medidas: una malla muestreada sobre la extensión de
+   la planta. Sin cotas se queda el plano de siempre. */
+let terreno=null;
+function buildTerreno(){
+  if(terreno){ scene.remove(terreno); terreno.geometry.dispose(); terreno=null; }
+  if(!PLANTA||!PLANTA.cot) { groundMesh.visible=true; return; }
+  groundMesh.visible=false;
+  const e=extentPlanta(), M=140, mg=40;
+  const w=e.w+2*mg, h=e.h+2*mg;
+  const g=new THREE.PlaneGeometry(w,h,M,M);
+  g.rotateX(-Math.PI/2);
+  const pos=g.attributes.position;
+  for(let i=0;i<pos.count;i++){
+    const X=pos.getX(i)+e.cx, Zc=pos.getZ(i)+e.cz;
+    pos.setY(i,cotaEn(X,-Zc));
+  }
+  g.computeVertexNormals();
+  terreno=new THREE.Mesh(g,new THREE.MeshStandardMaterial({
+    map:groundMesh.material.map, roughness:0.98, metalness:0, color:0x6f6a58}));
+  terreno.position.set(e.cx,-0.02,e.cz);
+  terreno.receiveShadow=true; scene.add(terreno);
+}
+
+/* Filas ordenadas por X: para saber qué mesas cruza un enlace. Es el criterio
+   de `terreno.html` — sólo apantalla la fila DONDE ESTÁ, en su banda de altura
+   y en su huella; un enlace a lo largo de una fila no cruza ningún panel. */
+function filasPlanta(){
+  if(!PLANTA) return null;
+  const m={}; PLANTA.trk.forEach(t=>{ const k=Math.round(t.x*10)/10; (m[k]=m[k]||[]).push(t); });
+  return Object.keys(m).map(Number).sort((a,b)=>a-b).map(x=>({x:x, trk:m[x]}));
+}
+
+/* Mesas que cruza un salto en planta: se recorre el enlace y se apunta cada
+   fila cuya huella pisa, con su distancia al Tx. */
+function mesasEnPlanta(ax,an,bx,bn,beta,hw){
+  if(!PLANTA||!PLANTA._filas) return [];
+  const F=PLANTA._filas, D2=Math.hypot(bx-ax,bn-an);
+  if(D2<1e-6) return [];
+  const lo=Math.min(ax,bx)-hw, hi=Math.max(ax,bx)+hw, out=[];
+  for(let i=0;i<F.length;i++){
+    const f=F[i];
+    if(f.x<lo||f.x>hi) continue;
+    // ¿a qué distancia del Tx corta el enlace el plano x = f.x?
+    if(Math.abs(bx-ax)<1e-9) continue;                       // enlace a lo largo de la fila: no cruza
+    const u=(f.x-ax)/(bx-ax);
+    if(u<=0.01||u>=0.99) continue;                           // los extremos son sus propias filas
+    const nn=an+(bn-an)*u;
+    // ...y ¿hay mesa de esa fila a esa altura N?
+    let hay=false;
+    for(let k=0;k<f.trk.length;k++){
+      const t=f.trk[k], L=SPANP*t.mr/2;
+      if(nn>=t.n-L-1&&nn<=t.n+L+1){ hay=true; break; }
+    }
+    if(!hay) continue;
+    const b=Z.tableBand(cotaEn(f.x,nn),HTUBE,CHORD,beta,M0);   // la mesa apantalla a SU cota
+    b.x=u*D2;
+    out.push(b);
+  }
+  return out;
+}
+let SPANP=64.7;
+
+/* ------------------------------ el sol ------------------------------ */
+/* Marco: +X = este, +Z = sur (el tubo va N-S), +Y arriba. El ángulo positivo
+   del seguidor deja la cara mirando al ESTE — la misma convención que `pvlib`
+   (`surfaceOrient` con axisAz 0 da azimut 90 para θ>0) y la misma que el render,
+   donde β>0 baja el canto hacia +X. Por eso θ entra en la escena tal cual. */
+function sunState(){
+  const min=+$("hora").value, dia=+$("dia").value, lat=+$("lat").value;
+  const ms=Date.UTC(2026,0,1)+(dia-1)*86400000+min*60000;
+  const p=Sol.solarPos(ms,lat,0);
+  const gcr=Math.max(0.05,Math.min(0.95,CHORD/P));      // la GCR sale de la geometría de esta página
+  const th=Sol.singleaxis(p.zen,p.az,{axisTilt:0,axisAz:0,maxAngle:55,
+                                      backtrack:$("bt").checked,gcr:gcr,crossAxisTilt:0});
+  const noche=!isFinite(th);
+  return {elev:p.elev,az:p.az,theta:noche?STOW:th,noche:noche,gcr:gcr,min:min};
+}
+
+const _sv=new THREE.Vector3();
+function applySol(st){
+  const c=Sol.skyColors(st.elev), look=Sol.sunLook(st.elev);
+  const k=Sol.paintSky(SKY.cv,c.top,c.hor);
+  if(k!==SKY.key){ SKY.key=k; SKY.tex.needsUpdate=true; }
+  scene.fog.color.setRGB(c.hor[0],c.hor[1],c.hor[2]);   // la bruma, EXACTAMENTE del color del horizonte: aclararla dejaba una raya pálida donde se juntan
+
+  const width=rowX(NROWS-1), span=SPAN(), total=xHSU()+6;
+  const R=Math.max(total,span)*0.75+14;
+  sun.target.position.set(total/2,HTUBE,0);
+  const v=Sol.sunVector(Math.max(st.elev,1.5),st.az);   // rasante: por debajo de ~1,5° la sombra se va al infinito
+  _sv.set(v.x,v.y,v.z);
+  sun.position.copy(sun.target.position).addScaledVector(_sv,Math.max(60,R*2.2));
+  if(st.noche){ sun.intensity=0.02; hemi.intensity=0.10; }
+  else{
+    sun.color.setRGB(look.color[0],look.color[1],look.color[2]);
+    sun.intensity=look.intensity; hemi.intensity=look.hemi;
+  }
+  /* La caja de sombra sigue al sol: con el sol rasante la escena vista desde él
+     se estira, y con el frustum de mediodía las filas se quedan sin sombra. */
+  const el=Math.max(st.elev,1.5)*Math.PI/180;
+  const vy=Math.max(R*0.5, R*Math.sin(el)+span*0.6*Math.cos(el));
+  const sc=sun.shadow.camera;
+  sc.left=-R; sc.right=R; sc.top=vy; sc.bottom=-vy; sc.near=1; sc.far=R*5+120;
+  sc.updateProjectionMatrix();
+}
+
 /* ------------------------------ colocación ------------------------------ */
 function layout(){
   const span=SPAN(), width=rowX(NROWS-1), total=xHSU()+6, mg=Math.max(8,0.35*span);
@@ -473,7 +904,10 @@ function layout(){
 
   rows.forEach((r,i)=>{
     r.g.position.set(rowX(i),HTUBE,0);
-    r.posts.forEach(p=>{ const h=Math.max(0.25,HTUBE+p.top); p.m.scale.y=h; p.m.position.y=p.top-h/2; });
+    r.posts.forEach(p=>{
+      if(p.poste){ p.m.position.y=p.top-(HTUBE+p.top)/2; return; }   // el perfil C ya nace con su largo
+      const h=Math.max(0.25,HTUBE+p.top); p.m.scale.y=h; p.m.position.y=p.top-h/2;
+    });
   });
   pairs.forEach(p=>{
     p.g.position.set((2*p.k+0.5)*P,HTUBE,0);
@@ -490,12 +924,118 @@ function layout(){
   hsu.g.position.set(xHSU(),0,ZANT);
   hsu.pos.set(xHSU()+hsu.local.x, hsu.local.y, ZANT+hsu.local.z);
 
-  const R=Math.max(total,span)*0.75+14;
-  sun.target.position.set(total/2,HTUBE,0);
-  sun.position.copy(sun.target.position).addScaledVector(SUNDIR,Math.max(60,R*2.2));
-  const sc=sun.shadow.camera;
-  sc.left=-R; sc.right=R; sc.top=R; sc.bottom=-R; sc.near=1; sc.far=R*5+120;
-  sc.updateProjectionMatrix();
+  // la luz y su caja de sombra las coloca `applySol`: dependen de la hora
+}
+
+/* ---------------------- render de la planta (instanciado) ---------------------- */
+let PLI=[], PLEQ=[], PLMESA=null;
+function buildPlanta(){
+  const mats=materials();
+  while(fieldG.children.length){ const c=fieldG.children.pop(); disposeTree(c); }
+  rows=[]; pairs=[]; chordTargets=[]; links=null; ncu=null; hsu=null; PLI=[]; PLEQ=[]; PLMESA=null; patKey="";
+  plantaG=new THREE.Group(); fieldG.add(plantaG);
+
+  const prev=D.modsPerStr;
+  Seguidor.setModsPerStr(PLANTA.mods);
+  SPANP=D.span; BUILT_SPAN=D.span;
+  PLANTA._filas=filasPlanta();
+  buildTerreno();
+  PLANTA._un=null;
+  const UN=PLANTA._un=unidades();   // filas medidas (con cotas) o seguidores del layout
+  const N=UN.length;
+  const plan=Seguidor.instancePlan(THREE,{detail:"mass",size:"largo",west:true});
+  plan.forEach(tp=>{
+    if(tp.motorLink||tp.damperLink||tp.antenna) return;          // los gestiona la app por frame; en planta se omiten
+    const geom=tp.geom(THREE);
+    let mat=mats[tp.mat];
+    /* La mesa deja de ser vidrio con células: en planta ES el mapa de cobertura,
+       y sobre la textura oscura del panel el color por instancia no se lee. */
+    /* En planta la mesa ES el mapa de cobertura, no un panel: se pinta SIN luz
+       ni tone mapping, para que el color sea exactamente el de la leyenda. Con
+       un material iluminado, un verde holgado salía crema y no se leía. */
+    if(tp.key==="mesa") mat=new THREE.MeshBasicMaterial({color:0xffffff,toneMapped:false});
+    const im=new THREE.InstancedMesh(geom,mat,N*tp.locals.length);
+    im.frustumCulled=false; im.castShadow=!!tp.cast; im.receiveShadow=true;
+    im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    plantaG.add(im);
+    PLI.push({key:tp.key,spin:tp.spin,locals:tp.locals,im:im});
+    if(tp.key==="mesa") PLMESA={im:im,per:tp.locals.length};
+  });
+  // los equipos, en sus coordenadas del DWG
+  const eq={materials:mats.equipos, antMaterial:mats.antena, shadows:true};
+  PLANTA.ncus.forEach((c,i)=>{
+    const b=Equipos.buildNCU(THREE,eq); b.group.rotation.y=Math.PI;
+    b.group.position.set(c.x,cotaEn(c.x,c.n),-c.n); plantaG.add(b.group);
+    const d=new THREE.Mesh(new THREE.SphereGeometry(0.055,12,8),mats.antena); d.position.copy(b.antPos); b.group.add(d);
+    PLEQ.push({tipo:"ncu",i:i,g:b.group,dato:c,ant:b.antPos.clone()});
+  });
+  PLANTA.meteo.forEach((c,i)=>{
+    const b=Equipos.buildHSU(THREE,Object.assign({panelMaterial:mats.glass},eq));
+    b.group.position.set(c.x,cotaEn(c.x,c.n),-c.n); plantaG.add(b.group);
+    const d=new THREE.Mesh(new THREE.SphereGeometry(0.055,12,8),mats.antena); d.position.copy(b.antPos); b.group.add(d);
+    PLEQ.push({tipo:"hsu",i:i,g:b.group,dato:c,ant:b.antPos.clone()});
+  });
+  links=new THREE.Group(); links.frustumCulled=false; plantaG.add(links);
+  Seguidor.setModsPerStr(prev);
+  buildLabelsPlanta();
+}
+function buildLabelsPlanta(){
+  labelBox.innerHTML=""; labels=[];
+  PLEQ.forEach(e=>{ labels.push(mkLabel(e.dato.name||e.tipo.toUpperCase(),
+    e.tipo==="ncu"?"#e8ecf2":"#cfd8e3",-26)); });
+}
+
+/* Coloca los seguidores y colorea cada uno por el margen de SU salto directo a
+   SU NCU (la que dice el layout). Verde = llega directo; rojo = ese seguidor
+   depende de la malla. */
+const _col=new THREE.Color();
+function pintaPlanta(beta,hA){
+  const rad=beta*Math.PI/180;
+  _mR.makeRotationX(rad);
+  const hw=(CHORD/2)*Math.cos(Math.abs(rad));
+  const p=params();
+  const ncuPos=PLEQ.filter(e=>e.tipo==="ncu").map(e=>({
+    x:e.g.position.x+ (e.g.rotation.y?-e.ant.x:e.ant.x),
+    n:-(e.g.position.z+(e.g.rotation.y?-e.ant.z:e.ant.z)),
+    y:e.g.position.y, h:HNCU }));   // y = cota del terreno bajo el poste
+  let peor=1e9, pmed=0, sin=0;
+  const NTOT=(PLANTA._un||unidades()).length;
+  const UN=PLANTA._un||(PLANTA._un=unidades());
+  for(let i=0;i<UN.length;i++){
+    const t=UN[i];
+    /* Cota medida + pendiente N-S de la fila. El tubo del modelo va en +X, así
+       que la pendiente a lo largo es un giro en Z, y el largo real de la mesa
+       entra como escala en ese mismo eje. */
+    _mT.makeTranslation(t.x,t.y+HTUBE,-t.n);
+    _mB.makeRotationY(Math.PI/2+(t.rot||0));
+    _mB.premultiply(_mT);
+    if(t.tilt) _mB.multiply(new THREE.Matrix4().makeRotationZ(-t.tilt));
+    _mS.makeScale(t.mr,1,1);
+    _mB.multiply(_mS);
+    for(let k=0;k<PLI.length;k++){
+      const L=PLI[k], base=i*L.locals.length;
+      for(let l=0;l<L.locals.length;l++){
+        const m=new THREE.Matrix4().copy(_mB);
+        if(L.spin) m.multiply(_mR);
+        m.multiply(L.locals[l]);
+        L.im.setMatrixAt(base+l,m);
+      }
+    }
+    // el salto directo a su NCU, con las cotas por medio
+    let mg=-99;
+    if(ncuPos.length){
+      const c=ncuPos[Math.min(t.ncu-1,ncuPos.length-1)]||ncuPos[0];
+      const tabs=mesasEnPlanta(t.x,t.n,c.x,c.n,beta,hw);
+      const d=Math.hypot(c.x-t.x,c.n-t.n);
+      mg=Z.predictLink({x:0,y:0,ground:t.y,h:hA},{x:d,y:0,ground:c.y,h:c.h},p,null,null,tabs).marginDb;
+    }
+    peor=Math.min(peor,mg); pmed+=mg; if(mg<8)sin++;
+    if(PLMESA){ _col.set(colorFor(mg));
+      for(let l=0;l<PLMESA.per;l++) PLMESA.im.setColorAt(i*PLMESA.per+l,_col); }
+  }
+  PLI.forEach(L=>{ L.im.instanceMatrix.needsUpdate=true; });
+  if(PLMESA&&PLMESA.im.instanceColor) PLMESA.im.instanceColor.needsUpdate=true;
+  return {peor:peor, medio:pmed/NTOT, sin:sin, n:NTOT};
 }
 
 /* ------------------------------ estado dinámico ------------------------------ */
@@ -522,8 +1062,9 @@ function drawLink(a,b,col,dashed){
   }
 }
 
+let ANCLA=new THREE.Vector3(0,0,0);
 function applyState(){
-  const beta=+$("tilt").value, drop=+$("drop").value, hA=Math.max(0.15,HTUBE-drop);
+  const beta=BETA, drop=+$("drop").value, hA=Math.max(0.15,HTUBE-drop);
   const rad=beta*Math.PI/180, cb=Math.cos(rad), sb=Math.sin(rad);
   const k=CHORD/D.modH;
   chordTargets.forEach(n=>{ n.scale.z=k; });
@@ -538,7 +1079,8 @@ function applyState(){
       d.body.position.lerpVectors(_a,_b,0.23);
     });
     if(!r.ant) return;
-    const ax=D.tcuX-0.16, ay=-0.225*cb, az=-0.225*sb;   // conector de la TCU, basculado con el tubo
+    const A=ANCLA;                                       // de dónde sale el coax (conector real si hay CAD)
+    const ax=A.x, ay=A.y*cb-A.z*sb, az=A.y*sb+A.z*cb;   // basculado con el tubo
     const yTip=hA-HTUBE;
     r.ant.tip.position.set(ax,yTip,az);
     r.ant.dot.position.set(ax,yTip,az);
@@ -623,7 +1165,7 @@ function frame(which){
   const span=SPAN(), width=rowX(NROWS-1);
   if(which==="antena"){
     const p=rows[3]&&rows[3].ant?rows[3].ant.pos:new THREE.Vector3(3*P,HTUBE,ZANT);
-    const beta=+$("tilt").value, side=(beta>=0?-1:1);   // el canto ALTO del panel
+    const side=(BETA>=0?-1:1);   // el canto ALTO del panel
     controls.target.set(p.x,p.y+0.25,p.z);
     camera.position.set(p.x+side*2.7,Math.max(0.8,p.y+0.55),p.z+2.9);
   }else if(which==="motor"){
@@ -635,6 +1177,10 @@ function frame(which){
   }else if(which==="hsu"){
     controls.target.set(hsu.pos.x,4.3,ZANT);
     camera.position.set(hsu.pos.x+8.5,5.6,ZANT+11.5);
+  }else if(PLANTA){
+    const e=extentPlanta(), d=Math.max(e.w,e.h)*0.85+60;
+    controls.target.set(e.cx,HTUBE,e.cz);
+    camera.position.set(e.cx-d*0.35,HTUBE+d*0.55,e.cz+d*0.75);
   }else{
     const total=xHSU()+4;
     const d=Math.max(total,span)*0.92+12;
@@ -663,17 +1209,46 @@ function drawLabels(){
     l.el.style.top =((-_pv.y*0.5+0.5)*H+l.dy)+"px";
   });
 }
-function tick(){
+let _tPrev=0, _acc=0;
+const PASO_MIN=5;                 // 5 min por paso: el día entero en ~17 s
+function tick(t){
   requestAnimationFrame(tick);
+  if(playing){
+    const dt=_tPrev?Math.min(0.2,(t-_tPrev)/1000):0; _tPrev=t; _acc+=dt;
+    if(_acc>=0.06){ _acc=0;
+      let m=+$("hora").value+PASO_MIN; if(m>1439)m=0;
+      $("hora").value=m; update();
+    }
+  }else _tPrev=t;
   resize(); controls.update(); renderer.render(scene,camera); drawLabels();
 }
 
 /* ------------------------------ interfaz ------------------------------ */
+function rehacer(){ if(PLANTA) buildPlanta(); else buildField(); update(); frame("campo"); }
+
 function update(){
   readParams();
+  const sl=sunState();
+  if(modoSol) BETA=sl.theta; else BETA=+$("tilt").value;
+  $("tilt").disabled=modoSol;
+  if(PLANTA){ updatePlanta(sl); return; }
   layout();
+  applySol(sl);
   const st=applyState();
-  $("vTilt").textContent=st.beta+"°";
+  $("vTilt").textContent=(modoSol?BETA.toFixed(1)+"° (sol)":BETA.toFixed(0)+"°");
+  const hh=String(Math.floor(sl.min/60)).padStart(2,"0"), mm=String(sl.min%60).padStart(2,"0");
+  $("vHora").textContent=hh+":"+mm;
+  $("vDia").textContent=new Date(Date.UTC(2026,0,1)+(+$("dia").value-1)*86400000)
+                          .toLocaleDateString("es-ES",{day:"numeric",month:"short",timeZone:"UTC"});
+  $("vLat").textContent=(+$("lat").value).toFixed(1)+"°";
+  const bot=HTUBE+M0*Math.cos(BETA*Math.PI/180)-(CHORD/2)*Math.abs(Math.sin(BETA*Math.PI/180));
+  $("sunl").innerHTML = sl.noche
+    ? `<b>Noche</b> — sol a ${sl.elev.toFixed(1)}°. Los seguidores duermen en stow a ${STOW}° al este, y el margen es el de esa postura.`
+    : `Sol a <b>${sl.elev.toFixed(1)}°</b> de altura y ${sl.az.toFixed(0)}° de azimut; el seguidor va a <b>${BETA.toFixed(1)}°</b>`+
+      `${$("bt").checked?" con backtracking":" (seguimiento astronómico, sin backtracking)"} para una GCR de ${sl.gcr.toFixed(2)}.`+
+      ` El canto bajo de la mesa queda a ${bot.toFixed(2)} m y la antena de la TCU a ${st.hA.toFixed(2)}: `+
+      (st.hA < bot ? `el salto entre vecinos pasa POR DEBAJO y solo lo roza la difracción.`
+                   : `con las palas tan de canto el canto bajo ha caído por DEBAJO de la antena, así que hasta el salto entre vecinos empieza a cruzar mesa.`);
   $("vDrop").textContent=st.drop.toFixed(2)+" m · antena "+st.hA.toFixed(2)+" m";
   $("vPitch").textContent=P.toFixed(1)+" m"; $("vHtube").textContent=HTUBE.toFixed(2)+" m";
   $("vChord").textContent=CHORD.toFixed(2)+" m";
@@ -685,15 +1260,100 @@ function update(){
     return `<div class="l"><span class="d" style="background:${c}"></span>`+
            `<span class="n">${e.n}</span>`+
            `<span class="m" style="color:${c}">${m.toFixed(1)} dB</span>`+
-           `<span class="x">${estadoDe(m)} · ${e.r.distanceM.toFixed(1)} m · `+
-           `${e.r.mesas} mesa${e.r.mesas===1?"":"s"} · dos rayos ${e.r.pl2rayDb.toFixed(1)} + difr. ${e.r.plDiffDb.toFixed(1)} dB</span></div>`;
+           `<span class="x">${estadoDe(m)} · p=${(100*e.r.pLink).toFixed(0)} % · ${e.r.distanceM.toFixed(1)} m · `+
+           `${e.r.mesas} mesa${e.r.mesas===1?"":"s"} · dos rayos ${e.r.pl2rayDb.toFixed(1)} + difr. ${e.r.plDiffDb.toFixed(1)} dB`+
+           (e.r.rizado>5?` · <b style="color:#e0a72c">±${e.r.rizado.toFixed(0)} dB en 3 m</b>`:``)+
+           `</span></div>`;
   }).join("");
 
-  $("note").innerHTML=`Tx ${PTX} dBm · Rx ${SENS} dBm · antena ${GANT} dBi en los dos extremos; dos rayos + difracción multiobstáculo (Deygout) sobre `+
+  const riz=st.lect.some(e=>e.r.rizado>5);
+  $("note").innerHTML=(riz?`<b style="color:#e0a72c">Ojo al rizado.</b> El rayo directo y el rebotado en el suelo se suman o se cancelan segun la distancia, `+
+      `asi que el margen ONDULA: hay nulos cada pocos metros y entre ellos crestas. Por eso alejar un equipo puede MEJORARLO. `+
+      `Es fisica del modelo, pero un dB suelto cerca de un nulo no es una promesa — mira la probabilidad p, que ya lleva dentro el desvanecimiento. `+
+      `Con <b>conductor perfecto</b> el suelo es un espejo y el rizado se dispara; con <b>tierra real</b> se queda en pocos dB, y es el caso con el que se decide un emplazamiento.<br>`:``)+
+    `Tx ${PTX} dBm · Rx ${SENS} dBm · antena ${GANT} dBi en los dos extremos; dos rayos + difracción multiobstáculo (Deygout) sobre `+
     `${ground==="pec"?"suelo perfecto":"tierra real"}, con el núcleo del repo (<code>web/zigbee_pv_model.js</code>). `+
     `Seguidor <code>seguidor.js</code> v${Seguidor.VERSION}, ${MODS} módulos por ala (tramo de ${SPAN().toFixed(1)} m); `+
     `NCU y HSU <code>equipos.js</code> v${Equipos.VERSION} (poste de ${ED.ncuMastH.toFixed(2)} m y torre de ${ED.hsuTowerH.toFixed(0)} m). `+
     `Los saltos a la NCU son DIRECTOS: si salen en rojo, ese seguidor necesita la malla.`;
+}
+
+/* La planta tiene su propio ciclo: no hay 6 filas que recolocar, hay N
+   seguidores que reorientar y recolorear, y los equipos donde los pongas. */
+function updatePlanta(sl){
+  const drop=+$("drop").value, hA=Math.max(0.15,HTUBE-drop);
+  const ext=extentPlanta();
+  groundMesh.position.set(ext.cx,-0.01,ext.cz);
+  groundMesh.material.map.repeat.set(2600/8,2600/8);
+  scene.fog.near=ext.diag*1.2+60; scene.fog.far=scene.fog.near*6;
+  solPlanta(sl,ext);
+  const r=pintaPlanta(BETA,hA);
+  PLEQ.forEach((e,i)=>{
+    const gy=e.tipo==="ncu"?ED.ncuAntY:ED.hsuTowerH;
+    labels[i].pos.set(e.g.position.x,gy+0.6,e.g.position.z);
+  });
+  while(links.children.length){ const c=links.children.pop(); c.geometry.dispose(); c.material.dispose(); }
+
+  $("vTilt").textContent=(modoSol?BETA.toFixed(1)+"° (sol)":BETA.toFixed(0)+"°");
+  const hh=String(Math.floor(sl.min/60)).padStart(2,"0"), mm=String(sl.min%60).padStart(2,"0");
+  $("vHora").textContent=hh+":"+mm;
+  $("vDia").textContent=new Date(Date.UTC(2026,0,1)+(+$("dia").value-1)*86400000)
+                          .toLocaleDateString("es-ES",{day:"numeric",month:"short",timeZone:"UTC"});
+  $("vLat").textContent=(+$("lat").value).toFixed(1)+"°";
+  $("vDrop").textContent=drop.toFixed(2)+" m · antena "+hA.toFixed(2)+" m";
+  $("vHtube").textContent=HTUBE.toFixed(2)+" m"; $("vChord").textContent=CHORD.toFixed(2)+" m";
+  $("vHncu").textContent=HNCU.toFixed(2)+" m";
+  $("lect").innerHTML=
+    `<div class="l"><span class="d" style="background:${colorFor(r.medio)}"></span><span class="n">Margen medio</span>`+
+    `<span class="m" style="color:${colorFor(r.medio)}">${r.medio.toFixed(1)} dB</span>`+
+    `<span class="x">salto DIRECTO de cada seguidor a su NCU</span></div>`+
+    `<div class="l"><span class="d" style="background:${colorFor(r.peor)}"></span><span class="n">El peor</span>`+
+    `<span class="m" style="color:${colorFor(r.peor)}">${r.peor.toFixed(1)} dB</span>`+
+    `<span class="x">de ${r.n} seguidores</span></div>`+
+    `<div class="l"><span class="d" style="background:${colorFor(r.sin?0:30)}"></span><span class="n">Necesitan la malla</span>`+
+    `<span class="m" style="color:${colorFor(r.sin?0:30)}">${r.sin}</span>`+
+    `<span class="x">${(100*r.sin/r.n).toFixed(1)} % por debajo de 8 dB de margen directo</span></div>`;
+  $("sunl").innerHTML = sl.noche
+    ? `<b>Noche</b> — sol a ${sl.elev.toFixed(1)}°, seguidores en stow a ${STOW}°.`
+    : `Sol a <b>${sl.elev.toFixed(1)}°</b> y ${sl.az.toFixed(0)}° de azimut; los seguidores van a <b>${BETA.toFixed(1)}°</b>.`;
+  const nun=(PLANTA._un||unidades()).length;
+  $("note").innerHTML=`<b>${PLANTA.titulo}</b> — ${PLANTA.trk.length} seguidores`+
+    (PLANTA.cot?` (${nun} filas medidas)`:``)+`, ${PLANTA.ncus.length} NCU y `+
+    `${PLANTA.meteo.length} HSU en sus coordenadas del DWG, con ${PLANTA.mods} módulos por string. `+
+    `Cada seguidor se colorea por el margen de su salto DIRECTO a su NCU (dos rayos + difracción por las mesas que cruza, `+
+    `núcleo del repo). Verde = llega solo; rojo = ese seguidor depende de la malla. `+
+    (PLANTA.cot
+      ? `<b>Con las cotas MEDIDAS</b>: cada fila a su altura y con su pendiente N-S, y el rayo corre sobre ese terreno — la mesa que apantalla lo hace a SU cota, no a la de nadie. `
+      : `<b>Terreno plano</b>: esta planta no trae cotas medidas en el repo. `)+
+    `Arrastra la NCU o la HSU por el suelo, o escribe su coordenada.`;
+}
+
+function extentPlanta(){
+  let x0=1e9,x1=-1e9,n0=1e9,n1=-1e9;
+  const U=PLANTA._un||(PLANTA._un=unidades());
+  U.forEach(t=>{ x0=Math.min(x0,t.x);x1=Math.max(x1,t.x);n0=Math.min(n0,t.n);n1=Math.max(n1,t.n); });
+  PLEQ.forEach(e=>{ const x=e.g.position.x,n=-e.g.position.z;
+    x0=Math.min(x0,x);x1=Math.max(x1,x);n0=Math.min(n0,n);n1=Math.max(n1,n); });
+  const w=x1-x0, h=n1-n0;
+  return {x0,x1,n0,n1,cx:(x0+x1)/2,cz:-(n0+n1)/2,w,h,diag:Math.hypot(w,h)+SPANP};
+}
+function solPlanta(sl,ext){
+  const c=Sol.skyColors(sl.elev), look=Sol.sunLook(sl.elev);
+  const k=Sol.paintSky(SKY.cv,c.top,c.hor);
+  if(k!==SKY.key){ SKY.key=k; SKY.tex.needsUpdate=true; }
+  scene.fog.color.setRGB(c.hor[0],c.hor[1],c.hor[2]);
+  const R=ext.diag*0.6+20;
+  sun.target.position.set(ext.cx,HTUBE,ext.cz);
+  const v=Sol.sunVector(Math.max(sl.elev,1.5),sl.az);
+  sun.position.copy(sun.target.position).addScaledVector(new THREE.Vector3(v.x,v.y,v.z),Math.max(120,R*2.2));
+  if(sl.noche){ sun.intensity=0.02; hemi.intensity=0.10; }
+  else{ sun.color.setRGB(look.color[0],look.color[1],look.color[2]);
+        sun.intensity=look.intensity; hemi.intensity=look.hemi; }
+  const el=Math.max(sl.elev,1.5)*Math.PI/180;
+  const vy=Math.max(R*0.5,R*Math.sin(el)+ext.h*0.6*Math.cos(el));
+  const sc=sun.shadow.camera;
+  sc.left=-R; sc.right=R; sc.top=vy; sc.bottom=-vy; sc.near=1; sc.far=R*5+200;
+  sc.updateProjectionMatrix();
 }
 
 function segClick(id,fn){
@@ -702,6 +1362,40 @@ function segClick(id,fn){
     [...$(id).children].forEach(x=>x.classList.toggle("on",x===b));
     fn(b);
   });
+}
+
+/* ---------------- colocar la NCU y la HSU a mano ----------------
+   Dos caminos para lo mismo, sincronizados: ARRASTRAR por el suelo (para
+   tantear un emplazamiento) y ESCRIBIR la coordenada E/N del DWG (para
+   reproducirlo y pegarlo en un informe). Se agarra el equipo con el ratón; el
+   plano de arrastre es el suelo, y al soltar se recalcula la cobertura. */
+const _ray=new THREE.Raycaster(), _pt=new THREE.Vector2();
+const _plano=new THREE.Plane(new THREE.Vector3(0,1,0),0), _hit=new THREE.Vector3();
+let arrastrando=null;
+function equipoEn(ev){
+  if(!PLEQ.length) return null;
+  const r=cv.getBoundingClientRect();
+  _pt.set(((ev.clientX-r.left)/r.width)*2-1, -((ev.clientY-r.top)/r.height)*2+1);
+  _ray.setFromCamera(_pt,camera);
+  for(const e of PLEQ){ if(_ray.intersectObject(e.g,true).length) return e; }
+  return null;
+}
+function sueloEn(ev){
+  const r=cv.getBoundingClientRect();
+  _pt.set(((ev.clientX-r.left)/r.width)*2-1, -((ev.clientY-r.top)/r.height)*2+1);
+  _ray.setFromCamera(_pt,camera);
+  return _ray.ray.intersectPlane(_plano,_hit)?_hit.clone():null;
+}
+function mueveEquipo(e,x,n){
+  e.g.position.set(x,cotaEn(x,n),-n); e.dato.x=x; e.dato.n=n;   // se apoya en el terreno
+  if(e===PLEQ.find(q=>q.tipo==="ncu")){ $("ncuX").value=x.toFixed(1); $("ncuN").value=n.toFixed(1); }
+  if(e===PLEQ.find(q=>q.tipo==="hsu")){ $("hsuX").value=x.toFixed(1); $("hsuN").value=n.toFixed(1); }
+}
+function casillas(){
+  const a=PLEQ.find(q=>q.tipo==="ncu"), b=PLEQ.find(q=>q.tipo==="hsu");
+  $("eqbox").style.display=PLEQ.length?"":"none";
+  if(a){ $("ncuX").value=a.dato.x.toFixed(1); $("ncuN").value=a.dato.n.toFixed(1); }
+  if(b){ $("hsuX").value=b.dato.x.toFixed(1); $("hsuN").value=b.dato.n.toFixed(1); }
 }
 
 if(webgl){
@@ -714,14 +1408,64 @@ if(webgl){
   update();
   frame("campo");
   tick();
+  /* El CAD llega por red: la página ya se ve con las cajas paramétricas y se
+     rehace cuando esté. Si no llega (file://), no pasa nada. */
+  cargaCAD().then(()=>{ if(CAD.tcu||CAD.secc){ buildField(); update(); } });
 
   segClick("seg",  b=>{ ground=b.dataset.g; update(); });
   segClick("segr", b=>{ PTX=+b.dataset.p; update(); });
   segClick("segm", b=>{ MODS=+b.dataset.m; buildField(); update(); });
   segClick("segv", b=>{ frame(b.dataset.v); });
+  segClick("segpl", b=>{ cargaPlanta(b.dataset.p).then(casillas); });
+
+  cv.addEventListener("pointerdown",ev=>{
+    const e=equipoEn(ev); if(!e) return;
+    arrastrando=e; controls.enabled=false; cv.setPointerCapture(ev.pointerId);
+  });
+  cv.addEventListener("pointermove",ev=>{
+    if(!arrastrando) return;
+    const p=sueloEn(ev); if(!p) return;
+    mueveEquipo(arrastrando,p.x,-p.z); update();
+  });
+  const suelta=()=>{ if(!arrastrando) return; arrastrando=null; controls.enabled=true; update(); };
+  cv.addEventListener("pointerup",suelta); cv.addEventListener("pointercancel",suelta);
+
+  ["ncuX","ncuN","hsuX","hsuN"].forEach(id=>$(id).addEventListener("change",()=>{
+    const a=PLEQ.find(q=>q.tipo==="ncu"), b=PLEQ.find(q=>q.tipo==="hsu");
+    if(a) mueveEquipo(a,+$("ncuX").value||0,+$("ncuN").value||0);
+    if(b) mueveEquipo(b,+$("hsuX").value||0,+$("hsuN").value||0);
+    update();
+  }));
+  segClick("segd", b=>{ modoSol=(b.dataset.d==="sol"); if(!modoSol)$("tilt").value=BETA.toFixed(0); update(); });
+  $("bt").addEventListener("change",update);
+  /* Saltos a las tres horas que enseñan el día: al amanecer las palas están de
+     canto y la banda de la mesa es un muro; a mediodía están planas y el campo
+     casi no apantalla. */
+  $("segp").addEventListener("click",e=>{
+    const b=e.target.closest("button"); if(!b) return;
+    if(b.id==="play"){ playing=!playing; b.textContent=playing?"⏸ Pausa":"▶ Reproducir";
+                       b.classList.toggle("on",playing); return; }
+    const lat=+$("lat").value, dia=+$("dia").value;
+    if(b.dataset.s==="mediodia") $("hora").value=720;
+    else{
+      // amanecer/ocaso: el primer (o último) minuto con el sol por encima de 0°
+      const ms0=Date.UTC(2026,0,1)+(dia-1)*86400000;
+      let hit=b.dataset.s==="amanecer"?300:1140;
+      for(let m=(b.dataset.s==="amanecer"?180:1260); b.dataset.s==="amanecer"?m<720:m>720;
+          m+=(b.dataset.s==="amanecer"?5:-5)){
+        if(Sol.solarPos(ms0+m*60000,lat,0).elev>0){ hit=m; break; }
+      }
+      $("hora").value=hit;
+    }
+    update();
+  });
   $("pat").addEventListener("change",()=>{ showPat=$("pat").checked; update(); });
   $("lnk").addEventListener("change",()=>{ showNcuLinks=$("lnk").checked; update(); });
-  ["tilt","drop","pitch","htube","chord","dncu","hncu","dhsu"].forEach(id=>$(id).addEventListener("input",update));
+  ["tilt","drop","pitch","chord","dncu","hncu","dhsu","hora","dia","lat"]
+    .forEach(id=>$(id).addEventListener("input",update));
+  /* La altura de la viga cambia el largo del poste y la cota del pie del
+     amortiguador, que son geometría: hay que rehacer el campo, no recolocarlo. */
+  $("htube").addEventListener("input",()=>{ readParams(); buildField(); update(); });
   window.addEventListener("resize",resize);
 }
 </script>

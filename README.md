@@ -18,10 +18,13 @@ para validar contra ray tracing.
 - `seguidor.js` — la **fuente única** del seguidor solar (cotas, piezas y
   materiales) que comparten el gemelo digital, Cobertura 3D y el simulador de
   backtracking. Copia idéntica: mejorarla en un repo mejora todos.
+- `sol.js` — la posición del sol (NOAA), el `singleaxis` de pvlib con su
+  backtracking y la receta de luz y cielo de los 3D de la casa. Portado 1:1 de
+  `backtracking.html`, donde está contrastado contra pvlib.
 - `equipos.js` — los otros dos extremos de la malla: la **NCU** (armario
   415×515×230 colgado de un poste C de 2,95 m, látigo en la cabeza a 3,15 m) y
-  la **HSU** (torre de celosía autoportante de 8 m, ultrasónico y dos látigos a
-  ~8,3 m). Cotas de los planos `DR_NCU_v0` y `FTR.24.00145_5_C`, las mismas que
+  la **HSU** (torre de celosía autoportante de 8 m, ultrasónico en cabeza y dos
+  látigos en su brazo a 6,50 m). Cotas de los planos `DR_NCU_v0` y `FTR.24.00145_5_C`, las mismas que
   dibuja `terreno.html` en Cobertura 3D.
 - `python/` — núcleo físico + driver de diagnóstico para correr sobre tus datos.
 - `web/` — port JS del núcleo (para integrar el cálculo en cualquier HTML) y una
@@ -34,10 +37,14 @@ para validar contra ray tracing.
 cobertura-rf-fv/
 ├── index.html                  # render interactivo (GitHub Pages sirve esto)
 ├── seguidor.js                 # modelo del seguidor (idéntico en todos los repos)
+├── tcu.glb                     # CAD real de la TCU (el mismo del gemelo y de Cobertura 3D)
+├── secc.json                   # malla del STEP del seccionador DC (DS132EL)
 ├── equipos.js                  # modelos de la NCU y la HSU (cotas de plano)
+├── sol.js                      # sol + seguimiento + estética de los 3D de la casa
+├── plantas/                    # layouts reales (copia de cobertura-zigbee)
 ├── lib/                        # three.js r128 + OrbitControls (vendorizados)
 ├── tests/
-│   ├── test_visor_3d.js        # QA del visor en Chromium (48 comprobaciones)
+│   ├── test_visor_3d.js        # QA del visor en Chromium (95 comprobaciones)
 │   └── test_nucleo.py          # núcleo + PARIDAD .py <-> .js (19 comprobaciones)
 ├── README.md
 ├── INSTRUCCIONES.md            # cómo usarlo paso a paso
@@ -118,7 +125,7 @@ plano, y los saltos entre ellos.
 |---|---|---|
 | **TCU** | ~0,78 m (viga a 1,50 − caída 0,725) | `seguidor.js`: conector a 0,225 bajo el eje + 0,50 de coax |
 | **NCU** | **3,15 m** | `equipos.js`: cabeza del poste C de 2,95 m (plano DR_NCU_v0) |
-| **HSU** | **8,33 m** | `equipos.js`: cabeza de la torre de 8 m (plano FTR.24.00145_5_C) |
+| **HSU** | **6,50 m** | `equipos.js`: su brazo a media torre — la torre es de 8 m (plano FTR.24.00145_5_C), pero los látigos no van en la cabeza |
 
 Esa tabla es el resultado. Una TCU tiene la antena **por debajo** del canto bajo
 de su mesa (1,03 m a 30°), y la NCU la tiene **por encima** de la cresta (2,22 m).
@@ -134,12 +141,123 @@ Así que:
   coordinador directo** y desde dónde hace falta la malla.
 - **HSU → NCU** — las dos fuera del campo, sin mesas de por medio.
 
+Un apunte sobre la antena de la HSU: **no está en la cabeza de la torre**. Va en
+su propio brazo a **6,50 m** (cota de montaje confirmada, ago-2026). El módulo
+la dibujaba arriba porque así estaba en la copia embebida de `terreno.html`, de
+donde salieron estas cotas — y ahí compartía altura con el anemómetro
+ultrasónico, así que el enlace parecía salir del anemo. La corrección no es
+estética: 8,33 → 6,50 m es la altura de antena con la que se calcula el salto,
+y lo mueve de 63,6 a 68,9 dB.
+
 Un resultado que sale de tener las dos cosas juntas y que no es intuitivo:
 **subir la antena de la NCU no siempre mejora**. Por debajo del canto bajo de la
 mesa, el salto largo pierde 14,5 dB por difracción; por encima de la cresta,
 44 dB. Cruzar la cresta multiplica la difracción por tres. (Y el margen total
 tampoco es monótono con la altura, porque el modelo de dos rayos mete sus nulos
 de interferencia por el camino: los dos efectos están en la lectura, separados.)
+
+## Plantas reales
+
+El corte de estudio (6 filas) sirve para entender el mecanismo; la pregunta de
+siting se hace sobre una planta. El selector carga el `<planta>_layout.json` de
+Cobertura Zigbee —los seguidores en sus coordenadas del DWG, las NCU, las HSU y
+los repetidores— y dibuja con el **modelo instanciado** (`Seguidor.instancePlan`):
+un `InstancedMesh` por tipo de pieza, que es lo que permite 754 seguidores.
+
+Cada seguidor se colorea por el **margen de su salto DIRECTO a su NCU** (la que
+dice el layout), con el núcleo y las mesas que ese rayo cruza. Verde = llega
+solo; rojo = ese seguidor depende de la malla. En El Burgo I, con las NCU donde
+están: margen medio 22,6 dB y **23 de 215 seguidores (10,7 %) por debajo de
+8 dB** de margen directo.
+
+La NCU y la HSU se **colocan a mano** de dos formas sincronizadas: arrastrando
+por el suelo (para tantear) y escribiendo su coordenada E/N del DWG (para
+reproducirlo). Al soltar, la cobertura se recalcula entera.
+
+### Las pendientes de Ayora
+
+Ayora trae su levantamiento (`ayora_cotas.json`): por seguidor bifila, sus **dos
+filas** con los extremos (n₀,n₁) y las **cotas medidas** en esos extremos. De ahí
+sale la cota de cada fila, su pendiente N-S —`atan2(y₁−y₀, n₁−n₀)`, la misma
+lectura que hace el simulador de backtracking— y el suelo sobre el que corre
+cada rayo. Con cotas, la unidad que se dibuja pasa a ser la **fila**: 754
+seguidores son **1.508 filas**.
+
+Y no es decoración. Sobre el terreno real cada mesa apantalla **a su cota**, no
+a la de nadie:
+
+| Ayora | Filas por debajo de 8 dB |
+|---|---|
+| Terreno plano | 16 |
+| **Con las cotas medidas** | **130** |
+
+91 m de desnivel y pendientes N-S de hasta 4,5° convierten 16 seguidores
+problemáticos en 130. Un mapa de cobertura sobre terreno plano de una planta que
+no lo es no dice lo que parece decir.
+
+El terreno se dibuja muestreando esas mismas cotas: manda la fila más cercana en
+X, interpolando a lo largo de su eje. Es el criterio con el que se midió —las
+cotas se tomaron en los extremos de cada mesa—, así que no se inventa un DEM que
+no existe. Las demás plantas siguen en plano, y la página lo dice.
+
+## El rizado de dos rayos (por qué alejar puede MEJORAR)
+
+El rayo directo y el rebotado en el suelo se suman o se cancelan según la
+diferencia de camino, así que el margen **ondula** con la distancia: hay nulos
+en `d = 2·h1·h2/(k·λ)` y crestas entre ellos. Por eso alejar un equipo tres
+metros puede subir el margen diez dB. Es física del modelo —y del campo—, no un
+fallo, pero un dB suelto cerca de un nulo no es una promesa.
+
+Lo caro es el suelo que elijas. Barriendo la HSU entre 50 y 70 m del coordinador:
+
+| Suelo | Margen | Rizado |
+|---|---|---|
+| Conductor perfecto | 15,5 … 58,9 dB | **43,4 dB** |
+| Tierra real (húmeda) | 48,6 … 54,8 dB | **6,2 dB** |
+
+El conductor perfecto es un **espejo**: una cota superior de referencia, no un
+suelo. Para decidir un emplazamiento, el caso útil es la tierra real. El visor
+avisa del rizado cuando pasa de 5 dB en 3 m, y la lectura da además la
+**probabilidad de enlace** (que ya lleva dentro el desvanecimiento log-normal),
+que es el número que no se rompe al moverte un metro.
+
+## El día
+
+El seguidor se mueve con el sol, como en el resto de aplicaciones de la casa:
+posición solar NOAA, `singleaxis` de pvlib con backtracking por GCR —y la GCR
+sale de la geometría de la propia página, no de un número aparte—, tope
+mecánico de ±55° y **stow nocturno a 5° al este**, el del proyecto. Manda la
+hora; el deslizador de inclinación queda para el modo manual.
+
+Eso aquí no es decoración: **el ángulo del seguidor es lo que sube y baja la
+banda de la mesa**, y con ella el apantallamiento. Medido en el propio visor, a
+21 de junio y 41,5° de latitud, con la NCU a 12 m del borde:
+
+| Hora | θ | TCU ↔ TCU | TCU 1 → NCU |
+|---|---|---|---|
+| 07:00 | +55° (de canto, al este) | 61,3 dB | **5,0 dB** |
+| 09:00 | +41° | 65,6 dB | 10,3 dB |
+| 12:00 | ≈0° (plano) | 70,8 dB | **56,2 dB** |
+| 17:00 | −55° (de canto, al oeste) | 61,3 dB | **5,0 dB** |
+| noche | +5° (stow) | 70,8 dB | 52,7 dB |
+
+Los 51 dB de diferencia entre el mediodía y el alba son solo el ángulo de las
+palas. Dos lecturas que no se ven con el seguidor congelado:
+
+- **El peor rato no es la noche, es el alba y el ocaso.** De noche las palas
+  duermen casi planas y el campo apenas apantalla; con el sol rasante están de
+  canto y la banda de cada fila es un muro. Si una TCU va a perder al
+  coordinador, lo pierde a primera y a última hora.
+- **El salto entre vecinos aguanta todo el día** (61–71 dB). Ojo con el atajo
+  de decir que «pasa por debajo»: a mediodía sí (canto bajo 1,60 m, antena
+  0,78), pero con las palas a 55° el canto baja a 0,61 y la antena se queda
+  *por encima* — ese salto también cruza mesa, solo que rozando el borde, y por
+  eso pierde 9,5 dB y no 57. La malla es lo que salva las horas malas.
+
+Con este paso (6 m, GCR 0,40) el **backtracking no llega a entrar**: no habría
+sombra de fila que evitar hasta los 66,6°, y el tope mecánico de ±55° llega
+antes. A paso corto sí entra, y se ve recoger el seguidor por debajo del ángulo
+astronómico.
 
 ## La mesa como obstáculo
 
@@ -156,6 +274,32 @@ enlaces vivos que hay. Lo nuevo es que vive en el núcleo, así que el visor, el
 diagnóstico y el siting la comparten. Con **una** mesa a mitad de vano reproduce
 exactamente el cálculo de una sola fila intermedia, que es lo que hacía el visor
 antes: el número del salto entre vecinos no se mueve.
+
+## La TCU y el seccionador, los de los 3D
+
+`seguidor.js` trae de los dos una caja paramétrica: la que sostiene el sillín,
+los abarcones y las cotas. Encima, el gemelo digital y Cobertura 3D dibujan el
+**CAD de verdad**, y este visor ya no es el único con las cajas:
+
+- **`tcu.glb`** — 17 primitivas, con su seta roja y su conector dorado de
+  antena. Se monta con la misma matriz que Cobertura 3D (giro de 90°, volteo y
+  bajada a −0,16 m para que la chapa superior no se meta en el tubo cuadrado) y
+  con su mismo retoque de materiales: a los metales del glb se les baja
+  `metalness`, porque sin reflejo salen negros.
+- **`secc.json`** — la malla del STEP del **DS132EL**, que sustituye a la caja
+  y se lleva por delante el mando y la maneta paramétricos, que el STEP ya trae.
+  Va solo en la viga del motor, junto a la TCU.
+
+Y una consecuencia que no es de dibujo: el **conector dorado** (`mat_14`) es el
+punto real del que sale el coax. La antena colgaba de una estimación
+(`tcuX − 0,16`, a −0,225 del eje); ahora cuelga de **(1,248, −0,149)**, que es
+donde está. La **altura** del elemento —lo que entra en la física— la sigue
+fijando el deslizador de caída, así que los márgenes no se mueven por esto:
+cambia el punto de salida, no la cota.
+
+Los dos ficheros se piden por red, así que abriendo la página con doble clic
+(`file://`) no llegan: entonces se queda la caja paramétrica y el visor funciona
+igual. Servido, sale el CAD.
 
 ## El seguidor del render
 

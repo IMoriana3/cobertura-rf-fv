@@ -3,8 +3,12 @@
 ## 1. El render interactivo (`index.html`)
 
 Ábrelo en cualquier navegador (doble clic) o publícalo en GitHub Pages. No
-necesita servidor ni internet: three.js y el modelo del seguidor van dentro del
-repo.
+necesita internet: three.js y los modelos van dentro del repo.
+
+> Con doble clic (`file://`) el navegador no deja pedir `tcu.glb` ni
+> `secc.json`, así que la TCU y el seccionador salen como caja paramétrica y
+> todo lo demás funciona igual. Sirviéndolo (`python3 -m http.server`, o GitHub
+> Pages) aparecen con su CAD real, el mismo del gemelo digital.
 
 Lo que ves son los **tres extremos de la malla Zigbee** de una planta:
 
@@ -15,7 +19,8 @@ Lo que ves son los **tres extremos de la malla Zigbee** de una planta:
 - la **NCU** (el coordinador) en su poste C de 2,95 m, con el armario colgado de
   los carriles y el látigo en la cabeza, a **3,15 m**;
 - la **HSU** (la meteo) en su torre de celosía autoportante de 8 m, con el
-  anemómetro ultrasónico y sus dos látigos a **~8,3 m**.
+  anemómetro ultrasónico en la cabeza y sus dos látigos en el brazo de
+  **6,50 m** — que es donde van, no arriba junto al anemo.
 
 Las cotas de la NCU y la HSU salen de sus planos (`DR_NCU_v0` y
 `FTR.24.00145_5_C`) vía `equipos.js`, y son las mismas que dibuja Cobertura 3D.
@@ -29,7 +34,16 @@ pasa por debajo de las filas y uno al coordinador las cruza.
 
 Controles:
 
-- **Inclinación** — ángulo de los seguidores (−55° a 55°).
+- **Hora solar · Día del año · Latitud** — mueven el sol, y con él los
+  seguidores, la luz, el cielo y las sombras. **▶ Reproducir** pasa el día
+  entero en unos 17 s; **Amanecer / Mediodía / Ocaso** saltan a las tres horas
+  que lo cuentan.
+- **Ángulo del seguidor** — *Sigue al sol* (`singleaxis` de pvlib, con stow
+  nocturno a 5° al este) o *Manual*, que devuelve el mando al deslizador.
+- **Backtracking** — con el paso de fila de la página. A 6 m no llega a entrar
+  (el tope de ±55° llega antes); a paso corto sí, y se ve.
+- **Inclinación** — ángulo de los seguidores (−55° a 55°). Solo en modo manual:
+  con el sol lo manda la hora.
 - **Caída de la antena bajo la viga** — cuánto cuelga el látigo por debajo del
   tubo de torsión. Arranca en la cota del modelo (0,725 m: 0,225 m hasta el
   conector de la TCU + 0,50 m de coax). Por debajo de ~0,35 m el elemento

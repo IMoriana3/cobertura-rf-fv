@@ -49,8 +49,16 @@
     hsuTowerH:  8.00,    // torre de celosía autoportante
     hsuLegR:    0.15,    // radio del triángulo de montantes
     hsuLevels:  16,      // cinturones/zigzag
-    hsuAntY:    8.33,    // CENTRO del látigo BAJO (el par va a 8,33 y 8,36):
-    hsuAntY2:   8.36,    //   se declara el bajo, que es el conservador
+    /* Los DOS látigos van en su propio brazo a media torre, NO en la cabeza
+       junto al ultrasónico. Cota de montaje confirmada por Ignacio (ago-2026):
+       6,50 m al centro del elemento. Antes se dibujaban arriba —así estaban en
+       la copia embebida de `terreno.html`, de donde se sacó este módulo—, y
+       ahí compartían altura con el anemómetro: el enlace parecía salir del
+       anemo. La cota entra en la física, no solo en el dibujo: es la altura de
+       antena con la que se calcula el salto HSU→NCU. */
+    hsuAntY:    6.50,    // CENTRO de los látigos, en su brazo
+    hsuAntArmX: 0.10,    // el brazo arranca en la cara de la torre
+    hsuAntArmL: 0.45,    // y sale 45 cm
     hsuPvW:     0.35,    // módulo FV estrecho, vertical y paralelo a la cara
     hsuPvH:     1.70,
     hsuPvY:     2.35,
@@ -76,7 +84,16 @@
     };
   };
 
-  function add(g, mesh, x, y, z) { mesh.position.set(x, y, z); mesh.castShadow = true; mesh.receiveShadow = true; g.add(mesh); return mesh; }
+  function add(g, mesh, x, y, z) { mesh.position.set(x, y, z); g.add(mesh); return mesh; }
+
+  /* Las sombras las decide la escena, no el modelo: Cobertura 3D ya da una
+     pasada por su grupo de instalaciones, y allí el poste y el armario de la
+     NCU eran los únicos que proyectaban. `opts.shadows` las pone en TODAS las
+     piezas para quien no tenga esa pasada (el simulador de cobertura RF). */
+  function sombras(g, on) {
+    if (!on) return;
+    g.traverse(function (o) { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  }
 
   /* Corrugado granate de la fibra + alimentación subiendo por el poste (foto). */
   function corrTex(THREE) {
@@ -104,7 +121,7 @@
     s.closePath();
     var pg = new THREE.ExtrudeGeometry(s, { depth: D.ncuMastH, bevelEnabled: false });
     pg.translate(0, 0, -D.ncuMastH / 2); pg.rotateX(-Math.PI / 2);
-    add(g, new THREE.Mesh(pg, m.pole), 0, D.ncuMastH / 2, 0);
+    add(g, new THREE.Mesh(pg, m.pole), 0, D.ncuMastH / 2, 0).castShadow = true;
 
     // 2 carriles horizontales atornillados al poste: de ellos cuelga la NCU
     [D.ncuRailDy, -D.ncuRailDy].forEach(function (dy) {
@@ -123,7 +140,7 @@
 
     // armario + frontal + 4 escuadras + 2 prensaestopas + conector + LED
     var zC = -(D.ncuCabD / 2 + 0.055);
-    add(g, new THREE.Mesh(new THREE.BoxGeometry(D.ncuCabW, D.ncuCabH, D.ncuCabD), m.enc), 0, D.ncuCabY, zC);
+    add(g, new THREE.Mesh(new THREE.BoxGeometry(D.ncuCabW, D.ncuCabH, D.ncuCabD), m.enc), 0, D.ncuCabY, zC).castShadow = true;
     add(g, new THREE.Mesh(new THREE.BoxGeometry(D.ncuCabW * 0.94, D.ncuCabH * 0.94, 0.012), m.front),
         0, D.ncuCabY, zC - D.ncuCabD / 2 - 0.007);
     [[-0.181, 0.2805], [0.181, 0.2805], [-0.181, -0.2805], [0.181, -0.2805]].forEach(function (b) {
@@ -140,24 +157,29 @@
         0.05, D.ncuCabY + D.ncuCabH / 2 + 0.004, zC + 0.03);
 
     // LÁTIGO en la cabeza del poste — el extremo que ve la malla
-    var ant = add(g, new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, D.ncuAntL, 6),
+    var ant = add(g, new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, D.ncuAntL, 5),
                                     opts.antMaterial || m.dark), D.ncuAntX, D.ncuAntY, 0);
+    sombras(g, opts.shadows);
     return { group: g, antenna: ant, antPos: new THREE.Vector3(D.ncuAntX, D.ncuAntY, 0) };
   };
 
   /* =========================== HSU =========================== */
   /* Torre autoportante: 3 montantes con cinturones y zigzag alterno por cara.
      `opts.pv` = false quita el módulo FV (las HSU de Ayora no lo llevan).
-     `opts.faceYaw` gira la torre para que la cara del módulo mire al ecuador. */
+     `opts.giro` gira SOLO los montantes, que es lo que orienta la cara del
+     módulo: al SUR en el hemisferio norte y al NORTE en el sur (medio giro con
+     latitud negativa). La cabeza, los látigos, el piranómetro y la garita se
+     quedan donde están — así lo hace Cobertura 3D, y así se mantiene. */
   E.buildHSU = function (THREE, opts) {
     opts = opts || {};
     var m = opts.materials || E.materials(THREE);
     var withPV = opts.pv !== false;
     var g = new THREE.Group();
     var h = D.hsuTowerH, RT = D.hsuLegR, NL = D.hsuLevels, LEG = [];
+    var giro = opts.giro || 0;
 
     for (var lg = 0; lg < 3; lg++) {
-      var a = lg * 2 * Math.PI / 3 + Math.PI / 6;
+      var a = lg * 2 * Math.PI / 3 + Math.PI / 6 + giro;
       var lx = Math.cos(a) * RT, lz = Math.sin(a) * RT;
       LEG.push([lx, lz]);
       add(g, new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.016, h, 8), m.mast), lx, h / 2, lz);
@@ -219,11 +241,13 @@
     }
     add(g, new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.015, 10), m.white), 0, h + 0.425, 0);
 
-    // los DOS látigos de antena
+    // los DOS látigos de antena, en su brazo a 6,50 m
     var antM = opts.antMaterial || m.black, ants = [];
-    [[0.12, 0.40], [-0.12, 0.34]].forEach(function (an) {
+    var armX = D.hsuAntArmX + D.hsuAntArmL / 2, armE = D.hsuAntArmX + D.hsuAntArmL;
+    add(g, new THREE.Mesh(new THREE.BoxGeometry(D.hsuAntArmL, 0.03, 0.03), m.mast), armX, D.hsuAntY, 0);
+    [[0.06, 0.40], [-0.06, 0.34]].forEach(function (an) {
       ants.push(add(g, new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, an[1], 5), antM),
-                    an[0], h + 0.16 + an[1] / 2, -0.12));
+                    armE - 0.05, D.hsuAntY, an[0]));
     });
 
     // brazo del piranómetro y garita
@@ -238,8 +262,9 @@
       add(g, new THREE.Mesh(new THREE.CylinderGeometry(0.12 - d2 * 0.004, 0.125 - d2 * 0.004, 0.03, 14), m.white),
           -0.42, gy - 0.12 + d2 * 0.06, 0);
     }
-    if (opts.faceYaw !== undefined) g.rotation.y = opts.faceYaw;
-    return { group: g, antennas: ants, antPos: new THREE.Vector3(-0.12, D.hsuAntY, -0.12) };
+    sombras(g, opts.shadows);
+    return { group: g, antennas: ants,
+             antPos: new THREE.Vector3(D.hsuAntArmX + D.hsuAntArmL - 0.05, D.hsuAntY, -0.06) };
   };
 
   E.VERSION = '0.1.0';

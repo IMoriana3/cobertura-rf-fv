@@ -184,14 +184,14 @@
    *         los 0,50 de coax de `seguidor.js`).
    *   NCU — látigo en la CABEZA del poste C 100×60 de 2,95 m del que cuelga el
    *         armario 415×515×230 (plano DR_NCU_v0 / «Montaje NCU»).
-   *   HSU — 2 látigos en la cabeza de la torre de celosía autoportante de 8 m
-   *         (plano FTR.24.00145_5_C, «Montaje HSU»).
+   *   HSU — 2 látigos en su BRAZO a media torre (6,50 m) de la celosía
+   *         autoportante de 8 m (plano FTR.24.00145_5_C, «Montaje HSU»).
    * Las tres, tal como las dibuja `terreno.html` en Cobertura 3D.
    * ------------------------------------------------------------------ */
   const ANTENNAS = {
     tcu: { dropBelowTube: 0.725 },
     ncu: { mastH: 2.95, h: 3.15, cabW: 0.415, cabH: 0.515, cabD: 0.230, cabY: 1.15 },
-    hsu: { towerH: 8.0, h: 8.33, legR: 0.15 },
+    hsu: { towerH: 8.0, h: 6.50, legR: 0.15 },   // los látigos van en su brazo a media torre, no en la cabeza
   };
 
   const defaultParams = () => ({
