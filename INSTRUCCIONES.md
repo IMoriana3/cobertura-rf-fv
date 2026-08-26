@@ -3,8 +3,12 @@
 ## 1. El render interactivo (`index.html`)
 
 Ábrelo en cualquier navegador (doble clic) o publícalo en GitHub Pages. No
-necesita servidor ni internet: three.js y el modelo del seguidor van dentro del
-repo.
+necesita internet: three.js y los modelos van dentro del repo.
+
+> Con doble clic (`file://`) el navegador no deja pedir `tcu.glb` ni
+> `secc.json`, así que la TCU y el seccionador salen como caja paramétrica y
+> todo lo demás funciona igual. Sirviéndolo (`python3 -m http.server`, o GitHub
+> Pages) aparecen con su CAD real, el mismo del gemelo digital.
 
 Lo que ves son los **tres extremos de la malla Zigbee** de una planta:
 

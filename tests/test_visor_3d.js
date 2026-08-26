@@ -50,9 +50,21 @@ const SONDA = `(() => {
   const g0 = glassOf(rows[0].spin);
   g0.updateWorldMatrix(true, false);
   const nrm = new THREE.Vector3(0,1,0).transformDirection(g0.matrixWorld);
+  /* "Esta viga lleva TCU" se mira por el SILLÍN de fijación (chapa 0,05 x 0,012
+     x 0,21), que está tanto con la caja paramétrica como con el CAD real. Mirar
+     la caja hacía que la comprobación dependiera de si el glb había llegado. */
   const conTcu = rows.filter(r => { let f = false; r.spin.traverse(n => {
     const p = n.geometry && n.geometry.parameters;
-    if (p && eq(p.width,0.50) && eq(p.height,0.26) && eq(p.depth,0.36)) f = true; }); return f; }).length;
+    if (p && eq(p.width,0.05) && eq(p.height,0.012) && eq(p.depth,0.21)) f = true; }); return f; }).length;
+  const cad = { tcu: !!CAD.tcu, secc: !!CAD.secc, listo: CAD.listo,
+    conn: CAD.conn ? CAD.conn.toArray() : null, ancla: ANCLA.toArray(),
+    glb: (() => { let n = 0; rows.forEach(r => r.spin.traverse(o => {
+           if (o.isMesh && o.material && /^mat_/.test(o.material.name || '')) n++; })); return n; })(),
+    cajaTcu: (() => { let n = 0; rows.forEach(r => r.spin.traverse(o => {
+           const q = o.geometry && o.geometry.parameters;
+           if (q && eq(q.width,0.50) && eq(q.height,0.26) && eq(q.depth,0.36)) n++; })); return n; })(),
+    seccStep: (() => { let n = 0; rows.forEach(r => r.spin.traverse(o => {
+           if (o.geometry === CAD.secc) n++; })); return n; })() };
   const sc = sun.shadow.camera;
   let tube = null;
   rows[0].spin.traverse(n => { const p = n.geometry && n.geometry.parameters;
@@ -105,6 +117,7 @@ const SONDA = `(() => {
     lect: [...document.querySelectorAll('#lect .l')].map(e => ({
       n: e.querySelector('.n').textContent, m: parseFloat(e.querySelector('.m').textContent),
       x: e.querySelector('.x').textContent })),
+    cad,
     shadowR: sc.right, span: SPAN(), pitch: P, htube: HTUBE, chord: CHORD, M0: M0,
     hA, hncu: HNCU, dncu: DNCU,
     // el día
@@ -139,7 +152,13 @@ const SONDA = `(() => {
   page.on('pageerror', e => errs.push('pageerror: ' + e.message));
   page.on('console', m => { if (m.type() === 'error' && !/favicon/.test(m.text())) errs.push(m.text()); });
   await page.goto(URL, { waitUntil: 'networkidle' });
-  await page.waitForTimeout(1800);
+  /* El CAD (tcu.glb + secc.json) llega por red y la escena se rehace al
+     llegar. Sin esperarlo, medio banco saldría distinto según la carga. */
+  for (let i = 0; i < 60; i++) {
+    if (await page.evaluate(() => typeof CAD !== 'undefined' && CAD.listo)) break;
+    await page.waitForTimeout(500);
+  }
+  await page.waitForTimeout(600);
 
   const set = (id, v) => page.evaluate(([id, v]) => {
     const e = document.getElementById(id); e.value = v; e.dispatchEvent(new Event('input')); }, [id, v]);
@@ -300,6 +319,31 @@ const SONDA = `(() => {
   check('y no en el anemómetro ultrasónico, que está a la misma altura',
         s.anclaje.hsuAnemo > 0.15, s.anclaje.hsuAnemo);
   check('el enlace de la NCU arranca EN su látigo', s.anclaje.ncuLatigo < 0.06, s.anclaje.ncuLatigo);
+
+  /* ---- 14b. la TCU y el seccionador son los MISMOS que en los 3D ---- */
+  check('carga el CAD real de la TCU (tcu.glb)', s.cad.tcu === true);
+  check('carga la malla del STEP del seccionador (secc.json)', s.cad.secc === true);
+  check('las tres vigas del motor montan las 17 primitivas del glb',
+        s.cad.glb === 3 * 17, s.cad.glb);
+  check('y ya no queda ninguna caja paramétrica de TCU', s.cad.cajaTcu === 0, s.cad.cajaTcu);
+  /* Tres, no seis: el seccionador DC va SOLO en la viga del motor, junto a la
+     TCU (`SOLO_OESTE` en seguidor.js). La gemela lleva el eje de transmisión y
+     punto. */
+  check('el seccionador de las tres vigas del motor usa la malla del STEP',
+        s.cad.seccStep === 3, s.cad.seccStep);
+  {
+    /* El coax sale del conector DORADO real del glb, no de la estimación que
+       había (tcuX − 0,16, −0,225). Y lo que entra en la física —la ALTURA del
+       elemento— la sigue fijando el deslizador de caída: cambia el punto de
+       salida, no la cota. */
+    check('el coax sale del conector dorado del CAD, no de la estimación',
+          s.cad.conn !== null && Math.abs(s.cad.ancla[1] + 0.225) > 0.02,
+          'ancla ' + s.cad.ancla.map(v => v.toFixed(3)).join(','));
+    check('y la altura de la antena la sigue fijando la caída (la física no se mueve)',
+          near(s.antY, s.htube - 0.72, 1e-6), s.antY);
+    const d1 = Math.hypot(s.ants[1][0] - s.ants[0][0], s.ants[1][2] - s.ants[0][2]);
+    check('las tres antenas siguen separadas 2·paso exactos', near(d1, 2 * s.pitch, 1e-6), d1);
+  }
 
   /* ---- 15. el día: el seguidor se mueve con el sol ---- */
   const enHora = async (min) => { await set('hora', min); await page.waitForTimeout(150);

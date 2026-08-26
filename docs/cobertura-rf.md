@@ -48,7 +48,8 @@ y localiza el punto único de fallo.
 ## Componentes
 
 - Render: `index.html` + `seguidor.js` + `equipos.js` + `sol.js` + `lib/` (three.js vendorizado)
-- QA del visor: `tests/test_visor_3d.js` (67 comprobaciones en Chromium)
+  + el CAD real de la TCU (`tcu.glb`) y del seccionador (`secc.json`), los mismos del gemelo
+- QA del visor: `tests/test_visor_3d.js` (77 comprobaciones en Chromium)
 - QA del núcleo: `tests/test_nucleo.py` (19, incluida la paridad `.py` ↔ `.js`)
 - Núcleo + diagnóstico: `python/`
 - Port JS + demo de cobertura: `web/`

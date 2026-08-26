@@ -37,11 +37,13 @@ para validar contra ray tracing.
 cobertura-rf-fv/
 ├── index.html                  # render interactivo (GitHub Pages sirve esto)
 ├── seguidor.js                 # modelo del seguidor (idéntico en todos los repos)
+├── tcu.glb                     # CAD real de la TCU (el mismo del gemelo y de Cobertura 3D)
+├── secc.json                   # malla del STEP del seccionador DC (DS132EL)
 ├── equipos.js                  # modelos de la NCU y la HSU (cotas de plano)
 ├── sol.js                      # sol + seguimiento + estética de los 3D de la casa
 ├── lib/                        # three.js r128 + OrbitControls (vendorizados)
 ├── tests/
-│   ├── test_visor_3d.js        # QA del visor en Chromium (67 comprobaciones)
+│   ├── test_visor_3d.js        # QA del visor en Chromium (77 comprobaciones)
 │   └── test_nucleo.py          # núcleo + PARIDAD .py <-> .js (19 comprobaciones)
 ├── README.md
 ├── INSTRUCCIONES.md            # cómo usarlo paso a paso
@@ -206,6 +208,32 @@ enlaces vivos que hay. Lo nuevo es que vive en el núcleo, así que el visor, el
 diagnóstico y el siting la comparten. Con **una** mesa a mitad de vano reproduce
 exactamente el cálculo de una sola fila intermedia, que es lo que hacía el visor
 antes: el número del salto entre vecinos no se mueve.
+
+## La TCU y el seccionador, los de los 3D
+
+`seguidor.js` trae de los dos una caja paramétrica: la que sostiene el sillín,
+los abarcones y las cotas. Encima, el gemelo digital y Cobertura 3D dibujan el
+**CAD de verdad**, y este visor ya no es el único con las cajas:
+
+- **`tcu.glb`** — 17 primitivas, con su seta roja y su conector dorado de
+  antena. Se monta con la misma matriz que Cobertura 3D (giro de 90°, volteo y
+  bajada a −0,16 m para que la chapa superior no se meta en el tubo cuadrado) y
+  con su mismo retoque de materiales: a los metales del glb se les baja
+  `metalness`, porque sin reflejo salen negros.
+- **`secc.json`** — la malla del STEP del **DS132EL**, que sustituye a la caja
+  y se lleva por delante el mando y la maneta paramétricos, que el STEP ya trae.
+  Va solo en la viga del motor, junto a la TCU.
+
+Y una consecuencia que no es de dibujo: el **conector dorado** (`mat_14`) es el
+punto real del que sale el coax. La antena colgaba de una estimación
+(`tcuX − 0,16`, a −0,225 del eje); ahora cuelga de **(1,248, −0,149)**, que es
+donde está. La **altura** del elemento —lo que entra en la física— la sigue
+fijando el deslizador de caída, así que los márgenes no se mueven por esto:
+cambia el punto de salida, no la cota.
+
+Los dos ficheros se piden por red, así que abriendo la página con doble clic
+(`file://`) no llegan: entonces se queda la caja paramétrica y el visor funciona
+igual. Servido, sale el CAD.
 
 ## El seguidor del render
 

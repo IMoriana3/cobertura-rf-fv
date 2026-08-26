@@ -149,6 +149,7 @@
 
 <script src="lib/three.min.js"></script>
 <script src="lib/OrbitControls.js"></script>
+<script src="lib/GLTFLoader.js"></script>
 <script src="seguidor.js"></script>
 <script src="equipos.js"></script>
 <script src="sol.js"></script>
@@ -381,6 +382,76 @@ function disposeTree(o){
   o.traverse(n=>{ if(n.geometry) n.geometry.dispose(); });
 }
 
+/* ============================================================================
+ * EL CAD REAL DE LA TCU Y DEL SECCIONADOR
+ * `seguidor.js` trae de los dos una caja paramétrica: la que sirve para el
+ * sillín, los abarcones y las cotas. El gemelo digital y Cobertura 3D dibujan
+ * encima el CAD de verdad —`tcu.glb` (17 primitivas, con su seta roja y su
+ * conector DORADO de antena) y `secc.json` (la malla del STEP del DS132EL)—, y
+ * este visor no tenía por qué ser el único con las cajas.
+ *
+ * Se montan con la MISMA matriz que Cobertura 3D (`_TCUMOUNT`: giro de 90°,
+ * volteo y bajada a −0,16 para que la chapa superior no se meta en el tubo) y
+ * con su mismo retoque de materiales (los metales del glb salen NEGROS sin
+ * reflejo, así que se les baja `metalness`; la seta, roja).
+ *
+ * Y algo que no es solo dibujo: el conector dorado (`mat_14`) es el punto REAL
+ * del que sale el coax. La antena colgaba de una estimación (`tcuX − 0,16`);
+ * ahora cuelga de donde cuelga. La ALTURA del elemento —la que entra en la
+ * física— la sigue fijando el deslizador de caída, así que los márgenes no se
+ * mueven por esto: cambia el punto de salida, no la cota.
+ *
+ * Carga PROGRESIVA: son ficheros que se piden por red, así que abriendo la
+ * página con doble clic (file://) no llegan. Si fallan, se queda la caja
+ * paramétrica y el visor funciona igual — que es como se comporta `terreno.html`
+ * con su seccionador.
+ * ==========================================================================*/
+const CAD={tcu:null, tcuCtr:null, conn:null, secc:null, listo:false};
+/* De dónde SALE el coax, en el marco del modelo (sin basculación). Con el CAD
+   cargado es el conector dorado de verdad; sin él, la estimación de siempre. */
+function anclaAntena(){
+  if(CAD.conn&&CAD.tcuCtr) return CAD.conn.clone().sub(CAD.tcuCtr).applyMatrix4(TCUMOUNT);
+  return new THREE.Vector3(D.tcuX-0.16,-0.225,0);
+}
+const TCUMOUNT=(()=>{ const m=new THREE.Matrix4().makeRotationY(Math.PI/2);
+  m.multiply(new THREE.Matrix4().makeRotationX(Math.PI));
+  m.setPosition(D.tcuX,-0.16,0); return m; })();
+
+function vísteCAD(o){                       // el retoque de materiales de la casa
+  if(!o.isMesh) return;
+  const src=(o.material&&o.material.isMaterial)?o.material:null;
+  const m=src?src.clone():new THREE.MeshStandardMaterial({color:0xe8e4dc});
+  if(m.metalness!=null) m.metalness=Math.min(m.metalness,0.18); else m.metalness=0.15;
+  if(m.roughness==null||m.roughness<0.45) m.roughness=0.6;
+  if(src&&src.name==='mat_1'){ m.color=new THREE.Color(0xcc1417); m.metalness=0.10; m.roughness=0.5; }   // la SETA, roja
+  m.needsUpdate=true; o.material=m;
+  o.castShadow=true; o.receiveShadow=true;
+}
+
+function cargaCAD(){
+  const pend=[];
+  if(typeof THREE.GLTFLoader==='function'){
+    pend.push(new Promise(res=>{
+      new THREE.GLTFLoader().load('tcu.glb',gl=>{
+        const sc=gl.scene; sc.updateMatrixWorld(true);
+        const bb=new THREE.Box3().setFromObject(sc);
+        CAD.tcuCtr=bb.getCenter(new THREE.Vector3());
+        // conector de ANTENA = el material DORADO (mat_14), único en el glb
+        sc.traverse(o=>{ if(!o.isMesh||!o.material||!o.material.color||CAD.conn) return;
+          const c=o.material.color;
+          if(c.r>0.6&&c.g>0.30&&c.b<0.6&&(c.r-c.b)>0.35&&c.g<c.r)
+            CAD.conn=new THREE.Box3().setFromObject(o).getCenter(new THREE.Vector3());
+        });
+        CAD.tcu=sc; res();
+      }, undefined, ()=>res());
+    }));
+  }
+  pend.push(fetch('secc.json',{cache:'no-store'}).then(r=>{ if(!r.ok) throw 0; return r.json(); })
+    .then(j=>{ const g=new THREE.BufferGeometryLoader().parse(j); g.rotateY(Math.PI/2); CAD.secc=g; })
+    .catch(()=>{}));
+  return Promise.all(pend).then(()=>{ CAD.listo=true; });
+}
+
 /* ------------------------------ el campo ------------------------------ */
 let BUILT_SPAN=0;                            // largo del tramo YA construido: `D.span` vuelve al
 const SPAN=()=>BUILT_SPAN||D.span;           // canónico de 28 módulos en cuanto se suelta el modelo
@@ -399,11 +470,30 @@ function buildField(){
   for(let i=0;i<NROWS;i++){
     const west=ANTROWS.indexOf(i)>=0;                  // la viga del MOTOR es la que lleva TCU + antena
     const beam=Seguidor.buildBeam(THREE,{west:west,detail:"full",size:"largo",materials:mats,
-                                         skip:{antena:1,antenatip:1,soporte:1}});
+                                         skip:{antena:1,antenatip:1,soporte:1,tcu:CAD.tcu?1:0}});
     const g=new THREE.Group();
     const yaw=new THREE.Group(); yaw.rotation.y=Math.PI/2;   // tubo del modelo (+X) → eje Z de la escena
     yaw.add(beam.spin,beam.static);
     g.add(yaw); fieldG.add(g);
+
+    // la TCU de verdad, en la viga del motor y basculando con el tubo
+    if(west&&CAD.tcu){
+      const cl=CAD.tcu.clone(true); cl.position.sub(CAD.tcuCtr); cl.traverse(vísteCAD);
+      const wrap=new THREE.Group(); wrap.add(cl); wrap.applyMatrix4(TCUMOUNT); beam.spin.add(wrap);
+    }
+    // y el seccionador: la malla del STEP sustituye a la caja, y con ella sobran
+    // el mando y la maneta paramétricos, que el STEP ya trae
+    if(CAD.secc){
+      beam.spin.traverse(n=>{
+        const p=n.geometry&&n.geometry.parameters; if(!p||p.width===undefined) return;
+        const cerca=(a,b)=>Math.abs(a-b)<1e-9;
+        if(cerca(p.width,0.28)&&cerca(p.height,0.09)&&cerca(p.depth,0.16)){
+          n.geometry.dispose(); n.geometry=CAD.secc;
+          n.material=new THREE.MeshStandardMaterial({color:0xe8ebec,roughness:.5,metalness:.08});
+        }else if((cerca(p.radiusTop,0.055)&&cerca(p.height,0.02))||
+                 (cerca(p.width,0.085)&&cerca(p.height,0.016)&&cerca(p.depth,0.03))) n.visible=false;
+      });
+    }
 
     // el deslizador de altura de módulo escala SOLO las piezas del módulo
     beam.spin.traverse(n=>{
@@ -475,6 +565,7 @@ function buildField(){
 
   links=new THREE.Group(); links.frustumCulled=false; fieldG.add(links);
 
+  ANCLA=anclaAntena();
   Seguidor.setModsPerStr(prevMods);
   buildLabels();
 }
@@ -610,6 +701,7 @@ function drawLink(a,b,col,dashed){
   }
 }
 
+let ANCLA=new THREE.Vector3(0,0,0);
 function applyState(){
   const beta=BETA, drop=+$("drop").value, hA=Math.max(0.15,HTUBE-drop);
   const rad=beta*Math.PI/180, cb=Math.cos(rad), sb=Math.sin(rad);
@@ -626,7 +718,8 @@ function applyState(){
       d.body.position.lerpVectors(_a,_b,0.23);
     });
     if(!r.ant) return;
-    const ax=D.tcuX-0.16, ay=-0.225*cb, az=-0.225*sb;   // conector de la TCU, basculado con el tubo
+    const A=ANCLA;                                       // de dónde sale el coax (conector real si hay CAD)
+    const ax=A.x, ay=A.y*cb-A.z*sb, az=A.y*sb+A.z*cb;   // basculado con el tubo
     const yTip=hA-HTUBE;
     r.ant.tip.position.set(ax,yTip,az);
     r.ant.dot.position.set(ax,yTip,az);
@@ -828,6 +921,9 @@ if(webgl){
   update();
   frame("campo");
   tick();
+  /* El CAD llega por red: la página ya se ve con las cajas paramétricas y se
+     rehace cuando esté. Si no llega (file://), no pasa nada. */
+  cargaCAD().then(()=>{ if(CAD.tcu||CAD.secc){ buildField(); update(); } });
 
   segClick("seg",  b=>{ ground=b.dataset.g; update(); });
   segClick("segr", b=>{ PTX=+b.dataset.p; update(); });
