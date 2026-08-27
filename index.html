@@ -783,11 +783,15 @@ function cargaPlanta(nom){
           const medio=/^medio/i.test(t.t||"");
           const mr=(typeof t.mr==="number"&&t.mr>0&&t.mr<1)?t.mr:(medio?0.504:1);
           return {x:t.x, n:t.n, rot:t.rot||0, mr:mr, medio:mr<1,
-                  ncu:t.ncu||1, gw:t.gw||1, id:t.id};
+                  ncu:t.ncu||1, gw:t.gw||1, id:t.id, t:t.t||null};
         }),
         ncus:(j.ncus||[]).map(c=>({x:c.x,n:c.n,name:c.name})),
         meteo:(j.meteo||[]).map(c=>({x:c.x,n:c.n,name:c.name})),
         reps:(j.reps||[]).map(c=>({x:c.x,n:c.n,name:c.name})),
+        /* Retícula de apoyos MEDIDA, si la planta la trae: El Burgo la tiene por
+           tipo de seguidor, de los círculos del Tierras.dwg. Sin ella se usa la
+           genérica de `seguidor.js`, proporcional al largo. */
+        pil:j.pilotes||null,
         cot:null
       };
       if(cot&&cot.t&&cot.t.length===PLANTA.trk.length){
@@ -901,15 +905,38 @@ function mastilDe(ncu,gw,masts){
 /* Lo que se dibuja y se calcula: con cotas, la FILA medida (un bifila son dos);
    sin ellas, el seguidor del layout sobre terreno plano. */
 function unidades(){
-  if(!PLANTA.cot) return PLANTA.trk.map(t=>({x:t.x, n:t.n, y:0, tilt:0, mr:t.mr, rot:(t.rot||0)*Math.PI/180, ncu:t.ncu, gw:t.gw}));
+  if(!PLANTA.cot) return PLANTA.trk.map(t=>({x:t.x, n:t.n, y:0, tilt:0, mr:t.mr, rot:(t.rot||0)*Math.PI/180, ncu:t.ncu, gw:t.gw, tp:tipoDe(t)}));
   const u=PLANTA.cot.filas.map(f=>({
     x:f.x, n:f.nm, y:f.ym, tilt:f.tilt, mr:Math.min(1.2,f.len/SPANP),
-    rot:PLANTA.az*Math.PI/180, ncu:f.ncu, gw:f.gw, med:1}));
+    rot:PLANTA.az*Math.PI/180, ncu:f.ncu, gw:f.gw, med:1, tp:tipoCerca(f.x,f.nm)}));
   (PLANTA.cot.sinCota||[]).forEach(i=>{                 // sin medir: a la cota de alrededor, y declarado
     const t=PLANTA.trk[i];
-    u.push({x:t.x, n:t.n, y:cotaEn(t.x,t.n), tilt:0, mr:t.mr, rot:(t.rot||0)*Math.PI/180, ncu:t.ncu, gw:t.gw, med:0});
+    u.push({x:t.x, n:t.n, y:cotaEn(t.x,t.n), tilt:0, mr:t.mr, rot:(t.rot||0)*Math.PI/180, ncu:t.ncu, gw:t.gw, med:0, tp:tipoDe(t)});
   });
   return u;
+}
+
+/* EL TIPO DE SEGUIDOR, que es quien manda en dónde van sus apoyos. El layout lo
+   trae por seguidor («Interior con rótula», «Medio sin rotula», …) y lo que
+   importa aquí es la familia. Cuando la fila viene del LEVANTAMIENTO no trae
+   tipo —son cotas, no seguidores—, así que se hereda del seguidor más cercano:
+   sin eso, una planta con levantamiento pierde su retícula medida. */
+function tipoDe(t){
+  const s2=String((t&&t.t)||"");
+  return /exterior/i.test(s2)?"exterior" : /medio/i.test(s2)?"medio" : /interior/i.test(s2)?"interior" : null;
+}
+function tipoCerca(x,n){
+  let bd=1e18, best=null;
+  for(const t of PLANTA.trk){ const d=(t.x-x)*(t.x-x)+(t.n-n)*(t.n-n); if(d<bd){bd=d;best=t;} }
+  return tipoDe(best);
+}
+/* Dónde apoya una fila: la retícula MEDIDA de su planta si la hay para su tipo
+   —El Burgo la tiene, de los círculos del Tierras.dwg— y si no, la genérica de
+   `seguidor.js`, proporcional al largo. */
+function pilotesDe(tp,mods){
+  const P=PLANTA&&PLANTA.pil&&PLANTA.pil.porTipo;
+  if(P&&tp&&P[tp]&&P[tp].length) return {xs:P[tp], med:1};
+  return {xs:Seguidor.pilotesX(mods), med:0};
 }
 
 /* El terreno, de las cotas medidas: una malla muestreada sobre la extensión de
@@ -1085,9 +1112,12 @@ function buildPlanta(){
   plantaG=new THREE.Group(); fieldG.add(plantaG);
 
   const prev=D.modsPerStr;
-  /* Apoyo de ALTURA UNIDAD: el poste sale centrado en su eje y con 1 m de alto,
-     así que la app lo estira a lo que pida el terreno de cada fila. */
-  const APU=Seguidor.apoyoGeoms(THREE,{postH:1});
+  /* Apoyo de ALTURA UNIDAD y de BAJA RESOLUCIÓN: el poste sale centrado en su
+     eje y con 1 m de alto, así que la app lo estira a lo que pida el terreno de
+     cada fila; y el herraje viene en versión `mass`, que a esta escala no se
+     distingue del completo y es lo que permite dibujarlo con miles de apoyos.
+     El corte de estudio, que son seis filas, monta el completo. */
+  const APU=Seguidor.apoyoGeoms(THREE,{postH:1,detalle:"mass"});
   Seguidor.setModsPerStr(PLANTA.mods);
   SPANP=D.span; BUILT_SPAN=D.span;
   PLANTA._filas=filasPlanta();
@@ -1100,17 +1130,23 @@ function buildPlanta(){
      MÓDULOS POR ALA —el que sale de su largo, medido cuando hay levantamiento— y
      cada grupo tiene su propio plan de instancias con esa cuenta. Cada mesa se
      dibuja con los módulos que tiene. */
-  const gru={};
+  /* Y por TIPO de seguidor cuando la planta trae retícula medida: en El Burgo
+     un interior apoya en 8 puntos y un exterior en 10, así que no pueden
+     compartir plan de instancias aunque tengan los mismos módulos. */
+  const gru={}, meta={};
   UN.forEach((t,i)=>{
     const largo=SPANP*t.mr;
     const mo=Math.max(2,Math.round((largo-D.gapDrive)/2/D.pitch));
-    (gru[mo]=gru[mo]||[]).push(i);
+    const pil=pilotesDe(t.tp,mo);
+    const k=mo+(pil.med?"|"+t.tp:"");
+    (gru[k]=gru[k]||[]).push(i); meta[k]={mods:mo, xs:pil.xs, tp:t.tp, med:pil.med};
   });
-  PLANTA._mods=Object.keys(gru).map(Number).sort((a,b)=>a-b);
+  PLANTA._mods=[...new Set(Object.values(meta).map(v=>v.mods))].sort((a,b)=>a-b);
+  PLANTA._grupos=meta;
   PLMESA={list:[]}; PILSUCIO=true;
-  PLANTA._mods.forEach(k=>{
-    const idx=gru[k], N=idx.length;
-    Seguidor.setModsPerStr(k);
+  Object.keys(gru).forEach(k=>{
+    const idx=gru[k], N=idx.length, M=meta[k];
+    Seguidor.setModsPerStr(M.mods);
     const plan=Seguidor.instancePlan(THREE,{detail:"mass",size:"largo",west:true});
     plan.forEach(tp=>{
       if(tp.motorLink||tp.damperLink||tp.antenna) return;   // los gestiona la app por frame; en planta se omiten
@@ -1131,20 +1167,26 @@ function buildPlanta(){
        64 m con tres puntos de apoyo. Van en la retícula de la casa —±28 y ±9 m
        en el completo, proporcional al largo, así que cada grupo de módulos tiene
        la suya— y se estiran hasta el suelo de SU fila.
-       El perfil C y nada más, como el slew: en planta el soporte del slew también
-       va sin herraje. Poner el apoyo entero —tambor, horquilla, virola y
-       casquillo— costaba 5,3 M de triángulos en El Burgo y 62 M en San José,
-       para un detalle que a esta escala no se ve; el corte de estudio, que son
-       seis filas, sí lo lleva completo. */
-    const XP=Seguidor.pilotesX(k);
+       Con su HERRAJE: tambor, horquilla y virola, en la versión `mass` de
+       `seguidor.js` —el tambor sin sus 12 ranuras, la horquilla sin tornillos y
+       menos segmentos de curva—. El herraje completo costaba 5,3 M de triángulos
+       en El Burgo y 62 M en San José, con la página sin atender un clic; en
+       `mass` cabe. El casquillo no va: abraza la viga y bascula con ella, así que
+       habría que rematrizarlo por frame, y a esta escala no se ve. */
+    const XP=M.xs;
     const locals=XP.map(px=>{ const m=new THREE.Matrix4().makeTranslation(px,0,0);
       if(px>0) m.multiply(new THREE.Matrix4().makeRotationY(Math.PI));   // el hueco de la C, al exterior
       return m; });
-    const imP=new THREE.InstancedMesh(APU.poste,mats.apoyo.steel,N*locals.length);
-    imP.frustumCulled=false; imP.castShadow=true; imP.receiveShadow=true;
-    imP.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    plantaG.add(imP);
-    PLI.push({key:"pilote",spin:false,locals:locals,im:imP,pil:1,top:-0.253,idx:idx});
+    [["pilote",APU.poste,mats.apoyo.steel,-0.253],
+     ["piltambor",APU.tambor,mats.apoyo.hdpe,null],
+     ["pilhorquilla",APU.horquilla,mats.apoyo.steel,null],
+     ["pilvirola",APU.virola,mats.apoyo.steel,null]].forEach(([kk,geom,mat,top])=>{
+      const im=new THREE.InstancedMesh(geom,mat,N*locals.length);
+      im.frustumCulled=false; im.castShadow=(top!==null); im.receiveShadow=true;
+      im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      plantaG.add(im);
+      PLI.push({key:kk,spin:false,locals:locals,im:im,pil:1,top:top,idx:idx});
+    });
   });
   Seguidor.setModsPerStr(PLANTA.mods);
   // los equipos, en sus coordenadas del DWG
@@ -1223,12 +1265,14 @@ function pintaPlanta(beta,hA){
           m.multiply(new THREE.Matrix4().makeTranslation(0,-0.28-h/2,0));
           m.multiply(new THREE.Matrix4().makeScale(1,h,1));
         }else if(L.pil){
-          /* El perfil C nace centrado y con 1 m: se coloca en la X de su pilote
-             y se estira de la horquilla (−0,253) al SUELO de esta fila. */
-          const h=Math.max(0.3,HTUBE+L.top);
           m.multiply(L.locals[l]);                    // la X del pilote, y el giro de la C
-          m.multiply(new THREE.Matrix4().makeTranslation(0,L.top-h/2,0));
-          m.multiply(new THREE.Matrix4().makeScale(1,h,1));
+          if(L.top!==null){
+            /* El perfil C nace centrado y con 1 m: se estira de la horquilla
+               (−0,253) al SUELO de esta fila. El herraje va en el eje y no. */
+            const h=Math.max(0.3,HTUBE+L.top);
+            m.multiply(new THREE.Matrix4().makeTranslation(0,L.top-h/2,0));
+            m.multiply(new THREE.Matrix4().makeScale(1,h,1));
+          }
         }else m.multiply(L.locals[l]);
         L.im.setMatrixAt(base+l,m);
       }
