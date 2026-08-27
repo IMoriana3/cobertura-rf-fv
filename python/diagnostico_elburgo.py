@@ -36,7 +36,10 @@ from zigbee_pv_model import (
 )
 
 # Alias de columnas aceptados (en minúsculas)
-COL_ID = {"id", "nodo", "tcu", "name", "nombre"}
+# `node_id` es como se llama la columna en los CSV que trae el repo
+# (`cobertura_coords/<planta>/coords_<planta>.csv`): sin él, esta herramienta no
+# podía leer sus propios datos y devolvía cero nodos sin quejarse.
+COL_ID = {"id", "nodo", "tcu", "name", "nombre", "node_id", "nodo_id"}
 COL_X = {"x", "este", "easting", "utm_x"}
 COL_Y = {"y", "norte", "northing", "utm_y"}
 COL_LON = {"lon", "longitud", "longitude", "lng"}

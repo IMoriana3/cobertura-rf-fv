@@ -560,6 +560,24 @@ const SONDA = `(() => {
     check('y a los 11,0 m de paso que tiene la planta',
           t.sep.length === 5 && t.sep.every(d => Math.abs(d - 11) < 0.15), JSON.stringify(t.sep));
   }
+  {
+    /* Y una planta SIN retícula medida cae en la genérica de `seguidor.js`. El
+       Burgo tiene la suya, del Tierras.dwg; Bagnarelli no, y no puede quedarse
+       sin apoyos por eso. */
+    const t = await page.evaluate(() => {
+      const postes = PLI.filter(L => L.pil && L.top !== null);
+      return { medida: !!(PLANTA.pil && PLANTA.pil.porTipo), grupos: postes.length,
+               xs: postes.map(L => L.locals.map(m2 => +m2.elements[12].toFixed(3))),
+               mods: PLANTA._mods, filas: PLANTA._un.length,
+               n: postes.reduce((a2, L) => a2 + L.im.count, 0) };
+    });
+    check('Bagnarelli no trae retícula medida', t.medida === false, t.medida);
+    const esp = t.mods.map(k => [-28, -9, 9, 28].map(z => +(z * k / 28).toFixed(3)));
+    check('y cae en la genérica de seguidor.js, proporcional al largo',
+          JSON.stringify(t.xs) === JSON.stringify(esp),
+          JSON.stringify(t.xs) + ' esperaba ' + JSON.stringify(esp));
+    check('con sus cuatro apoyos por fila', t.n === 4 * t.filas, t.n + ' de ' + 4 * t.filas);
+  }
   await page.evaluate(() => cargaPlanta('elburgo'));
   for (let i = 0; i < 60; i++) {
     if (await page.evaluate(() => !!(PLANTA && PLANTA._un && PLANTA._un.length))) break;
@@ -620,6 +638,7 @@ const SONDA = `(() => {
        cae donde toca y que ninguno flota ni se entierra. */
     const t = await page.evaluate(() => {
       const pil = PLI.filter(L => L.pil);
+      const postes = pil.filter(L => L.top !== null);      // el perfil C; el resto es herraje
       const v = new THREE.Vector3(), m = new THREE.Matrix4();
       const extremos = (L, inst) => {                       // fondo y cima del perfil C, en el mundo
         L.im.getMatrixAt(inst, m);
@@ -634,7 +653,7 @@ const SONDA = `(() => {
       const rc = new THREE.Raycaster(); rc.far = 200;
       const abajo = new THREE.Vector3(0, -1, 0);
       const muestras = [];
-      pil.forEach(L => { for (let i = 0; i < Math.min(3, L.idx.length); i++)
+      postes.forEach(L => { for (let i = 0; i < Math.min(3, L.idx.length); i++)
         for (let l = 0; l < L.locals.length; l++) {
           const inst = i * L.locals.length + l;
           L.im.getMatrixAt(inst, m);
@@ -646,22 +665,34 @@ const SONDA = `(() => {
                           bot: bot.y, top: top.y, suelo: hit ? hit.point.y : null });
         } });
       return {
-        grupos: pil.length, mods: PLANTA._mods, htube: HTUBE,
-        xs: pil.map(L => L.locals.map(mm => +mm.elements[12].toFixed(3))),
-        n: pil.reduce((a2, L) => a2 + L.im.count, 0), filas: PLANTA._un.length,
+        grupos: postes.length, piezas: pil.length / postes.length,
+        mods: PLANTA._mods, htube: HTUBE,
+        xs: postes.map(L => L.locals.map(mm => +mm.elements[12].toFixed(3))),
+        n: postes.reduce((a2, L) => a2 + L.im.count, 0), filas: PLANTA._un.length,
+        medida: !!(PLANTA.pil && PLANTA.pil.porTipo),
+        porTipo: PLANTA.pil && PLANTA.pil.porTipo,
+        tipos: PLANTA._un.reduce((a2, u) => { a2[u.tp] = (a2[u.tp] || 0) + 1; return a2; }, {}),
         muestras,
         tris: renderer.info.render.triangles,
       };
     });
-    check('la planta pone pilotes intermedios, uno por grupo de módulos',
-          t.grupos === t.mods.length && t.grupos > 0, t.grupos + ' de ' + t.mods.length);
-    /* La retícula de la casa: ±28 y ±9 m en el completo de 28 módulos por ala, y
-       PROPORCIONAL al largo en los acortados — El Burgo tiene medios de 14. */
-    const esperado = t.mods.map(k => [-28, -9, 9, 28].map(z => +(z * k / 28).toFixed(3)));
-    check('y a la retícula de seguidor.js, proporcional al largo de cada mesa',
-          JSON.stringify(t.xs) === JSON.stringify(esperado),
-          JSON.stringify(t.xs) + ' esperaba ' + JSON.stringify(esperado));
-    check('cuatro por fila, ni uno menos', t.n === 4 * t.filas, t.n + ' de ' + 4 * t.filas);
+    /* EL BURGO TIENE RETÍCULA MEDIDA, la de los círculos del Tierras.dwg, y es
+       POR TIPO: un interior apoya en 8 puntos, un exterior en 10 y un medio en 4.
+       Antes se dibujaba la genérica de 4 para todos, que no es la de esta planta. */
+    check('El Burgo usa su retícula MEDIDA, no la genérica', t.medida === true, t.medida);
+    check('y un grupo de instancias por cada tipo, que no comparten apoyos',
+          t.grupos === Object.keys(t.tipos).length && t.grupos === 3,
+          t.grupos + ' grupos para ' + JSON.stringify(t.tipos));
+    const rej = Object.values(t.porTipo).map(a => a.map(v => +v.toFixed(3)));
+    const orden = a => JSON.stringify([...a].sort((x, y) => x - y));
+    check('y son EXACTAMENTE las del Tierras.dwg (8 interior · 10 exterior · 4 medio)',
+          t.xs.every(x => rej.some(r => orden(r) === orden(x))) &&
+          new Set(t.xs.map(orden)).size === 3, JSON.stringify(t.xs));
+    /* Y el total sale de sumar, tipo a tipo, los apoyos que le tocan a cada fila. */
+    const esperados = Object.entries(t.tipos)
+      .reduce((a2, [tp, n2]) => a2 + n2 * t.porTipo[tp].length, 0);
+    check('uno por cada apoyo real de cada fila, ni uno menos',
+          t.n === esperados, t.n + ' de ' + esperados);
     /* NO FLOTAN. El perfil C va de la horquilla (0,253 bajo el tubo) al suelo:
        su largo es siempre el mismo y su cima, la misma cota bajo la viga. */
     const largos = t.muestras.map(q => +(q.top - q.bot).toFixed(3));
@@ -680,8 +711,13 @@ const SONDA = `(() => {
        son 5,3 M de triángulos en El Burgo y 62 M en San José: la página se queda
        sin atender ni un clic. En planta va el perfil C y nada más, igual que el
        soporte del slew. */
-    check('y sin dispararse: la planta se dibuja con menos de 1,5 M de triángulos',
-          t.tris < 1.5e6, (t.tris / 1e6).toFixed(2) + ' M');
+    /* El apoyo va con su herraje —tambor, horquilla y virola— en la versión
+       `mass` de `seguidor.js`. El herraje COMPLETO costaba 5,3 M de triángulos
+       solo en El Burgo; en `mass` la planta entera cabe en menos de 2 M. */
+    check('cada apoyo lleva su herraje (poste + tambor + horquilla + virola)',
+          t.piezas === 4, t.piezas + ' piezas por apoyo');
+    check('y sin dispararse: la planta se dibuja con menos de 2 M de triángulos',
+          t.tris < 2e6, (t.tris / 1e6).toFixed(2) + ' M');
   }
 
   await page.click('[data-p=""]', CLIC); await page.waitForTimeout(2000);
@@ -750,10 +786,11 @@ const SONDA = `(() => {
 
   /* ---- 18f. la CALIBRACIÓN: qué modelo está hablando ---- */
   {
-    /* El simulador enseñaba el modelo desnudo teniendo la calibración de El
-       Burgo en el núcleo. Contra lo medido allí, el desnudo sale ~33 dB
-       optimista, así que los márgenes con los que se decidía un emplazamiento
-       eran los del modelo sin contrastar. */
+    /* El arranque es el modelo FÍSICO, sin recentrar. Se probó al revés y el
+       dato no lo sostiene: las 49 medidas de El Burgo son enlaces que la malla
+       eligió, y su RSSI no depende de la distancia (r = +0,16 sobre un rango de
+       ×14). Recentrar contra eso pega el modelo al nivel de los supervivientes.
+       El modo recentrado se queda, y la página tiene que decir qué es. */
     const lee = () => page.evaluate(() => {
       const p = params();
       return { cal: CAL, ptx: p.ptxDbm, sigma: p.sigmaDb, bias: p.biasDb || 0,
@@ -761,36 +798,40 @@ const SONDA = `(() => {
                m: [...document.querySelectorAll('#lect .m')].map(e => parseFloat(e.textContent)) };
     });
     const c = await lee();
-    check('el simulador arranca CALIBRADO, no con el modelo desnudo',
-          c.cal === true && c.bias === -33.6, 'cal=' + c.cal + ' sesgo=' + c.bias);
-    check('y con la sigma del residuo medido (6,8 dB), no la de fábrica',
-          c.sigma === 6.8, c.sigma);
-    check('y la página DICE con qué modelo habla',
-          /calibrado con El Burgo/i.test(c.nota) && /33,6 dB de sesgo/.test(c.nota),
-          c.nota.slice(0, 120));
+    check('el simulador arranca con el modelo FÍSICO, sin recentrar',
+          c.cal === false && c.bias === 0, 'cal=' + c.cal + ' sesgo=' + c.bias);
+    check('y con la sigma de fábrica', c.sigma === 6.0, c.sigma);
+    check('y la página dice que los dB son relativos, no una promesa de nivel',
+          /Modelo físico/i.test(c.nota) && /relativos/i.test(c.nota) && /censurada/i.test(c.nota),
+          c.nota.slice(0, 160));
 
-    await page.click('#segcal [data-k="0"]', CLIC); await page.waitForTimeout(1200);
+    await page.click('#segcal [data-k="1"]', CLIC); await page.waitForTimeout(1200);
     const d = await lee();
-    check('sin calibrar, el sesgo desaparece de la potencia',
-          d.cal === false && d.bias === 0 && Math.abs(d.ptx - c.ptx - 33.6) < 1e-9,
-          'ptx ' + c.ptx + ' -> ' + d.ptx);
+    /* El recentrado es el del núcleo, sacado del CSV por `python/calibra_elburgo.py`:
+       −16,58 dB y σ 10,99. El −33,6 con σ 6,8 que estuvo escrito no se reproduce. */
+    check('recentrado, el sesgo entra en la potencia y es el del núcleo',
+          d.cal === true && d.bias === -16.58 && Math.abs(d.ptx - c.ptx + 16.58) < 1e-9,
+          'ptx ' + c.ptx + ' -> ' + d.ptx + ' sesgo ' + d.bias);
+    check('y la sigma es la del ajuste (10,99), no una inventada', d.sigma === 10.99, d.sigma);
+    check('y la página avisa de que es una muestra que la malla eligió',
+          /malla eligió/i.test(d.nota) && /\+0,16/.test(d.nota), d.nota.slice(0, 160));
     /* La calibración es un sesgo GLOBAL: tiene que mover todos los márgenes lo
        mismo, ni un dB más. Si moviera unos más que otros, estaría tocando la
        física en vez de la referencia. */
-    const dif = d.m.map((v, i) => +(v - c.m[i]).toFixed(2)).filter(v => !isNaN(v));
-    check('y todos los márgenes suben EXACTAMENTE el sesgo, ni un dB más',
-          dif.length > 0 && dif.every(v => Math.abs(v - 33.6) < 0.02), JSON.stringify(dif));
-    check('y la página avisa de que va sin calibrar',
-          /SIN calibrar/i.test(d.nota), d.nota.slice(0, 120));
+    /* Tolerancia 0,11: los márgenes se leen del panel, que los escribe con UN
+       decimal, así que la diferencia de dos redondeos ya baila hasta 0,1. */
+    const dif = d.m.map((v, i) => +(c.m[i] - v).toFixed(2)).filter(v => !isNaN(v));
+    check('y todos los márgenes bajan EXACTAMENTE el sesgo, ni un dB más',
+          dif.length > 0 && dif.every(v => Math.abs(v - 16.58) < 0.11), JSON.stringify(dif));
 
     /* El sesgo va sobre la potencia QUE DIGA EL MANDO. Aplicado sobre los 19 dBm
        de fábrica, elegir el XBee de +8 se lo comía. */
-    await page.click('#segcal [data-k="1"]', CLIC); await page.waitForTimeout(800);
     await page.click('#segr [data-p="8"]', CLIC); await page.waitForTimeout(1200);
     const e8 = await lee();
-    check('cambiar de radio no se come la calibración',
-          e8.bias === -33.6 && Math.abs(e8.ptx - (8 - 33.6)) < 1e-9, 'ptx ' + e8.ptx);
-    await page.click('#segr [data-p="19"]', CLIC); await page.waitForTimeout(1000);
+    check('cambiar de radio no se come el recentrado',
+          e8.bias === -16.58 && Math.abs(e8.ptx - (8 - 16.58)) < 1e-9, 'ptx ' + e8.ptx);
+    await page.click('#segr [data-p="19"]', CLIC); await page.waitForTimeout(800);
+    await page.click('#segcal [data-k="0"]', CLIC); await page.waitForTimeout(1000);
   }
 
   /* ---- 19. el rizado de dos rayos, dicho y no escondido ---- */

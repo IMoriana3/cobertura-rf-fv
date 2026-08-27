@@ -277,21 +277,34 @@ class LinkParams:
     l_mod_db: float = 0.0        # penetración extra si el LOS cruza un panel (calibrar)
 
 
-# Calibración con El Burgo I (NCU1). El modelo desnudo sale ~33 dB optimista:
-# el ajuste sobre los pares medidos da n_eff ~= 0,4, es decir que la distancia
-# predice poco y lo que manda es la obstrucción local. El sesgo se traslada a
-# potencia efectiva y el residuo deja sigma 6,8 dB.
+# Recentrado con El Burgo I (NCU1) — y hay que leer QUÉ ES antes de usarlo.
 #
-# ES DE UNA PLANTA. Para El Burgo es una medida; para las demás es la mejor
-# referencia que hay, no un dato suyo. El modelo desnudo (`LinkParams()`) sigue
-# ahí para comparar: la diferencia entre los dos es exactamente el sesgo.
-EL_BURGO_BIAS_DB = -33.6
+# El número que había aquí, -33,6 dB con sigma 6,8, NO SE REPRODUCE con los datos
+# del repo: no sale de ninguna configuración razonable. Con la antena de catálogo
+# (viga 1,50 menos la caída 0,725) y tierra real, el ajuste da -16,58 con sigma
+# 10,99, que es lo que hay debajo. `python/calibra_elburgo.py` lo saca del CSV.
+#
+# Y AUN ASÍ NO ES UNA CALIBRACIÓN DE PROPAGACIÓN. Sobre 49 enlaces de 24 a 338 m
+# —un rango de x14, donde el espacio libre solo ya predice 23 dB de caída— el
+# RSSI medido correlaciona r = +0,16 con log(distancia): el nivel medido NO
+# DEPENDE DE LA DISTANCIA. Es lo que se espera de una muestra CENSURADA, porque
+# la malla enruta por los enlaces que funcionan y lo medido son los que
+# sobrevivieron. Por eso el residuo de un ajuste de un solo número barre unos
+# 35 dB entre los tramos corto y largo: sobra offset y falta exponente.
+#
+# Sirve, pues, para una cosa: recentrar el modelo sobre el nivel típico de un
+# enlace que la malla USA. No para el nivel absoluto de un enlace cualquiera, ni
+# para decidir a qué distancia deja de haber enlace. Para eso hacen falta medidas
+# de enlaces elegidos por su geometría, incluidos los que NO llegan.
+EL_BURGO_BIAS_DB = -16.58
+EL_BURGO_SIGMA_DB = 10.99
+EL_BURGO_AJUSTE = "antena 0,775 m (viga 1,50 - caída 0,725), tierra real, 49 enlaces"
 
 
 def params_elburgo(base: LinkParams | None = None) -> LinkParams:
     """`LinkParams` calibrados con El Burgo I. Espejo de `defaultParamsElBurgo`."""
     b = base or LinkParams()
-    return replace(b, ptx_dbm=b.ptx_dbm + EL_BURGO_BIAS_DB, sigma_db=6.8)
+    return replace(b, ptx_dbm=b.ptx_dbm + EL_BURGO_BIAS_DB, sigma_db=EL_BURGO_SIGMA_DB)
 
 
 def _phi(x: float) -> float:

@@ -126,11 +126,32 @@ CASOS = [
 # con la pareja declarada 1:1. Aquí se exige que den lo mismo.
 check("la calibración de El Burgo existe en el puerto Python",
       hasattr(m, "params_elburgo") and hasattr(m, "EL_BURGO_BIAS_DB"), None)
-check("y el sesgo es el medido, -33,6 dB", m.EL_BURGO_BIAS_DB == -33.6, m.EL_BURGO_BIAS_DB)
 _cal = m.params_elburgo()
-check("que se traslada a potencia efectiva y deja sigma 6,8",
-      abs(_cal.ptx_dbm - (m.LinkParams().ptx_dbm - 33.6)) < 1e-9 and _cal.sigma_db == 6.8,
-      (_cal.ptx_dbm, _cal.sigma_db))
+check("que se traslada a potencia efectiva y lleva la sigma del ajuste",
+      abs(_cal.ptx_dbm - (m.LinkParams().ptx_dbm + m.EL_BURGO_BIAS_DB)) < 1e-9
+      and _cal.sigma_db == m.EL_BURGO_SIGMA_DB, (_cal.ptx_dbm, _cal.sigma_db))
+
+# --- y que el número SALGA DEL DATO, que es lo que no pasaba ---
+# El par (-33,6 · sigma 6,8) que estuvo escrito aquí no se reproducía con ninguna
+# configuración razonable. Este bloque rehace el ajuste desde el CSV que va en el
+# repo, con la configuración declarada, y exige que dé lo que dice la constante.
+_rssi = os.path.join(RAIZ, "elburgo_real_rssi.csv")
+_coords = os.path.join(RAIZ, "plantas", "elburgo_coords.csv")
+if os.path.exists(_rssi) and os.path.exists(_coords):
+    sys.path.insert(0, os.path.join(RAIZ, "python"))
+    import calibra_elburgo as ce
+    _nodos, _pares = ce.carga()
+    check("las medidas de El Burgo siguen en el repo: 49 enlaces", len(_pares) == 49, len(_pares))
+    _fit = ce.ajusta(_nodos, _pares, ce.HTUBE - ce.DROP, m.LinkParams())
+    check("y el sesgo del nucleo SALE de ellas (%s)" % m.EL_BURGO_AJUSTE,
+          abs(_fit["bias_db"] - m.EL_BURGO_BIAS_DB) < 0.01, (_fit["bias_db"], m.EL_BURGO_BIAS_DB))
+    check("y la sigma tambien", abs(_fit["sigma_db"] - m.EL_BURGO_SIGMA_DB) < 0.01,
+          (_fit["sigma_db"], m.EL_BURGO_SIGMA_DB))
+    # lo que ese ajuste NO puede dar: el dato no lleva informacion de distancia
+    _D = ce.distancias(_nodos, _pares)
+    _b, _, _r = ce.pendiente([math.log10(d) for d in _D], [r for _, _, r in _pares])
+    check("y queda dicho que el dato no depende de la distancia (r = %+.2f sobre x%.0f)"
+          % (_r, max(_D) / min(_D)), abs(_r) < 0.35 and max(_D) / min(_D) > 10, (_r, max(_D) / min(_D)))
 _a = m.predict_link({"x": 0, "y": 0, "ground": 0, "h": 1.0},
                     {"x": 120.0, "y": 0, "ground": 0, "h": 3.15}, m.LinkParams())
 _b = m.predict_link({"x": 0, "y": 0, "ground": 0, "h": 1.0},

@@ -199,15 +199,21 @@
     sigmaDb: 6.0, epsR: 15.0, sigmaGround: 5e-3, pol: "v", lModDb: 0.0,
   }); // ptxDbm: XBee-PRO RR. Estándar +8. Canal 26: máx +3. Antena Jinchang 3 dBi.
 
-  // Parámetros calibrados con El Burgo I (NCU1): el sesgo real -33.6 dB trasladado
-  // a potencia efectiva + sigma del residuo 6.8 dB. Sin esto la cobertura sale
-  // ~33 dB optimista (n_eff≈0.4: la distancia predice poco; manda la obstrucción
-  // local). Úsalo para cualquier predicción de cobertura "tipo El Burgo".
-  const EL_BURGO_BIAS_DB = -33.6;
+  /* Recentrado con El Burgo I (NCU1) — espejo de `EL_BURGO_BIAS_DB` en el puerto
+     Python, donde está la explicación larga. En corto, y hay que leerlo antes de
+     usarlo: el -33,6 con sigma 6,8 que había aquí NO se reproduce con los datos
+     del repo; el ajuste real da -16,58 con sigma 10,99 (`python/calibra_elburgo.py`).
+     Y ni ese es una calibración de propagación: sobre 49 enlaces de 24 a 338 m el
+     RSSI medido correlaciona r = +0,16 con log(distancia), o sea que NO depende de
+     la distancia — muestra censurada, la malla enruta por lo que funciona. Sirve
+     para recentrar sobre el nivel típico de un enlace que la malla USA, no para el
+     nivel absoluto ni para saber dónde deja de haber enlace. */
+  const EL_BURGO_BIAS_DB = -16.58;
+  const EL_BURGO_SIGMA_DB = 10.99;
   const defaultParamsElBurgo = () => {
     const p = defaultParams();
     p.ptxDbm += EL_BURGO_BIAS_DB;   // traslada el sesgo a potencia efectiva
-    p.sigmaDb = 6.8;
+    p.sigmaDb = EL_BURGO_SIGMA_DB;
     p.biasDb = EL_BURGO_BIAS_DB;
     return p;
   };
@@ -246,7 +252,7 @@
   const ZigbeePV = {
     wavelength, fsplDb, breakpointDistance, fresnelRadius, reflectionCoefficient,
     twoRayPlDb, knifeEdgeLossDb, diffractionLossDb, rowTopElev, predictLink,
-    defaultParams, defaultParamsElBurgo,
+    defaultParams, defaultParamsElBurgo, EL_BURGO_BIAS_DB, EL_BURGO_SIGMA_DB,
     tableBand, bandClearance, bandEdge, diffractionLossTablesDb, ANTENNAS,
   };
   global.ZigbeePV = ZigbeePV;
