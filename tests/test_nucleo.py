@@ -121,6 +121,24 @@ CASOS = [
     (7.9, m.ANTENNAS["hsu"]["h"], HNCU, math.inf, []),   # HSU -> NCU: los dos fuera del campo
 ]
 
+# --- la calibración de El Burgo, en los DOS puertos ---
+# Estaba solo en el JS: el simulador podía calibrarse y el análisis en Python no,
+# con la pareja declarada 1:1. Aquí se exige que den lo mismo.
+check("la calibración de El Burgo existe en el puerto Python",
+      hasattr(m, "params_elburgo") and hasattr(m, "EL_BURGO_BIAS_DB"), None)
+check("y el sesgo es el medido, -33,6 dB", m.EL_BURGO_BIAS_DB == -33.6, m.EL_BURGO_BIAS_DB)
+_cal = m.params_elburgo()
+check("que se traslada a potencia efectiva y deja sigma 6,8",
+      abs(_cal.ptx_dbm - (m.LinkParams().ptx_dbm - 33.6)) < 1e-9 and _cal.sigma_db == 6.8,
+      (_cal.ptx_dbm, _cal.sigma_db))
+_a = m.predict_link({"x": 0, "y": 0, "ground": 0, "h": 1.0},
+                    {"x": 120.0, "y": 0, "ground": 0, "h": 3.15}, m.LinkParams())
+_b = m.predict_link({"x": 0, "y": 0, "ground": 0, "h": 1.0},
+                    {"x": 120.0, "y": 0, "ground": 0, "h": 3.15}, _cal)
+check("y calibrar mueve el margen EXACTAMENTE el sesgo, ni un dB más",
+      abs((_b["margin_db"] - _a["margin_db"]) - m.EL_BURGO_BIAS_DB) < 0.01,
+      _b["margin_db"] - _a["margin_db"])
+
 node = shutil.which("node")
 if not node:
     print("SKIP paridad .py <-> .js: no hay node en el PATH")
@@ -163,6 +181,31 @@ else:
                   cerca(r["margin_db"], round(j[2], 2), 0.011),
                   "py %s vs js %s" % ([r["pl_2ray_db"], r["pl_diff_db"], r["margin_db"]],
                                       [round(v, 2) for v in j]))
+
+    # y la CALIBRACIÓN, que es lo que de verdad se usa para decidir: los dos
+    # puertos tienen que dar el mismo margen con ella puesta, no solo desnudos
+    js2 = """
+    const Z = require(process.argv[1]);
+    const p = Z.defaultParamsElBurgo();
+    const r = Z.predictLink({x:0,y:0,ground:0,h:1.0}, {x:120,y:0,ground:0,h:3.15}, p);
+    console.log(JSON.stringify([p.ptxDbm, p.sigmaDb, p.biasDb, r.marginDb, r.pLink]));
+    """
+    try:
+        j2 = json.loads(subprocess.run(
+            [node, "-e", js2, os.path.join(RAIZ, "web", "zigbee_pv_model.js")],
+            capture_output=True, text=True, timeout=60, env=env, check=True).stdout)
+    except Exception as exc:                      # noqa: BLE001
+        check("paridad de la calibración: el puerto JS corre", False, exc)
+        j2 = None
+    if j2 is not None:
+        check("paridad .py/.js — la calibración de El Burgo da los mismos parámetros",
+              cerca(_cal.ptx_dbm, round(j2[0], 2), 0.011) and _cal.sigma_db == j2[1]
+              and j2[2] == m.EL_BURGO_BIAS_DB,
+              "py %s vs js %s" % ([_cal.ptx_dbm, _cal.sigma_db, m.EL_BURGO_BIAS_DB], j2[:3]))
+        check("paridad .py/.js — y el mismo margen con ella puesta",
+              cerca(_b["margin_db"], round(j2[3], 2), 0.011) and
+              cerca(_b["p_link"], round(j2[4], 4), 0.0011),
+              "py %s vs js %s" % ([_b["margin_db"], _b["p_link"]], j2[3:]))
 
 print("\n%d OK, %d FAIL" % (ok, ko))
 sys.exit(1 if ko else 0)

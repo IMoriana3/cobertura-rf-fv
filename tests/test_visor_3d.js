@@ -371,15 +371,25 @@ const SONDA = `(() => {
     /* Lo que hace útil el día: con las palas DE CANTO la banda de la mesa es un
        muro y el salto al coordinador se cae; con las palas planas, casi no
        apantalla. El peor rato no es la noche, es el alba. */
+    /* Medido CONTRA el salto entre vecinos de la misma hora, no en dB absolutos:
+       lo que se afirma es que la mesa apantalla, y eso no puede depender de si
+       el modelo va calibrado —la calibración es un sesgo global de −33,6 dB y se
+       le resta igual a los dos extremos—. Escrito en absoluto, este par se caía
+       al calibrar sin que nada de la física hubiera cambiado. */
     const mAlba = alba.lect[2].m, mMedio = medio.lect[2].m;
-    check('con las palas de canto el salto a la NCU se cae', mAlba < 15, mAlba + ' dB');
-    check('con las palas planas el mismo salto va holgado', mMedio > 40, mMedio + ' dB');
+    const vAlba = alba.lect[0].m, vMedio = medio.lect[0].m;
+    check('con las palas de canto el salto a la NCU se cae', mAlba < vAlba - 20,
+          mAlba + ' dB contra ' + vAlba + ' del salto entre vecinos');
+    check('con las palas planas el mismo salto va holgado', mMedio > mAlba + 15,
+          mMedio + ' dB contra ' + mAlba + ' al alba');
     /* El salto entre vecinos aguanta el día entero. Ojo: NO siempre "pasa por
        debajo" — con las palas muy de canto el borde bajo cae por debajo de la
        antena y hasta ese salto empieza a cruzar mesa. Lo que se sostiene es que
        aguanta, porque roza el borde en vez de atravesar la banda entera. */
+    /* «Aguanta» = por encima del umbral de 8 dB con el que la página pinta en
+       rojo, a las dos horas. En absoluto (>40) esto medía el modelo, no el salto. */
     check('el salto entre vecinos aguanta a las dos horas',
-          alba.lect[0].m > 40 && medio.lect[0].m > 40, alba.lect[0].m + ' / ' + medio.lect[0].m);
+          vAlba > 8 && vMedio > 8, vAlba + ' / ' + vMedio);
     check('a mediodía la antena de la TCU sí queda bajo el canto de la mesa',
           medio.hA < medio.band.bot, medio.hA + ' vs ' + medio.band.bot);
 
@@ -737,6 +747,51 @@ const SONDA = `(() => {
     await set('htube', 1.5); await page.waitForTimeout(2000);
   }
   await page.click('[data-p=""]', CLIC); await page.waitForTimeout(1500);
+
+  /* ---- 18f. la CALIBRACIÓN: qué modelo está hablando ---- */
+  {
+    /* El simulador enseñaba el modelo desnudo teniendo la calibración de El
+       Burgo en el núcleo. Contra lo medido allí, el desnudo sale ~33 dB
+       optimista, así que los márgenes con los que se decidía un emplazamiento
+       eran los del modelo sin contrastar. */
+    const lee = () => page.evaluate(() => {
+      const p = params();
+      return { cal: CAL, ptx: p.ptxDbm, sigma: p.sigmaDb, bias: p.biasDb || 0,
+               nota: document.getElementById('note').textContent,
+               m: [...document.querySelectorAll('#lect .m')].map(e => parseFloat(e.textContent)) };
+    });
+    const c = await lee();
+    check('el simulador arranca CALIBRADO, no con el modelo desnudo',
+          c.cal === true && c.bias === -33.6, 'cal=' + c.cal + ' sesgo=' + c.bias);
+    check('y con la sigma del residuo medido (6,8 dB), no la de fábrica',
+          c.sigma === 6.8, c.sigma);
+    check('y la página DICE con qué modelo habla',
+          /calibrado con El Burgo/i.test(c.nota) && /33,6 dB de sesgo/.test(c.nota),
+          c.nota.slice(0, 120));
+
+    await page.click('#segcal [data-k="0"]', CLIC); await page.waitForTimeout(1200);
+    const d = await lee();
+    check('sin calibrar, el sesgo desaparece de la potencia',
+          d.cal === false && d.bias === 0 && Math.abs(d.ptx - c.ptx - 33.6) < 1e-9,
+          'ptx ' + c.ptx + ' -> ' + d.ptx);
+    /* La calibración es un sesgo GLOBAL: tiene que mover todos los márgenes lo
+       mismo, ni un dB más. Si moviera unos más que otros, estaría tocando la
+       física en vez de la referencia. */
+    const dif = d.m.map((v, i) => +(v - c.m[i]).toFixed(2)).filter(v => !isNaN(v));
+    check('y todos los márgenes suben EXACTAMENTE el sesgo, ni un dB más',
+          dif.length > 0 && dif.every(v => Math.abs(v - 33.6) < 0.02), JSON.stringify(dif));
+    check('y la página avisa de que va sin calibrar',
+          /SIN calibrar/i.test(d.nota), d.nota.slice(0, 120));
+
+    /* El sesgo va sobre la potencia QUE DIGA EL MANDO. Aplicado sobre los 19 dBm
+       de fábrica, elegir el XBee de +8 se lo comía. */
+    await page.click('#segcal [data-k="1"]', CLIC); await page.waitForTimeout(800);
+    await page.click('#segr [data-p="8"]', CLIC); await page.waitForTimeout(1200);
+    const e8 = await lee();
+    check('cambiar de radio no se come la calibración',
+          e8.bias === -33.6 && Math.abs(e8.ptx - (8 - 33.6)) < 1e-9, 'ptx ' + e8.ptx);
+    await page.click('#segr [data-p="19"]', CLIC); await page.waitForTimeout(1000);
+  }
 
   /* ---- 19. el rizado de dos rayos, dicho y no escondido ---- */
   await page.click('[data-p=""]', CLIC); await page.waitForTimeout(1500);

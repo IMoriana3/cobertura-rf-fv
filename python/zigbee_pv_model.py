@@ -277,6 +277,23 @@ class LinkParams:
     l_mod_db: float = 0.0        # penetración extra si el LOS cruza un panel (calibrar)
 
 
+# Calibración con El Burgo I (NCU1). El modelo desnudo sale ~33 dB optimista:
+# el ajuste sobre los pares medidos da n_eff ~= 0,4, es decir que la distancia
+# predice poco y lo que manda es la obstrucción local. El sesgo se traslada a
+# potencia efectiva y el residuo deja sigma 6,8 dB.
+#
+# ES DE UNA PLANTA. Para El Burgo es una medida; para las demás es la mejor
+# referencia que hay, no un dato suyo. El modelo desnudo (`LinkParams()`) sigue
+# ahí para comparar: la diferencia entre los dos es exactamente el sesgo.
+EL_BURGO_BIAS_DB = -33.6
+
+
+def params_elburgo(base: LinkParams | None = None) -> LinkParams:
+    """`LinkParams` calibrados con El Burgo I. Espejo de `defaultParamsElBurgo`."""
+    b = base or LinkParams()
+    return replace(b, ptx_dbm=b.ptx_dbm + EL_BURGO_BIAS_DB, sigma_db=6.8)
+
+
 def _phi(x: float) -> float:
     """CDF normal estándar."""
     return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
