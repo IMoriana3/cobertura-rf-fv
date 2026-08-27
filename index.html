@@ -112,8 +112,8 @@
       </div>
       <div><label>Modelo del enlace:</label>
         <div class="seg" id="segcal">
-          <button data-k="1" class="on">Calibrado (El Burgo)</button>
-          <button data-k="0">Sin calibrar</button>
+          <button data-k="0" class="on">Físico</button>
+          <button data-k="1">Recentrado con El Burgo</button>
         </div>
       </div>
       <div><label>Planta:</label>
@@ -218,12 +218,16 @@ const D=Seguidor.DIMS, ED=Equipos.DIMS, Z=window.ZigbeePV;
 let P=6, HTUBE=1.5, CHORD=D.modH, MODS=7, DNCU=12, HNCU=ED.ncuAntY, DHSU=8;
 const NROWS=6, M0=D.off, LAM=Z.wavelength(), PRV=1.25;
 const GANT=3.0, SENS=-103; let PTX=19;
-/* Qué modelo se usa para el margen. El desnudo sale ~33 dB optimista contra lo
-   medido en El Burgo I (NCU1): el ajuste da n_eff ≈ 0,4, o sea que la distancia
-   predice poco y lo que manda es la obstrucción local. Por defecto va el
-   CALIBRADO, que es el único contrastado contra medidas; el desnudo se queda
-   para comparar. */
-let CAL=true;
+/* Qué modelo se usa para el margen. Por defecto el DESNUDO, y esto es un cambio
+   de opinión: se puso el «calibrado» de arranque fiándose del comentario del
+   núcleo, y al mirar el dato no lo sostiene. Las 49 medidas de El Burgo son
+   enlaces que la MALLA ELIGIÓ, así que son los que funcionan: sobre un rango de
+   distancia de ×14 su RSSI correlaciona r = +0,16 con log(d) —el nivel medido no
+   depende de la distancia— cuando el espacio libre solo ya predice 23 dB de
+   caída. Recentrar el modelo contra eso no lo contrasta: lo pega al nivel típico
+   de un enlace superviviente. Se queda como opción, dicho lo que es.
+   `python/calibra_elburgo.py` saca los números del CSV. */
+let CAL=false;
 let ground="pec", showPat=true, showNcuLinks=true;
 /* EL DÍA. El seguidor se mueve con el sol como en el resto de aplicaciones de la
    casa: `sol.js` trae la posición solar (NOAA), el `singleaxis` de pvlib con su
@@ -1490,12 +1494,14 @@ function update(){
       `Es fisica del modelo, pero un dB suelto cerca de un nulo no es una promesa — mira la probabilidad p, que ya lleva dentro el desvanecimiento. `+
       `Con <b>conductor perfecto</b> el suelo es un espejo y el rizado se dispara; con <b>tierra real</b> se queda en pocos dB, y es el caso con el que se decide un emplazamiento.<br>`:``)+
     (CAL
-      ? `<b>Modelo calibrado con El Burgo I (NCU1)</b>: −${dec(-Z.defaultParamsElBurgo().biasDb,1)} dB de sesgo sobre la potencia y σ ${dec(Z.defaultParamsElBurgo().sigmaDb,1)} dB de desvanecimiento. `+
-        `El modelo desnudo sale unos 33 dB optimista —el ajuste da n<sub>eff</sub> ≈ 0,4: la distancia predice poco y manda la obstrucción local—. `+
-        `Es de UNA planta: para El Burgo es una medida, para las demás es la mejor referencia que hay, no un dato suyo. `+
-        `Con «Sin calibrar» se ve el modelo desnudo, y la diferencia es exactamente el sesgo.<br>`
-      : `<b style="color:#e0a72c">Modelo SIN calibrar.</b> Es el teórico, sin el sesgo medido: contra El Burgo I sale unos 33 dB optimista. `+
-        `Sirve para ver la física; para decidir un emplazamiento, el calibrado.<br>`)+
+      ? `<b style="color:#e0a72c">Recentrado con El Burgo I</b>: −${dec(-Z.defaultParamsElBurgo().biasDb,1)} dB sobre la potencia y σ ${dec(Z.defaultParamsElBurgo().sigmaDb,1)} dB. `+
+        `Ojo con lo que es: las 49 medidas son enlaces que la MALLA ELIGIÓ, o sea los que funcionan. `+
+        `Sobre un rango de distancia de ×14 su RSSI correlaciona r = +0,16 con log(d) —el nivel medido no depende de la distancia— `+
+        `cuando el espacio libre solo ya predice 23 dB de caída. Esto recentra el modelo sobre el nivel típico de un enlace superviviente; `+
+        `no contrasta el nivel absoluto ni dice a qué distancia deja de haber enlace.<br>`
+      : `<b>Modelo físico</b>: dos rayos y difracción, sin recentrar. Los dB son <i>relativos</i> —sirven para comparar emplazamientos, `+
+        `no como promesa de nivel—: la única medida que hay (El Burgo I, 49 enlaces) es una muestra censurada por el enrutado y no fija el nivel absoluto. `+
+        `Con «Recentrado» se ve el modelo pegado a esa muestra, y la diferencia es exactamente el sesgo.<br>`)+
     `Tx ${PTX} dBm · Rx ${SENS} dBm · antena ${GANT} dBi en los dos extremos; dos rayos + difracción multiobstáculo (Deygout) sobre `+
     `${ground==="pec"?"suelo perfecto":"tierra real"}, con el núcleo del repo (<code>web/zigbee_pv_model.js</code>). `+
     `Seguidor <code>seguidor.js</code> v${Seguidor.VERSION}, ${MODS} módulos por ala (tramo de ${SPAN().toFixed(1)} m); `+

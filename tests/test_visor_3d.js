@@ -750,10 +750,11 @@ const SONDA = `(() => {
 
   /* ---- 18f. la CALIBRACIÓN: qué modelo está hablando ---- */
   {
-    /* El simulador enseñaba el modelo desnudo teniendo la calibración de El
-       Burgo en el núcleo. Contra lo medido allí, el desnudo sale ~33 dB
-       optimista, así que los márgenes con los que se decidía un emplazamiento
-       eran los del modelo sin contrastar. */
+    /* El arranque es el modelo FÍSICO, sin recentrar. Se probó al revés y el
+       dato no lo sostiene: las 49 medidas de El Burgo son enlaces que la malla
+       eligió, y su RSSI no depende de la distancia (r = +0,16 sobre un rango de
+       ×14). Recentrar contra eso pega el modelo al nivel de los supervivientes.
+       El modo recentrado se queda, y la página tiene que decir qué es. */
     const lee = () => page.evaluate(() => {
       const p = params();
       return { cal: CAL, ptx: p.ptxDbm, sigma: p.sigmaDb, bias: p.biasDb || 0,
@@ -761,36 +762,40 @@ const SONDA = `(() => {
                m: [...document.querySelectorAll('#lect .m')].map(e => parseFloat(e.textContent)) };
     });
     const c = await lee();
-    check('el simulador arranca CALIBRADO, no con el modelo desnudo',
-          c.cal === true && c.bias === -33.6, 'cal=' + c.cal + ' sesgo=' + c.bias);
-    check('y con la sigma del residuo medido (6,8 dB), no la de fábrica',
-          c.sigma === 6.8, c.sigma);
-    check('y la página DICE con qué modelo habla',
-          /calibrado con El Burgo/i.test(c.nota) && /33,6 dB de sesgo/.test(c.nota),
-          c.nota.slice(0, 120));
+    check('el simulador arranca con el modelo FÍSICO, sin recentrar',
+          c.cal === false && c.bias === 0, 'cal=' + c.cal + ' sesgo=' + c.bias);
+    check('y con la sigma de fábrica', c.sigma === 6.0, c.sigma);
+    check('y la página dice que los dB son relativos, no una promesa de nivel',
+          /Modelo físico/i.test(c.nota) && /relativos/i.test(c.nota) && /censurada/i.test(c.nota),
+          c.nota.slice(0, 160));
 
-    await page.click('#segcal [data-k="0"]', CLIC); await page.waitForTimeout(1200);
+    await page.click('#segcal [data-k="1"]', CLIC); await page.waitForTimeout(1200);
     const d = await lee();
-    check('sin calibrar, el sesgo desaparece de la potencia',
-          d.cal === false && d.bias === 0 && Math.abs(d.ptx - c.ptx - 33.6) < 1e-9,
-          'ptx ' + c.ptx + ' -> ' + d.ptx);
+    /* El recentrado es el del núcleo, sacado del CSV por `python/calibra_elburgo.py`:
+       −16,58 dB y σ 10,99. El −33,6 con σ 6,8 que estuvo escrito no se reproduce. */
+    check('recentrado, el sesgo entra en la potencia y es el del núcleo',
+          d.cal === true && d.bias === -16.58 && Math.abs(d.ptx - c.ptx + 16.58) < 1e-9,
+          'ptx ' + c.ptx + ' -> ' + d.ptx + ' sesgo ' + d.bias);
+    check('y la sigma es la del ajuste (10,99), no una inventada', d.sigma === 10.99, d.sigma);
+    check('y la página avisa de que es una muestra que la malla eligió',
+          /malla eligió/i.test(d.nota) && /\+0,16/.test(d.nota), d.nota.slice(0, 160));
     /* La calibración es un sesgo GLOBAL: tiene que mover todos los márgenes lo
        mismo, ni un dB más. Si moviera unos más que otros, estaría tocando la
        física en vez de la referencia. */
-    const dif = d.m.map((v, i) => +(v - c.m[i]).toFixed(2)).filter(v => !isNaN(v));
-    check('y todos los márgenes suben EXACTAMENTE el sesgo, ni un dB más',
-          dif.length > 0 && dif.every(v => Math.abs(v - 33.6) < 0.02), JSON.stringify(dif));
-    check('y la página avisa de que va sin calibrar',
-          /SIN calibrar/i.test(d.nota), d.nota.slice(0, 120));
+    /* Tolerancia 0,11: los márgenes se leen del panel, que los escribe con UN
+       decimal, así que la diferencia de dos redondeos ya baila hasta 0,1. */
+    const dif = d.m.map((v, i) => +(c.m[i] - v).toFixed(2)).filter(v => !isNaN(v));
+    check('y todos los márgenes bajan EXACTAMENTE el sesgo, ni un dB más',
+          dif.length > 0 && dif.every(v => Math.abs(v - 16.58) < 0.11), JSON.stringify(dif));
 
     /* El sesgo va sobre la potencia QUE DIGA EL MANDO. Aplicado sobre los 19 dBm
        de fábrica, elegir el XBee de +8 se lo comía. */
-    await page.click('#segcal [data-k="1"]', CLIC); await page.waitForTimeout(800);
     await page.click('#segr [data-p="8"]', CLIC); await page.waitForTimeout(1200);
     const e8 = await lee();
-    check('cambiar de radio no se come la calibración',
-          e8.bias === -33.6 && Math.abs(e8.ptx - (8 - 33.6)) < 1e-9, 'ptx ' + e8.ptx);
-    await page.click('#segr [data-p="19"]', CLIC); await page.waitForTimeout(1000);
+    check('cambiar de radio no se come el recentrado',
+          e8.bias === -16.58 && Math.abs(e8.ptx - (8 - 16.58)) < 1e-9, 'ptx ' + e8.ptx);
+    await page.click('#segr [data-p="19"]', CLIC); await page.waitForTimeout(800);
+    await page.click('#segcal [data-k="0"]', CLIC); await page.waitForTimeout(1000);
   }
 
   /* ---- 19. el rizado de dos rayos, dicho y no escondido ---- */
