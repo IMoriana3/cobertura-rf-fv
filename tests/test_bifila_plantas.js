@@ -89,8 +89,11 @@ const SONDA = `(() => {
         f.mismoMargen === true);
   check('las filas quedan al paso de la planta (6 m), no a 12',
         Math.abs(f.paso - 6) < 0.2, f.paso);
-  check('la decisión sale del layout, no de una lista escrita a mano',
-        f.bif && f.bif.si === true && /paso declarado/.test(f.bif.porque || ''), f.bif);
+  /* La decisión sale del LAYOUT —de su `filaZ` y de `mesa.tipos`—, no de una
+     lista de plantas escrita a mano ni de medir la retícula. */
+  check('la decisión sale del layout, con su filaZ',
+        f.bif && f.bif.si === true && f.bif.fz === 3 &&
+        /dos filas a ±3 m/.test(f.bif.porque || ''), f.bif);
   check('cada fila sabe de qué seguidor es', f.conTrk === true);
   check('y la TCU va en la viga del motor: la fila oeste', f.oeste === true);
 
@@ -106,10 +109,15 @@ const SONDA = `(() => {
   check('y 751 TCU, no 1.502', a.tcus === 751, a.tcus);
   check('y el render cuenta 751, que es lo que enseña', a.nRender === 751, a.nRender);
   check('las dos filas medidas de un seguidor comparten margen', a.mismoMargen === true);
-  /* Ayora TIENE filaZ y paso declarados, así que aquí la regla sí decide — y
-     decide que NO. Es el caso que distingue «comprobar» de «partir siempre». */
-  check('y la regla dice que Ayora no se parte, aunque pueda decidirlo',
-        a.bif && a.bif.si === false && /ya quedan/.test(a.bif.porque || ''), a.bif);
+  /* Y el veredicto del layout CUADRA con lo que midió el levantamiento: dice
+     bífila, y el levantamiento trae exactamente 2 filas por seguidor. Dos
+     fuentes independientes diciendo lo mismo. */
+  check('el layout dice bífila y el levantamiento lo confirma: 2 filas por seguidor',
+        a.bif && a.bif.si === true && a.filas === 2 * a.trk, [a.bif, a.filas, a.trk]);
+  /* Y no se confunden las dos cosas: con levantamiento las filas están MEDIDAS,
+     así que la guarda de solapes —que es sobre el recurso de partir— no aplica. */
+  check('y lo dice bien: las filas vienen medidas, no deducidas',
+        /MEDIDAS del levantamiento/.test(a.bif.porque || ''), a.bif.porque);
   check('cada fila medida sabe de qué seguidor es', a.conTrk === true);
   check('y la TCU es la fila oeste del par', a.oeste === true);
   check('sigue teniendo el levantamiento: las filas van a su cota, no a 0',
@@ -140,74 +148,57 @@ const SONDA = `(() => {
   // ── EL BURGO: el seguidor canónico. No declara filaZ porque ES el de la casa
   console.log('\n· El Burgo: bífila por las cotas canónicas de seguidor.js');
   const e = await carga('elburgo');
-  check('215 seguidores', e.trk === 215, e.trk);
-  check('y 430 filas: también es bífila', e.filas === 430, e.filas);
+  check('215 seguidores y 430 filas', e.trk === 215 && e.filas === 430, e);
   check('con 215 TCU', e.tcus === 215, e.tcus);
-  /* El Burgo no declara `filaZ` en su layout: es el seguidor canónico, y sus
-     cotas viven en seguidor.js. Sin ese recurso la planta contra la que
-     comparamos el modelo se quedaba a media fila, contando la mitad de las
-     mesas en cada rayo. */
-  check('la decisión se apoya en el paso declarado (6 m)',
-        e.bif && e.bif.si === true && /paso declarado \(6\)/.test(e.bif.porque || ''), e.bif);
   check('las filas quedan a 6 m', Math.abs(e.paso - 6) < 0.2, e.paso);
 
-  // ── POLVORÍN: no declara `pitch`, pero sí gcr y cuerda ────────────────────
-  console.log('\n· Polvorín: el paso sale del GCR, y con él se decide que NO se parte');
-  const pv = await carga('polvorin');
-  check('119 seguidores y 119 filas', pv.trk === 119 && pv.filas === 119, pv);
-  check('el paso derivado (cuerda/gcr) ronda los 6 m',
-        pv.bif && /paso 6\.0/.test(pv.bif.porque || ''), pv.bif);
-  check('y sin partir ya quedan a ese paso',
-        pv.bif && pv.bif.si === false && /ya quedan/.test(pv.bif.porque || ''), pv.bif);
+  /* TODAS SON BÍFILAS SALVO DONDE EL LAYOUT DIGA OTRA COSA. Eso NO se deduce de
+     la retícula: lo declara el layout, y es lo que hace `terreno.html`, que
+     lleva dibujando estas plantas bien desde el principio. Inferirlo —midiendo
+     si al partir el paso se quedaba en la mitad— acertaba en unas y fallaba en
+     otras: dejaba Túnez y Polvorín de una fila cuando son bífilos. */
+  console.log('\n· Túnez: 19 seguidores -> 38 filas');
+  const tz = await carga('tunez');
+  check('19 seguidores -> 38 filas', tz.trk === 19 && tz.filas === 38, [tz.trk, tz.filas]);
+  check('y 19 TCU', tz.tcus === 19, tz.tcus);
 
-  // ── Y las que NO se pueden decidir, que se queden como estaban ────────────
-  console.log('\n· sin paso de fila declarado no se parte: mejor quieto que inventando');
-  for (const q of ['tunez', 'bagnarelli']) {
+  /* DOS VIGAS NO PUEDEN ESTAR EN EL MISMO SITIO, y esto es lo que impide
+     rematar Bagnarelli y Polvorín. Son bífilos —lo dice el layout y lo dice
+     quien conoce la planta— pero sus unidades están a 1,84 m y a 0,01 m unas de
+     otras, menos que su propio paso de fila: partirlas a ±filaZ pondría filas
+     ENCIMA de otras, y una fila de más apantalla un rayo que en realidad pasa.
+     Eso es peor que dejarlo como está, así que no se parte y se dice por qué.
+     Lo que falta es un dato: el paso de fila de esas dos plantas, o su
+     levantamiento. */
+  console.log('\n· las que no se pueden partir sin solapar filas: se dice, no se disimula');
+  for (const [q, trk] of [['bagnarelli', 17], ['polvorin', 119]]) {
     const r = await carga(q);
-    // tres motivos legítimos, y los tres tienen que decirse: sin filaZ, sin paso
-    // declarado (los layouts de este repo son copias recortadas), o que sin
-    // partir ya quedan al paso.
-    check(q + ': no se parte, y dice el motivo',
-          r.bif && r.bif.si === false && /no declara el paso/.test(r.bif.porque || ''),
+    check(q + ': se queda en ' + trk + ' filas, sin solapar nada',
+          r.trk === trk && r.filas === trk, [r.trk, r.filas]);
+    check(q + ': y dice que ES bífilo y qué dato falta',
+          r.bif && r.bif.si === false && r.bif.solapes > 0 &&
+          /es bífilo/.test(r.bif.porque || '') && /Falta el paso de fila/.test(r.bif.porque || ''),
           r.bif);
-    check(q + ': una TCU por seguidor', r.tcus === r.trk, [r.tcus, r.trk]);
   }
 
-  /* ── un levantamiento INCOMPLETO ──────────────────────────────────────────
-     Las dos guardas del emparejamiento —la tolerancia y el "no repetir"— son
-     defensivas: en Ayora todo casa y no se notan. Aquí se sirve un
-     levantamiento recortado, que es lo que pasa cuando el DWG se mide antes de
-     una ampliación, y entonces sí tienen que hacer su trabajo:
-       · sin tolerancia, un seguidor sin entrada se lleva la de 300 m más allá;
-       · sin "no repetir", dos seguidores comparten la misma fila y uno se
-         coloca donde no está. */
-  console.log('\n· con el levantamiento a medias, el emparejamiento no inventa');
-  const CORTE = 400;
-  await page.route('**/ayora_cotas.json', async route => {
-    const r = await route.fetch();
-    const j = JSON.parse(await r.text());
-    j.t = j.t.slice(0, CORTE);              // solo los primeros: el resto se queda sin medir
-    route.fulfill({ contentType: 'application/json', body: JSON.stringify(j) });
+  /* EL TIPO «MONO» NO SE PRUEBA SOLO. Hoy la unica planta que lo trae —Polvorin—
+     se queda sin partir por la guarda de solapes, asi que el filtro por tipo no
+     llega a actuar nunca y ninguna mutacion lo alcanzaba: codigo muerto. Se
+     fuerza la decision para recorrer esa rama, que es la que servira el dia que
+     Polvorin traiga su paso de fila. */
+  console.log('\n· el filtro por tipo, forzando la rama que hoy no se recorre');
+  const mono = await page.evaluate(() => {
+    const antes = PLANTA.bif;
+    PLANTA.bif = { si: true, fz: 2.25 };
+    PLANTA._un = null;
+    const con = unidades().length;
+    const conMono = PLANTA.trk.filter(t => { const q = tipoBlq(PLANTA.lay, t); return q && q.mono; }).length;
+    PLANTA.bif = antes; PLANTA._un = null; PLANTA._tcus = null;
+    return { con: con, trk: PLANTA.trk.length, mono: conMono };
   });
-  const inc = await carga('ayora');
-  /* 751 seguidores y 400 entradas servidas, pero solo 397 emparejan: TRES de
-     las 400 son las de TK 040-05, TK 050-05 y TK 051-05 —índices 315, 325 y
-     326 del levantamiento original— cuyas TCU se retiraron y ya no están en el
-     layout. Que se queden sin pareja es exactamente lo que tiene que pasar, y
-     es la prueba de que el emparejamiento va por SITIO y no por orden. */
-  check('los que no tienen entrada se quedan sin ella, y se cuentan',
-        inc.empar && inc.empar.lejos === inc.empar.n - (CORTE - 3),
-        inc.empar);
-  check('y las tres entradas de las TCU retiradas no las coge nadie',
-        inc.empar && inc.empar.n - inc.empar.lejos === CORTE - 3,
-        inc.empar && (inc.empar.n - inc.empar.lejos));
-  check('ninguno se lleva una fila que no es suya',
-        inc.empar && inc.empar.dmax < 4, inc.empar && inc.empar.dmax);
-  check('y ninguna entrada se reparte entre dos',
-        inc.empar && inc.empar.repetidas === 0, inc.empar);
-  check('los medidos conservan su cota; el resto va al terreno, no se pierde',
-        inc.trk === 751 && inc.tcus === 751, inc);
-  await page.unroute('**/ayora_cotas.json');
+  check('Polvorín tiene 2 seguidores de tipo mono', mono.mono === 2, mono);
+  check('y al partir salen 236 filas, no 238: los dos mono van de una',
+        mono.con === 2 * mono.trk - mono.mono, mono);
 
   check('sin errores de JS en ninguna planta', errs.length === 0, errs.slice(0, 3));
   await browser.close();

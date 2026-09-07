@@ -782,8 +782,12 @@ function cargaPlanta(nom){
         trk:(j.trackers||[]).map(t=>{
           const medio=/^medio/i.test(t.t||"");
           const mr=(typeof t.mr==="number"&&t.mr>0&&t.mr<1)?t.mr:(medio?0.504:1);
+          /* `tp`/`blk` son el TIPO de seguidor, y hay que traerlos: el layout
+             declara ahí cuáles son de una sola fila (Polvorín tiene dos «Mono
+             31+31» entre 119). Sin ellos, ese dato se quedaba en el fichero. */
           return {x:t.x, n:t.n, rot:t.rot||0, mr:mr, medio:mr<1,
-                  ncu:t.ncu||1, gw:t.gw||1, id:t.id, t:t.t||null};
+                  ncu:t.ncu||1, gw:t.gw||1, id:t.id, t:t.t||null,
+                  tp:t.tp||null, blk:t.blk||null};
         }),
         ncus:(j.ncus||[]).map(c=>({x:c.x,n:c.n,name:c.name})),
         meteo:(j.meteo||[]).map(c=>({x:c.x,n:c.n,name:c.name})),
@@ -792,12 +796,15 @@ function cargaPlanta(nom){
            tipo de seguidor, de los círculos del Tierras.dwg. Sin ella se usa la
            genérica de `seguidor.js`, proporcional al largo. */
         pil:j.pilotes||null,
+        /* el layout en crudo: `mesa.tipos` dice qué seguidores son de una fila
+           (Polvorín) y se consulta por tracker al construir las filas */
+        lay:j,
         cot:null
       };
       /* Bífila o no, DEDUCIDO del layout y comprobado contra su paso de fila.
          Se guarda con el motivo para poder enseñarlo: una decisión que cambia
          la obstrucción no puede ser invisible. */
-      PLANTA.bif=esBifila(j);
+      PLANTA.bif=esBifila(j, !!(cot&&cot.t&&cot.t.length));
       /* EMPAREJAR POR SITIO, NO POR POSICION EN LA LISTA. El levantamiento venia
          casado con el layout por INDICE (cot.t[i] <-> trk[i]) y con un guard de
          "mismo numero de entradas". Basta una baja para romperlo: al quitar de
@@ -995,37 +1002,54 @@ function filaZde(L){
   return (typeof Seguidor!=="undefined" && Seguidor.DIMS && Seguidor.DIMS.filaZ!=null)
          ? Seguidor.DIMS.filaZ : null;
 }
-/* Mediana de los huecos entre filas contiguas, proyectadas al eje perpendicular.
-   Es la misma lectura que hace `filasPlanta()` para agrupar. */
-function _pasoDe(trk,fz){
-  const us=[];
-  for(const t of trk){
-    const th=(t.rot||0)*Math.PI/180, u=t.x*Math.cos(th)+t.n*Math.sin(th);
-    if(fz){ us.push(u-fz, u+fz); } else us.push(u);
-  }
-  us.sort((a,b)=>a-b);
-  const g=[];
-  for(let i=1;i<us.length;i++){ const d=us[i]-us[i-1]; if(d>0.4) g.push(d); }
-  if(!g.length) return null;
-  g.sort((a,b)=>a-b);
-  return g[g.length>>1];
+/* ¿CUÁNTAS FILAS TIENE ESTA UNIDAD? NO SE DEDUCE: EL LAYOUT LO DICE.
+   Lo mismo que hace `terreno.html`, que lleva dibujando estas plantas bien
+   desde el principio. Yo me puse a inferirlo de la retícula —midiendo si al
+   partir el paso se quedaba en la mitad— y eso acertaba en unas plantas y
+   fallaba en otras: dejaba Túnez y Polvorín de una fila cuando son bífilos.
+   Inferir un dato que está escrito es inventárselo con más pasos.
+
+   El layout lo declara en dos sitios, y los dos se leen aquí:
+     · `mesa.tipos[tipo].mono` — Polvorín tiene dos «Mono 31+31» entre 119, con
+       su `ancho` 2,384 (una cuerda de módulo) frente a los 6,884 de los demás;
+     · `filaZ` 0 para la planta entera (Páramo).
+   Y `filaZ` sale de `mesa.filaZ`, del layout, o de las cotas canónicas de
+   `seguidor.js` — El Burgo no lo declara porque ES el seguidor canónico. */
+function tipoBlq(L,t){
+  const tp=(L&&L.mesa&&L.mesa.tipos)||{};
+  return tp[t.blk] || tp[t.tp] || null;
 }
-function esBifila(L){
-  const fz=filaZde(L), paso=pasoFilaDe(L), trk=(L&&L.trackers)||[];
-  /* `filaZ` 0 NO es un hueco: es la planta diciendo que su seguidor es de UNA
-     fila (Páramo). Confundir "vale 0" con "no lo dice" borraba el dato y dejaba
-     el mismo mensaje para dos cosas distintas. */
-  if(fz===0)          return {si:false, fz:0, porque:"el layout declara filaZ 0: el seguidor es de UNA fila"};
-  if(fz==null)        return {si:false, fz:0, porque:"el layout no declara filaZ y no hay cotas canónicas"};
-  if(!paso)           return {si:false, fz:0, porque:"el layout no declara el paso de fila: no se parte sin poder comprobarlo"};
-  if(trk.length<2)    return {si:false, fz:0, porque:"pocos seguidores"};
-  const sin=_pasoDe(trk,0), con=_pasoDe(trk,fz);
-  if(sin==null||con==null) return {si:false, fz:0, porque:"no se puede medir el paso"};
-  const eSin=Math.abs(sin-paso), eCon=Math.abs(con-paso);
-  if(eCon < eSin-0.05)
-    return {si:true, fz:fz, porque:"al partir en dos, las filas quedan a "+con.toFixed(2)+
-            " m, que es el paso declarado ("+paso+")"};
-  return {si:false, fz:0, porque:"sin partir ya quedan a "+sin.toFixed(2)+" m (paso "+paso+")"};
+function esBifila(L,conCotas){
+  const fz=filaZde(L);
+  if(fz===0)   return {si:false, fz:0, porque:"el layout declara filaZ 0: el seguidor es de UNA fila"};
+  if(fz==null) return {si:false, fz:0, porque:"el layout no declara filaZ y no hay cotas canónicas"};
+  const trk=(L&&L.trackers)||[];
+  /* DOS VIGAS NO PUEDEN ESTAR EN EL MISMO SITIO. En Bagnarelli hay unidades a
+     1,84 m unas de otras y en Polvorín a 0,01: menos que su propio paso de
+     fila. Partirlas a ±filaZ pondría filas ENCIMA de otras, y una fila de más
+     apantalla un rayo que en realidad pasa. Eso es peor que dejarlo como está.
+     Cuando pasa, el punto de inserción del layout NO es el centro del par, y
+     con lo que hay no se puede colocar la segunda viga: hace falta el paso de
+     fila de esa planta o su levantamiento. Se dice, no se disimula. */
+  /* Con levantamiento no hace falta partir nada: las filas están MEDIDAS, una
+     por una. La guarda de abajo es sobre el recurso de partir, no sobre si la
+     planta es bífila — y decir "no se parte" de Ayora, que tiene sus 1.508
+     filas medidas, seria confundir las dos cosas. */
+  if(conCotas) return {si:true, fz:fz, medido:1,
+    porque:"seguidor bífilo, y las filas no se deducen: vienen MEDIDAS del levantamiento"};
+  const az=(trk[0]&&trk[0].rot||0)*Math.PI/180;
+  const us=[...new Set(trk.map(t=>+(t.x*Math.cos(az)+t.n*Math.sin(az)).toFixed(3)))].sort((a,b)=>a-b);
+  const v=us.map(u=>u-fz).concat(us.map(u=>u+fz)).sort((a,b)=>a-b);
+  let solapes=0;
+  for(let i=1;i<v.length;i++) if(v[i]-v[i-1] > 1e-6 && v[i]-v[i-1] < 0.5) solapes++;
+  if(solapes) return {si:false, fz:0, solapes:solapes,
+    porque:"es bífilo, pero partirlo a ±"+fz+" m pondría "+solapes+" filas encima de otras: "+
+           "el punto de inserción del layout no es el centro del par. Falta el paso de fila "+
+           "de esta planta o su levantamiento"};
+  const mono=trk.filter(t=>{ const q=tipoBlq(L,t); return q && q.mono; }).length;
+  return {si:true, fz:fz, mono:mono,
+          porque:"seguidor bífilo: dos filas a ±"+fz+" m"+
+                 (mono ? ", salvo "+mono+" de tipo mono que el layout declara de una" : "")};
 }
 
 /* Lo que se dibuja y lo que APANTALLA: con cotas, la FILA medida; sin ellas, el
@@ -1039,7 +1063,10 @@ function unidades(){
     PLANTA.trk.forEach((t,i)=>{
       const rot=(t.rot||0)*Math.PI/180;
       const base={y:0, tilt:0, mr:t.mr, rot:rot, ncu:t.ncu, gw:t.gw, tp:tipoDe(t), trk:i};
-      if(!B.si){ out.push(Object.assign({x:t.x, n:t.n}, base)); return; }
+      /* Y el tipo manda sobre la planta: en Polvorín conviven bífilos con dos
+         «Mono 31+31» que el layout declara de una fila. */
+      const q=tipoBlq(PLANTA.lay,t);
+      if(!B.si || (q && q.mono)){ out.push(Object.assign({x:t.x, n:t.n}, base)); return; }
       /* ⊥ al tubo: al eje girado `rot` le corresponde el perpendicular
          (cos rot, sin rot) — la misma convención que gen_coords_cobertura.py. */
       const dx=B.fz*Math.cos(rot), dn=B.fz*Math.sin(rot);
