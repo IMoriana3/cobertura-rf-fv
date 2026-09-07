@@ -794,6 +794,60 @@ function cargaPlanta(nom){
         pil:j.pilotes||null,
         cot:null
       };
+      /* Bífila o no, DEDUCIDO del layout y comprobado contra su paso de fila.
+         Se guarda con el motivo para poder enseñarlo: una decisión que cambia
+         la obstrucción no puede ser invisible. */
+      PLANTA.bif=esBifila(j);
+      /* EMPAREJAR POR SITIO, NO POR POSICION EN LA LISTA. El levantamiento venia
+         casado con el layout por INDICE (cot.t[i] <-> trk[i]) y con un guard de
+         "mismo numero de entradas". Basta una baja para romperlo: al quitar de
+         Ayora las tres TCU retiradas el layout se quedo en 751 y el fichero de
+         cotas en 754, el guard fallo y Ayora PERDIO SU LEVANTAMIENTO ENTERO —
+         91 m de desnivel y pendientes de hasta 8,4 grados— volviendo a terreno
+         plano sin decir nada. Y si el guard hubiese pasado seria peor: los
+         indices posteriores a la baja quedan corridos y cada seguidor se lleva
+         las cotas del de al lado.
+         Ahora cada seguidor busca SU entrada por coordenadas. Sobra o falta
+         gente y sigue funcionando, y lo que no case se canta. */
+      if(cot&&cot.t&&cot.t.length){
+        const _idx=[];
+        let _lejos=0, _dmax=0;
+        PLANTA.trk.forEach(t=>{
+          let bd=1e18, bj=-1;
+          for(let j=0;j<cot.t.length;j++){
+            const e=cot.t[j], ff=(e&&e.f)||[];
+            if(!ff.length) continue;
+            // centro del par de filas de esa entrada
+            let cx=0, cn=0, k=0;
+            for(const f of ff){ if(!f||!f.n||f.n.length<2) continue;
+              cx+=f.x; cn+=(f.n[0]+f.n[1])/2; k++; }
+            if(!k) continue;
+            cx/=k; cn/=k;
+            const d=(cx-t.x)*(cx-t.x)+(cn-t.n)*(cn-t.n);
+            if(d<bd){ bd=d; bj=j; }
+          }
+          // media mesa de tolerancia: mas lejos que eso no es "su" entrada
+          /* Media mesa de tolerancia: más lejos que eso no es "su" entrada. Y no
+             se marca la entrada como gastada: con esta tolerancia dos seguidores
+             no pueden casar con la misma —van a 6 m y la pareja es la más
+             cercana—, así que reservarla sería una guarda que nunca actúa. Si
+             alguna vez pasara, se CUENTA abajo y se canta, que es mejor que
+             taparlo en silencio. */
+          if(bj>=0 && bd<=25){ _idx.push(bj); if(bd>_dmax)_dmax=bd; }
+          else { _idx.push(-1); _lejos++; }
+        });
+        if(_lejos) console.warn("Cobertura RF: "+_lejos+" de "+PLANTA.trk.length+
+          " seguidores de "+nom+" no encuentran su fila en el levantamiento; van a cota del terreno.");
+        /* CÓMO ha salido el emparejamiento, guardado para poder comprobarlo: sin
+           esto, "coger el más cercano aunque esté a 200 m" o "dar la misma
+           entrada a dos seguidores" no se notan en una planta donde todo casa. */
+        const _vistas={}; let _rep=0;
+        _idx.forEach(j=>{ if(j<0) return; if(_vistas[j]) _rep++; _vistas[j]=1; });
+        if(_rep) console.warn("Cobertura RF: "+_rep+" filas del levantamiento de "+nom+
+          " las comparten dos seguidores; revisa el layout.");
+        PLANTA.empar={lejos:_lejos, repetidas:_rep, dmax:Math.sqrt(_dmax), n:PLANTA.trk.length};
+        cot={t:_idx.map(j=>j>=0?cot.t[j]:null)};
+      }
       if(cot&&cot.t&&cot.t.length===PLANTA.trk.length){
         const filas=[], sinCota=[];
         cot.t.forEach((t,i)=>{
@@ -805,8 +859,11 @@ function cargaPlanta(nom){
           ff.forEach(f=>{
             if(!f||!f.n||!f.y||f.n.length<2||f.y.length<2) return;
             const asc=f.n[0]<=f.n[1];
+            /* `trk` es el SEGUIDOR del que sale esta fila. Hace falta porque un
+               seguidor son DOS filas y una sola TCU: sin esto no hay forma de
+               volver de la fila a su equipo. */
             filas.push({x:f.x, n0:asc?f.n[0]:f.n[1], n1:asc?f.n[1]:f.n[0],
-                        y0:asc?f.y[0]:f.y[1], y1:asc?f.y[1]:f.y[0],
+                        y0:asc?f.y[0]:f.y[1], y1:asc?f.y[1]:f.y[0], trk:i,
                         ncu:PLANTA.trk[i].ncu, gw:PLANTA.trk[i].gw, art:!!f.art});
           });
         });
@@ -902,18 +959,99 @@ function mastilDe(ncu,gw,masts){
   return laxo || masts[Math.min(Math.max(ncu,1)-1,masts.length-1)];
 }
 
-/* Lo que se dibuja y se calcula: con cotas, la FILA medida (un bifila son dos);
-   sin ellas, el seguidor del layout sobre terreno plano. */
+/* ¿UNA UNIDAD DEL LAYOUT SON DOS FILAS? El seguidor de la casa es BÍFILO: dos
+   filas de módulos a ±filaZ movidas por el MISMO motor, con UNA sola TCU. Los
+   dos levantamientos que hay lo dicen sin lugar a dudas — Ayora mide 1.508
+   filas para 754 seguidores, exactamente el doble.
+
+   Pero el layout guarda una posición por UNIDAD, y una unidad no siempre es lo
+   mismo: en Fayón es el par (sus bloques se llaman «2x1V48» y sus unidades van
+   a 12 m con paso de fila 6), y en otras plantas es ya la fila suelta. Elegirlo
+   a mano por planta es lo que nos ha traído hasta aquí — tres sitios diciendo
+   cosas distintas — así que se DEDUCE y se comprueba: se parte solo si al
+   partir las filas quedan al PASO DECLARADO de la planta.
+
+   Sin paso declarado no se parte: mejor quedarse como está que inventar una
+   fila. Hoy solo Fayón lo declara aquí; los layouts de este repo son copias
+   recortadas de los de cobertura-zigbee y han perdido `montaje`/`mesa`. */
+function pasoFilaDe(L){
+  const m=(L&&L.mesa)||{}, mo=(L&&L.montaje)||{};
+  return m.pasoFila || mo.pitch || null;
+}
+function filaZde(L){
+  const m=(L&&L.mesa)||{};
+  return m.filaZ!=null ? m.filaZ : (L&&L.filaZ!=null ? L.filaZ : null);
+}
+/* Mediana de los huecos entre filas contiguas, proyectadas al eje perpendicular.
+   Es la misma lectura que hace `filasPlanta()` para agrupar. */
+function _pasoDe(trk,fz){
+  const us=[];
+  for(const t of trk){
+    const th=(t.rot||0)*Math.PI/180, u=t.x*Math.cos(th)+t.n*Math.sin(th);
+    if(fz){ us.push(u-fz, u+fz); } else us.push(u);
+  }
+  us.sort((a,b)=>a-b);
+  const g=[];
+  for(let i=1;i<us.length;i++){ const d=us[i]-us[i-1]; if(d>0.4) g.push(d); }
+  if(!g.length) return null;
+  g.sort((a,b)=>a-b);
+  return g[g.length>>1];
+}
+function esBifila(L){
+  const fz=filaZde(L), paso=pasoFilaDe(L), trk=(L&&L.trackers)||[];
+  if(!fz || !paso || trk.length<2) return {si:false, fz:0, porque:!fz?"el layout no declara filaZ"
+    : !paso?"el layout no declara el paso de fila: no se parte sin poder comprobarlo" : "pocos seguidores"};
+  const sin=_pasoDe(trk,0), con=_pasoDe(trk,fz);
+  if(sin==null||con==null) return {si:false, fz:0, porque:"no se puede medir el paso"};
+  const eSin=Math.abs(sin-paso), eCon=Math.abs(con-paso);
+  if(eCon < eSin-0.05)
+    return {si:true, fz:fz, porque:"al partir en dos, las filas quedan a "+con.toFixed(2)+
+            " m, que es el paso declarado ("+paso+")"};
+  return {si:false, fz:0, porque:"sin partir ya quedan a "+sin.toFixed(2)+" m (paso "+paso+")"};
+}
+
+/* Lo que se dibuja y lo que APANTALLA: con cotas, la FILA medida; sin ellas, el
+   seguidor del layout, partido en sus dos filas cuando la planta es bífila.
+   Cada fila recuerda su seguidor en `trk`: las dos filas apantallan, pero la
+   TCU es UNA y va en la viga del motor. */
 function unidades(){
-  if(!PLANTA.cot) return PLANTA.trk.map(t=>({x:t.x, n:t.n, y:0, tilt:0, mr:t.mr, rot:(t.rot||0)*Math.PI/180, ncu:t.ncu, gw:t.gw, tp:tipoDe(t)}));
+  if(!PLANTA.cot){
+    const B=PLANTA.bif||{si:false,fz:0};
+    const out=[];
+    PLANTA.trk.forEach((t,i)=>{
+      const rot=(t.rot||0)*Math.PI/180;
+      const base={y:0, tilt:0, mr:t.mr, rot:rot, ncu:t.ncu, gw:t.gw, tp:tipoDe(t), trk:i};
+      if(!B.si){ out.push(Object.assign({x:t.x, n:t.n}, base)); return; }
+      /* ⊥ al tubo: al eje girado `rot` le corresponde el perpendicular
+         (cos rot, sin rot) — la misma convención que gen_coords_cobertura.py. */
+      const dx=B.fz*Math.cos(rot), dn=B.fz*Math.sin(rot);
+      out.push(Object.assign({x:t.x-dx, n:t.n-dn}, base));   // viga del MOTOR (oeste): lleva la TCU
+      out.push(Object.assign({x:t.x+dx, n:t.n+dn}, base));   // viga gemela
+    });
+    return out;
+  }
   const u=PLANTA.cot.filas.map(f=>({
     x:f.x, n:f.nm, y:f.ym, tilt:f.tilt, mr:Math.min(1.2,f.len/SPANP),
-    rot:PLANTA.az*Math.PI/180, ncu:f.ncu, gw:f.gw, med:1, tp:tipoCerca(f.x,f.nm)}));
+    rot:PLANTA.az*Math.PI/180, ncu:f.ncu, gw:f.gw, med:1, trk:f.trk, tp:tipoCerca(f.x,f.nm)}));
   (PLANTA.cot.sinCota||[]).forEach(i=>{                 // sin medir: a la cota de alrededor, y declarado
     const t=PLANTA.trk[i];
-    u.push({x:t.x, n:t.n, y:cotaEn(t.x,t.n), tilt:0, mr:t.mr, rot:(t.rot||0)*Math.PI/180, ncu:t.ncu, gw:t.gw, med:0, tp:tipoDe(t)});
+    u.push({x:t.x, n:t.n, y:cotaEn(t.x,t.n), tilt:0, mr:t.mr, rot:(t.rot||0)*Math.PI/180, ncu:t.ncu, gw:t.gw, med:0, trk:i, tp:tipoDe(t)});
   });
   return u;
+}
+/* LA TCU DE CADA SEGUIDOR, que es UNA aunque el seguidor tenga dos filas. Va en
+   la viga del MOTOR: de las filas de ese seguidor, la de menos u (la oeste),
+   igual que en terreno.html. Antes se calculaba un margen POR FILA, así que
+   Ayora contaba 1.508 TCU donde hay 754 y cada NCU salía con el doble de
+   equipos de los que tiene. */
+function tcusDe(UN){
+  const por={};
+  UN.forEach((f,i)=>{
+    const k=f.trk!=null?f.trk:i;
+    const th=f.rot||0, u=f.x*Math.cos(th)+f.n*Math.sin(th);
+    if(!por[k] || u<por[k].u) por[k]={u:u, i:i, f:f};
+  });
+  return Object.keys(por).map(k=>({trk:+k, fila:por[k].i, u:por[k].u, d:por[k].f}));
 }
 
 /* EL TIPO DE SEGUIDOR, que es quien manda en dónde van sus apoyos. El layout lo
@@ -1122,7 +1260,7 @@ function buildPlanta(){
   SPANP=D.span; BUILT_SPAN=D.span;
   PLANTA._filas=filasPlanta();
   buildTerreno();
-  PLANTA._un=null;
+  PLANTA._un=null; PLANTA._tcus=null;
   const UN=PLANTA._un=unidades();   // filas medidas (con cotas) o seguidores del layout
   /* TAMAÑO EXACTO DE CADA MESA. Antes se montaba UNA mesa canónica y se escalaba
      por `mr`: el largo salía bien pero los módulos quedaban estirados o
@@ -1234,8 +1372,39 @@ function pintaPlanta(beta,hA){
                     y:e.g.position.y, h:HNCU });
   const cacheM={}, grupos={};
   let peor=1e9, pmed=0, sin=0;
-  const NTOT=(PLANTA._un||unidades()).length;
   const UN=PLANTA._un||(PLANTA._un=unidades());
+  /* UNA TCU POR SEGUIDOR. Las dos filas de un bífilo apantallan las dos, pero
+     transmite una sola antena, la de la viga del motor. El margen se calcula
+     por seguidor y sus filas se pintan con él. */
+  const TCUS=PLANTA._tcus||(PLANTA._tcus=tcusDe(UN));
+  const NTOT=TCUS.length;
+  const mgFila=new Float32Array(UN.length).fill(-99);
+  /* EL MARGEN, UNA VEZ POR SEGUIDOR. Va antes del bucle de dibujo porque las
+     dos filas de un bífilo comparten TCU y comparten resultado: calcularlo dos
+     veces daba dos números (cada fila tiene su x) y contaba el equipo dos veces
+     en las estadísticas de su NCU. */
+  const porTrk={};
+  for(const T of TCUS){
+    const t=T.d;
+    let mg=-99;
+    const key=(t.ncu||1)+"."+(t.gw||1);
+    if(masts.length){
+      const m=cacheM[key]||(cacheM[key]=mastilDe(t.ncu||1,t.gw||1,masts));
+      const c=posDe(m);
+      /* Desde la TCU, que está en la viga del MOTOR: es la fila oeste, no el
+         centro del par. Medio paso de fila de diferencia en el origen del rayo. */
+      const o=UN[T.fila];
+      const tabs=mesasEnPlanta(o.x,o.n,c.x,c.n,beta,hw);
+      const d=Math.hypot(c.x-o.x,c.n-o.n);
+      mg=Z.predictLink({x:0,y:0,ground:o.y,h:hA},{x:d,y:0,ground:c.y,h:c.h},p,null,null,tabs).marginDb;
+    }
+    porTrk[T.trk]=mg;
+    const G=grupos[key]||(grupos[key]={n:0,sin:0,peor:1e9,suma:0,
+                                       mast:cacheM[key]?cacheM[key].dato.name:"—"});
+    G.n++; G.suma+=mg; if(mg<8)G.sin++; if(mg<G.peor)G.peor=mg;
+    peor=Math.min(peor,mg); pmed+=mg; if(mg<8)sin++;
+  }
+  UN.forEach((f,i)=>{ mgFila[i]=porTrk[f.trk!=null?f.trk:i]; });
   PLI.forEach(L=>{ L._n=0; });
   for(let i=0;i<UN.length;i++){
     const t=UN[i];
@@ -1277,20 +1446,8 @@ function pintaPlanta(beta,hA){
         L.im.setMatrixAt(base+l,m);
       }
     }
-    // el salto directo a su NCU, con las cotas por medio
-    let mg=-99;
     const key=(t.ncu||1)+"."+(t.gw||1);
-    if(masts.length){
-      const m=cacheM[key]||(cacheM[key]=mastilDe(t.ncu||1,t.gw||1,masts));
-      const c=posDe(m);
-      const tabs=mesasEnPlanta(t.x,t.n,c.x,c.n,beta,hw);
-      const d=Math.hypot(c.x-t.x,c.n-t.n);
-      mg=Z.predictLink({x:0,y:0,ground:t.y,h:hA},{x:d,y:0,ground:c.y,h:c.h},p,null,null,tabs).marginDb;
-    }
-    const G=grupos[key]||(grupos[key]={n:0,sin:0,peor:1e9,suma:0,
-                                       mast:cacheM[key]?cacheM[key].dato.name:"—"});
-    G.n++; G.suma+=mg; if(mg<8)G.sin++; if(mg<G.peor)G.peor=mg;
-    peor=Math.min(peor,mg); pmed+=mg; if(mg<8)sin++;
+    const mg=mgFila[i];
     if(PLMESA){
       /* Apagado si se está aislando otro ámbito; si no, el color que toque. */
       _col.set(SOLO && SOLO!==key ? "#2a2f39"
@@ -1301,6 +1458,12 @@ function pintaPlanta(beta,hA){
   PLI.forEach(L=>{ if(PILSUCIO||!L.pil) L.im.instanceMatrix.needsUpdate=true; });
   PILSUCIO=false;
   if(PLMESA) PLMESA.list.forEach(g=>{ if(g.im.instanceColor) g.im.instanceColor.needsUpdate=true; });
+  /* Lo que ha salido, guardado en la planta. No es para el dibujo: es para que
+     se pueda COMPROBAR desde fuera qué contó el render de verdad, y no solo qué
+     devuelven las funciones por separado. Sin esto, un banco que llama a
+     `tcusDe()` por su cuenta da el número bueno aunque el render use otro. */
+  PLANTA._res={peor:peor, medio:pmed/NTOT, sin:sin, n:NTOT};
+  PLANTA._mgFila=mgFila;
   return {peor:peor, medio:pmed/NTOT, sin:sin, n:NTOT, grupos:grupos};
 }
 

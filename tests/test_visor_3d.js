@@ -494,8 +494,10 @@ const SONDA = `(() => {
     });
     check('Ayora trae sus cotas medidas', t.cot === true);
     /* Con cotas la unidad pasa a ser la FILA: un bifila son dos, y el layout
-       solo daba una posición por unidad. 754 seguidores -> 1.508 filas. */
-    check('con cotas se dibuja FILA a fila (1.508, no 754)', t.filas === 1508 && t.un === 1508,
+       solo daba una posición por unidad. 751 seguidores -> 1.502 filas.
+       Eran 1.508 hasta que Ayora perdió las TCU de TK 040-05, TK 050-05 y
+       TK 051-05 y el layout pasó a as-built con 751. */
+    check('con cotas se dibuja FILA a fila (1.502, no 751)', t.filas === 1502 && t.un === 1502,
           t.filas + ' / ' + t.un);
     check('las filas van a su cota medida (91 m de desnivel)', t.ymax - t.ymin > 80,
           t.ymin.toFixed(1) + ' … ' + t.ymax.toFixed(1) + ' m');
