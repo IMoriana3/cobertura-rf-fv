@@ -194,9 +194,26 @@
     hsu: { towerH: 8.0, h: 6.50, legR: 0.15 },   // los látigos van en su brazo a media torre, no en la cabeza
   };
 
+  /* DIAGRAMA DEL DIPOLO DE MEDIA ONDA, en dB relativos a su máximo.
+   *   F(e) = cos((pi/2) sin e) / cos e ,  con `e` la elevación sobre el horizonte
+   * Normalizado a F(0) = 1: en el horizonte vale 0 dB, así que los 3 dBi de
+   * catálogo siguen siendo los 3 dBi de catálogo y esto SOLO RESTA. Nunca suma,
+   * que es lo que tiene que hacer una corrección de patrón sobre la ganancia de
+   * pico. En el eje del látigo (e = ±90°) hay un nulo.
+   * Lo que NO modela: el látigo cuelga de la viga y bascula con la mesa, así que
+   * su eje no es exactamente la vertical. Se toma vertical, que es la hipótesis
+   * conservadora para saltos horizontales y la de siempre. */
+  function dipoleGainDb(elevRad) {
+    const c = Math.cos(elevRad);
+    if (Math.abs(c) < 1e-9) return -60;                 // el nulo del eje, acotado
+    const f = Math.cos((Math.PI / 2) * Math.sin(elevRad)) / c;
+    return 20 * Math.log10(Math.max(Math.abs(f), 1e-3));
+  }
+
   const defaultParams = () => ({
     fHz: 2.45e9, ptxDbm: 19.0, gtxDbi: 3.0, grxDbi: 3.0, rxSensDbm: -103.0,
     sigmaDb: 6.0, epsR: 15.0, sigmaGround: 5e-3, pol: "v", lModDb: 0.0,
+    antPatron: "dipolo",   // "iso" para volver a la ganancia plana de antes
   }); // ptxDbm: XBee-PRO RR. Estándar +8. Canal 26: máx +3. Antena Jinchang 3 dBi.
 
   /* Recentrado con El Burgo I (NCU1) — espejo de `EL_BURGO_BIAS_DB` en el puerto
@@ -240,7 +257,15 @@
       plDiff += diffractionLossTablesDb(d, tx.ground + tx.h, rx.ground + rx.h, tables, p.fHz);
     }
     const plTotal = pl2 + plDiff + p.lModDb;
-    const prx = p.ptxDbm + p.gtxDbi + p.grxDbi - plTotal;
+    /* GANANCIA SEGÚN LA ELEVACIÓN DEL ENLACE. La Jinchang es un dipolo de ~λ/2
+       —lo dice su propia ficha— y un dipolo NO radia igual en todas las
+       direcciones: tiene su máximo en el horizonte y un NULO en su propio eje.
+       Hasta ahora los 3 dBi entraban como un escalar, o sea como si la antena
+       fuese isótropa, y eso es OPTIMISTA en los saltos con elevación: los
+       cortos contra la HSU, que está a 6,50 m, o contra la NCU. */
+    const gEl = p.antPatron === "iso" ? 0
+              : dipoleGainDb(Math.atan2((rx.ground + rx.h) - (tx.ground + tx.h), d));
+    const prx = p.ptxDbm + (p.gtxDbi + gEl) + (p.grxDbi + gEl) - plTotal;
     const margin = prx - p.rxSensDbm;
     return {
       distanceM: +d.toFixed(2), prxDbm: +prx.toFixed(2), marginDb: +margin.toFixed(2),
@@ -251,7 +276,7 @@
 
   const ZigbeePV = {
     wavelength, fsplDb, breakpointDistance, fresnelRadius, reflectionCoefficient,
-    twoRayPlDb, knifeEdgeLossDb, diffractionLossDb, rowTopElev, predictLink,
+    twoRayPlDb, knifeEdgeLossDb, diffractionLossDb, rowTopElev, predictLink, dipoleGainDb,
     defaultParams, defaultParamsElBurgo, EL_BURGO_BIAS_DB, EL_BURGO_SIGMA_DB,
     tableBand, bandClearance, bandEdge, diffractionLossTablesDb, ANTENNAS,
   };

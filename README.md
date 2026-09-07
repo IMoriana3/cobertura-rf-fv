@@ -132,6 +132,8 @@ Esa tabla es el resultado. Una TCU tiene la antena **por debajo** del canto bajo
 de su mesa (1,03 m a 30°), y la NCU la tiene **por encima** de la cresta (2,22 m).
 Así que:
 
+- **La antena tiene diagrama, no una ganancia plana.** La Jinchang JCW435700RA es un dipolo de ~λ/2 y sus 3 dBi son el **pico**, en el horizonte. Entraban en el balance como un escalar —como si radiara igual en todas las direcciones—, y eso es optimista justo en los saltos con elevación. Ahora se aplica `F(e) = cos((π/2)·sin e)/cos e`, normalizado a 0 dB en el horizonte, **en los dos extremos**: los 3 dBi de catálogo siguen siendo los de catálogo y la corrección **solo resta**. A 30° cuesta 1,76 dB por extremo; un TCU→HSU de 10 m (24° de elevación) pierde **2,2 dB**; un salto TCU↔TCU a la misma cota no se entera. Con `antPatron: "iso"` se recupera el modelo anterior. Lo que **no** modela: el látigo cuelga de la viga y bascula con la mesa, así que su eje no es exactamente la vertical — se toma vertical.
+
 - **TCU ↔ TCU** — el rayo pasa **por debajo** de las mesas. A 12 m y una fila de
   por medio: 1,4 dB de difracción, margen holgado. Es la razón de que la malla
   entre vecinos funcione aunque el campo parezca un muro.
