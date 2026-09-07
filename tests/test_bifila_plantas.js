@@ -131,18 +131,44 @@ const SONDA = `(() => {
   const p = await carga('paramo');
   check('396 seguidores y 396 filas', p.trk === 396 && p.filas === 396, p);
   check('396 TCU', p.tcus === 396, p.tcus);
-  check('y se dice por qué no se parte', p.bif && p.bif.si === false && !!p.bif.porque, p.bif);
+  /* Y el motivo tiene que ser el SUYO: «declara filaZ 0», que es la planta
+     diciendo que su seguidor es de una fila. No vale el mensaje de «no lo
+     declara»: son dos cosas distintas y una de ellas es un dato. */
+  check('y el motivo es que DECLARA filaZ 0, no que falte el dato',
+        p.bif && p.bif.si === false && /declara filaZ 0/.test(p.bif.porque || ''), p.bif);
+
+  // ── EL BURGO: el seguidor canónico. No declara filaZ porque ES el de la casa
+  console.log('\n· El Burgo: bífila por las cotas canónicas de seguidor.js');
+  const e = await carga('elburgo');
+  check('215 seguidores', e.trk === 215, e.trk);
+  check('y 430 filas: también es bífila', e.filas === 430, e.filas);
+  check('con 215 TCU', e.tcus === 215, e.tcus);
+  /* El Burgo no declara `filaZ` en su layout: es el seguidor canónico, y sus
+     cotas viven en seguidor.js. Sin ese recurso la planta contra la que
+     comparamos el modelo se quedaba a media fila, contando la mitad de las
+     mesas en cada rayo. */
+  check('la decisión se apoya en el paso declarado (6 m)',
+        e.bif && e.bif.si === true && /paso declarado \(6\)/.test(e.bif.porque || ''), e.bif);
+  check('las filas quedan a 6 m', Math.abs(e.paso - 6) < 0.2, e.paso);
+
+  // ── POLVORÍN: no declara `pitch`, pero sí gcr y cuerda ────────────────────
+  console.log('\n· Polvorín: el paso sale del GCR, y con él se decide que NO se parte');
+  const pv = await carga('polvorin');
+  check('119 seguidores y 119 filas', pv.trk === 119 && pv.filas === 119, pv);
+  check('el paso derivado (cuerda/gcr) ronda los 6 m',
+        pv.bif && /paso 6\.0/.test(pv.bif.porque || ''), pv.bif);
+  check('y sin partir ya quedan a ese paso',
+        pv.bif && pv.bif.si === false && /ya quedan/.test(pv.bif.porque || ''), pv.bif);
 
   // ── Y las que NO se pueden decidir, que se queden como estaban ────────────
   console.log('\n· sin paso de fila declarado no se parte: mejor quieto que inventando');
-  for (const q of ['elburgo', 'tunez', 'polvorin', 'bagnarelli']) {
+  for (const q of ['tunez', 'bagnarelli']) {
     const r = await carga(q);
     // tres motivos legítimos, y los tres tienen que decirse: sin filaZ, sin paso
     // declarado (los layouts de este repo son copias recortadas), o que sin
     // partir ya quedan al paso.
     check(q + ': no se parte, y dice el motivo',
-          r.bif && r.bif.si === false &&
-          /no declara filaZ|no declara el paso|ya quedan/.test(r.bif.porque || ''),
+          r.bif && r.bif.si === false && /no declara el paso/.test(r.bif.porque || ''),
           r.bif);
     check(q + ': una TCU por seguidor', r.tcus === r.trk, [r.tcus, r.trk]);
   }

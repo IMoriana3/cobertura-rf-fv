@@ -718,8 +718,30 @@ const SONDA = `(() => {
        solo en El Burgo; en `mass` la planta entera cabe en menos de 2 M. */
     check('cada apoyo lleva su herraje (poste + tambor + horquilla + virola)',
           t.piezas === 4, t.piezas + ' piezas por apoyo');
-    check('y sin dispararse: la planta se dibuja con menos de 2 M de triángulos',
-          t.tris < 2e6, (t.tris / 1e6).toFixed(2) + ' M');
+    /* EL PRESUPUESTO SUBIÓ, y por una razón buena: El Burgo es BÍFILO y se
+       dibujaba a media fila. Ahora son 430 filas y no 215, así que los
+       triángulos se duplican — 2,71 M medidos. El punto en que la página se
+       quedó sin atender un clic fueron 5,3 M, así que hay margen; pero el
+       número por sí solo no dice si responde, y por eso debajo se mide el
+       TIEMPO de rehacer la escena, que es lo que de verdad se nota. */
+    check('y sin dispararse: la planta se dibuja con menos de 3,5 M de triángulos',
+          t.tris < 3.5e6, (t.tris / 1e6).toFixed(2) + ' M');
+    /* Y LO QUE DE VERDAD SE NOTA: cuánto tarda en rehacer la escena. Un
+       presupuesto de triángulos es un proxy —y uno que hay que recalibrar cada
+       vez que la geometría cambia—; esto mide el síntoma. El fallo que se
+       recuerda no fue "muchos triángulos": fue que la página dejó de atender
+       los clics. */
+    const ms = await page.evaluate(() => {
+      const t0 = performance.now();
+      rehacer();
+      return performance.now() - t0;
+    });
+    /* Medido: 49 ms con El Burgo bífilo entero y renderizado por software
+       (swiftshader), que es más lento que cualquier máquina real. El listón va
+       en 500 ms — diez veces el valor medido — para que sea un tope que cace un
+       atasco de verdad y no un número decorativo. */
+    check('y la escena se rehace en menos de 500 ms: la página sigue respondiendo',
+          ms < 500, ms.toFixed(0) + ' ms');
   }
 
   await page.click('[data-p=""]', CLIC); await page.waitForTimeout(2000);

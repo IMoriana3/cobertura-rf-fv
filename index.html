@@ -976,11 +976,24 @@ function mastilDe(ncu,gw,masts){
    recortadas de los de cobertura-zigbee y han perdido `montaje`/`mesa`. */
 function pasoFilaDe(L){
   const m=(L&&L.mesa)||{}, mo=(L&&L.montaje)||{};
-  return m.pasoFila || mo.pitch || null;
+  if(m.pasoFila) return m.pasoFila;
+  if(mo.pitch)   return mo.pitch;
+  /* Y si no está escrito, sale del GCR: el ratio de ocupación ES cuerda/paso,
+     así que paso = cuerda/gcr. Polvorín no declara `pitch` pero sí las dos, y
+     con eso ya se puede comprobar si hay que partir o no. */
+  if(mo.gcr && mo.cuerda) return mo.cuerda/mo.gcr;
+  return null;
 }
 function filaZde(L){
   const m=(L&&L.mesa)||{};
-  return m.filaZ!=null ? m.filaZ : (L&&L.filaZ!=null ? L.filaZ : null);
+  if(m.filaZ!=null) return m.filaZ;
+  if(L&&L.filaZ!=null) return L.filaZ;          // ojo: filaZ 0 es un dato (Páramo), no un hueco
+  /* EL BURGO NO LO DECLARA PORQUE ES EL SEGUIDOR CANÓNICO: sus cotas viven en
+     `seguidor.js`, que es de donde las saca también terreno.html. Sin este
+     recurso, la planta contra la que comparamos el modelo se quedaba dibujada
+     a media fila — y sus márgenes contando la mitad de las mesas. */
+  return (typeof Seguidor!=="undefined" && Seguidor.DIMS && Seguidor.DIMS.filaZ!=null)
+         ? Seguidor.DIMS.filaZ : null;
 }
 /* Mediana de los huecos entre filas contiguas, proyectadas al eje perpendicular.
    Es la misma lectura que hace `filasPlanta()` para agrupar. */
@@ -999,8 +1012,13 @@ function _pasoDe(trk,fz){
 }
 function esBifila(L){
   const fz=filaZde(L), paso=pasoFilaDe(L), trk=(L&&L.trackers)||[];
-  if(!fz || !paso || trk.length<2) return {si:false, fz:0, porque:!fz?"el layout no declara filaZ"
-    : !paso?"el layout no declara el paso de fila: no se parte sin poder comprobarlo" : "pocos seguidores"};
+  /* `filaZ` 0 NO es un hueco: es la planta diciendo que su seguidor es de UNA
+     fila (Páramo). Confundir "vale 0" con "no lo dice" borraba el dato y dejaba
+     el mismo mensaje para dos cosas distintas. */
+  if(fz===0)          return {si:false, fz:0, porque:"el layout declara filaZ 0: el seguidor es de UNA fila"};
+  if(fz==null)        return {si:false, fz:0, porque:"el layout no declara filaZ y no hay cotas canónicas"};
+  if(!paso)           return {si:false, fz:0, porque:"el layout no declara el paso de fila: no se parte sin poder comprobarlo"};
+  if(trk.length<2)    return {si:false, fz:0, porque:"pocos seguidores"};
   const sin=_pasoDe(trk,0), con=_pasoDe(trk,fz);
   if(sin==null||con==null) return {si:false, fz:0, porque:"no se puede medir el paso"};
   const eSin=Math.abs(sin-paso), eCon=Math.abs(con-paso);
