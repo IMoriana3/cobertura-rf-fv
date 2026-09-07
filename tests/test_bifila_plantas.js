@@ -56,6 +56,20 @@ const SONDA = `(() => {
              Object.values(por).forEach(v => { if (v.length === 2) d.push(Math.hypot(v[1].x - v[0].x, v[1].n - v[0].n)); });
              d.sort((a, b) => a - b);
              return d.length ? +d[d.length >> 1].toFixed(3) : null; })(),
+           /* Y QUE EL DESPLAZAMIENTO SEA PERPENDICULAR AL TUBO. La distancia
+              entre las dos vigas es 2·filaZ APUNTE DONDE APUNTE, así que medirla
+              no dice si van bien puestas: hay que mirar la componente A LO LARGO
+              del tubo, que tiene que ser CERO. Con el signo cambiado salía
+              fz·sen(2a) y las filas quedaban torcidas — solo se ve en plantas
+              con el eje girado, y de las siete solo Bagnarelli lo tiene. */
+           desvio: (() => { const por = {}, d = [];
+             UN.forEach((f, i) => { const k = f.trk != null ? f.trk : i; (por[k] = por[k] || []).push(f); });
+             Object.values(por).forEach(v => { if (v.length !== 2) return;
+               const a2 = v[0].rot || 0;
+               const v0 = v[0].x * Math.sin(a2) + v[0].n * Math.cos(a2);
+               const v1 = v[1].x * Math.sin(a2) + v[1].n * Math.cos(a2);
+               d.push(Math.abs(v1 - v0)); });
+             return d.length ? +Math.max(...d).toFixed(3) : null; })(),
            // la TCU de cada seguidor tiene que ser la fila OESTE (menor u)
            oeste: T.every(t => { const mias = UN.map((f,i)=>[f,i]).filter(([f])=>f.trk===t.trk);
                                  return mias.every(([f]) => u(f) >= u(UN[t.fila]) - 1e-6); }) };
@@ -189,6 +203,10 @@ const SONDA = `(() => {
   check('con el filaZ de su layout (2,75), no uno deducido', bg.bif.fz === 2.75, bg.bif);
   check('y las dos vigas quedan a 5,50 m: 2 x 2,75, el de SU layout',
         Math.abs(bg.sep - 5.5) < 0.01, bg.sep);
+  /* Bagnarelli es la ÚNICA de las siete con el eje girado (23,7°), así que es la
+     única que puede cazar un desplazamiento que no sea perpendicular al tubo. */
+  check('y perpendiculares al tubo: cero desvío a lo largo del eje',
+        bg.desvio < 0.01, bg.desvio);
   check('y los solapes se cantan, pero no bloquean',
         bg.bif.si === true && bg.bif.solapes > 0 && /OJO/.test(bg.bif.porque || ''), bg.bif);
 

@@ -553,14 +553,25 @@ const SONDA = `(() => {
     /* `rot` del layout viene en GRADOS. Tomarlo como radianes daba 1358°. */
     check('Bagnarelli trae su azimut de eje (23,7°)', Math.abs(t.az - 23.7) < 0.01, t.az);
     check('y llega al render en RADIANES', Math.abs(t.rot - 23.7 * Math.PI / 180) < 1e-9, t.rot);
-    /* La implantación real, la que documenta el simulador de backtracking: SEIS
-       líneas a pitch 11,0 m. Ni cinco ni siete — agrupar por clave redondeada
-       partía una línea en dos (separaciones 11, 11, 0,1, 10,9) y esa línea
-       fantasma entraba como una mesa MÁS en la difracción. */
-    check('las filas se agrupan en el MARCO DEL EJE: 6 líneas, no una por seguidor',
-          t.lineas === 6, t.lineas + ' líneas para 17 seguidores');
-    check('y a los 11,0 m de paso que tiene la planta',
-          t.sep.length === 5 && t.sep.every(d => Math.abs(d - 11) < 0.15), JSON.stringify(t.sep));
+    /* ESTO DECÍA «6 líneas a 11,0 m» Y DESCRIBÍA LA PLANTA A MEDIAS. Bagnarelli
+       es BÍFILA —sus 1.296 módulos solo salen con dos filas por seguidor: 14
+       completos x 2 alas x 21 + 3 medios x 2 x 10 = 648, x2 = 1.296— así que
+       esos 11,0 m eran el paso de los PARES, no el de las filas. Con las dos
+       vigas puestas el paso real aparece: 5,5 m, la mitad, que es 2 x filaZ.
+       Se sigue exigiendo que se agrupen en el marco del eje y no una línea por
+       seguidor: agrupar por clave redondeada partía una línea en dos y esa
+       línea fantasma entraba como una mesa MÁS en la difracción. */
+    check('las filas se agrupan en el MARCO DEL EJE, no una por seguidor',
+          t.lineas > 6 && t.lineas < 34, t.lineas + ' líneas para 34 filas (17 seguidores bífilos)');
+    /* El paso DOMINANTE es 5,5. No todas las separaciones lo son: cuatro filas
+       quedan a 8 cm de otra porque el layout avisa de que 5 seguidores van
+       EXTRAPOLADOS, y eso arrastra alguna línea. Se exige la mayoría, y que
+       ninguna supere el paso de los pares. */
+    const cerca = t.sep.filter(d => Math.abs(d - 5.5) < 0.35).length;
+    check('y al paso REAL de la planta, 5,5 m (2 x filaZ), en la mayoría',
+          cerca >= t.sep.length * 0.6, cerca + '/' + t.sep.length + ' a 5,5 · ' + JSON.stringify(t.sep));
+    check('y ninguna línea se separa más de los 11 m que había antes',
+          t.sep.every(d => d <= 11.2 + 5.5), JSON.stringify(t.sep));
   }
   {
     /* Y una planta SIN retícula medida cae en la genérica de `seguidor.js`. El

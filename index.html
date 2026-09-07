@@ -1073,9 +1073,14 @@ function unidades(){
          «Mono 31+31» que el layout declara de una fila. */
       const q=tipoBlq(PLANTA.lay,t);
       if(!B.si || (q && q.mono)){ out.push(Object.assign({x:t.x, n:t.n}, base)); return; }
-      /* ⊥ al tubo: al eje girado `rot` le corresponde el perpendicular
-         (cos rot, sin rot) — la misma convención que gen_coords_cobertura.py. */
-      const dx=B.fz*Math.cos(rot), dn=B.fz*Math.sin(rot);
+      /* ⊥ AL TUBO, EN EL MARCO DE ESTA PÁGINA. `proj()` define
+         u = x·cos a − n·sin a, así que el perpendicular unitario es
+         (cos a, −sin a). Con (cos, +sin) el desplazamiento se proyecta como
+         fz·cos(rot+a) en vez de fz: en Bagnarelli, con su eje a 23,7°, las dos
+         vigas salían a 3,72 m en vez de a 5,50 — y las filas, torcidas.
+         No se ve en ninguna otra planta porque todas tienen rot 0, que es
+         justo por lo que sobrevivió. */
+      const dx=B.fz*Math.cos(rot), dn=-B.fz*Math.sin(rot);
       out.push(Object.assign({x:t.x-dx, n:t.n-dn}, base));   // viga del MOTOR (oeste): lleva la TCU
       out.push(Object.assign({x:t.x+dx, n:t.n+dn}, base));   // viga gemela
     });
