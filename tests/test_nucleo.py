@@ -27,9 +27,20 @@ import os
 import shutil
 import subprocess
 import sys
+from dataclasses import replace
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(RAIZ, "python"))
+# NADA DE .pyc CACHEADO. Python invalida su cache por (mtime, tamano), y al
+# probar variantes del modelo es facil que una edicion no cambie ni una cosa ni
+# la otra -cambiar `sin` por `cos` ocupa los mismos bytes- y que dentro del mismo
+# segundo se reutilice el bytecode ANTERIOR. Entonces el banco mide un modelo que
+# ya no esta en el fichero: pasa lo que deberia fallar, o al reves. Me costo un
+# rato largo entender por que un fichero restaurado seguia dando 13 fallos.
+sys.dont_write_bytecode = True
+_cache = os.path.join(RAIZ, "python", "__pycache__")
+if os.path.isdir(_cache):
+    shutil.rmtree(_cache, ignore_errors=True)
 import zigbee_pv_model as m  # noqa: E402
 
 ok = ko = 0
@@ -227,6 +238,49 @@ else:
               cerca(_b["margin_db"], round(j2[3], 2), 0.011) and
               cerca(_b["p_link"], round(j2[4], 4), 0.0011),
               "py %s vs js %s" % ([_b["margin_db"], _b["p_link"]], j2[3:]))
+
+# ── EL DIAGRAMA DE LA ANTENA ────────────────────────────────────────────────
+# La Jinchang JCW435700RA es un dipolo de ~lambda/2 -lo dice su propia ficha- y
+# sus 3 dBi entraban como un ESCALAR, o sea como si radiara igual en todas las
+# direcciones. Un dipolo no: tiene el maximo en el horizonte y un nulo en su
+# propio eje. Tratarlo como isotropo era optimista justo donde mas duele, en los
+# saltos cortos contra la HSU (latigos a 6,50 m) y contra la NCU.
+print("\n· el diagrama del dipolo: en el horizonte no toca, y con elevacion RESTA")
+check("en el horizonte vale 0 dB: los 3 dBi de catalogo siguen siendo los de catalogo",
+      abs(m.dipole_gain_db(0.0)) < 1e-9, m.dipole_gain_db(0.0))
+check("y NUNCA suma: una correccion sobre la ganancia de pico solo puede restar",
+      all(m.dipole_gain_db(math.radians(e)) <= 1e-9 for e in range(0, 91)),
+      max(m.dipole_gain_db(math.radians(e)) for e in range(0, 91)))
+check("baja con la elevacion, sin saltos",
+      all(m.dipole_gain_db(math.radians(e)) >= m.dipole_gain_db(math.radians(e + 1))
+          for e in range(0, 90)))
+check("simetrico: da igual mirar hacia arriba que hacia abajo",
+      all(cerca(m.dipole_gain_db(math.radians(e)), m.dipole_gain_db(math.radians(-e)), 1e-9)
+          for e in (5, 20, 45, 70)))
+# valores del dipolo de media onda, calculados aparte
+check("30 grados de elevacion cuestan 1,76 dB",
+      cerca(m.dipole_gain_db(math.radians(30)), -1.761, 0.002), m.dipole_gain_db(math.radians(30)))
+check("45 grados, 4,04 dB", cerca(m.dipole_gain_db(math.radians(45)), -4.042, 0.002),
+      m.dipole_gain_db(math.radians(45)))
+check("y en el eje del latigo hay un NULO, acotado para no dar -infinito",
+      m.dipole_gain_db(math.radians(90)) <= -50, m.dipole_gain_db(math.radians(90)))
+
+print("\n· y entra en el balance por los DOS extremos")
+_tx = {"x": 0, "y": 0, "ground": 0, "h": 2.05}      # antena de la TCU
+_rx = {"x": 10, "y": 0, "ground": 0, "h": 6.50}     # latigo de la HSU: 24 grados a 10 m
+_iso = m.predict_link(_tx, _rx, replace(m.LinkParams(), ant_patron="iso"))
+_dip = m.predict_link(_tx, _rx, m.LinkParams())
+_g = m.dipole_gain_db(math.atan2(6.50 - 2.05, 10))
+check("el salto corto contra la HSU pierde 2,2 dB, no 1,1: la correccion va en tx Y en rx",
+      cerca(_dip["margin_db"] - _iso["margin_db"], 2 * _g, 0.02),
+      "%.2f dB (2x%.2f)" % (_dip["margin_db"] - _iso["margin_db"], _g))
+check("un salto TCU-TCU, a la misma cota, no se entera",
+      cerca(m.predict_link(_tx, {"x": 50, "y": 0, "ground": 0, "h": 2.05},
+                           m.LinkParams())["margin_db"],
+            m.predict_link(_tx, {"x": 50, "y": 0, "ground": 0, "h": 2.05},
+                           replace(m.LinkParams(), ant_patron="iso"))["margin_db"], 1e-9))
+check("y con `iso` se recupera exactamente el modelo de antes",
+      cerca(_iso["margin_db"], _iso["prx_dbm"] - m.LinkParams().rx_sens_dbm, 0.011))
 
 print("\n%d OK, %d FAIL" % (ok, ko))
 sys.exit(1 if ko else 0)

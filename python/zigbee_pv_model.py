@@ -268,6 +268,7 @@ class LinkParams:
     f_hz: float = 2.45e9
     ptx_dbm: float = 19.0      # XBee-PRO RR. Estándar = +8 dBm. Canal 26: máx +3 dBm (ambas)
     gtx_dbi: float = 3.0       # antena Jinchang JCW435700RA (3 dBi, dipolo ~lambda/2)
+    ant_patron: str = "dipolo"  # patron de ese dipolo; "iso" = ganancia plana (lo de antes)
     grx_dbi: float = 3.0
     rx_sens_dbm: float = -103.0  # XBee RR Zigbee, modo normal (1% PER)
     sigma_db: float = 6.0        # desvanecimiento log-normal (calibrar con datos)
@@ -312,6 +313,28 @@ def _phi(x: float) -> float:
     return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
 
 
+
+def dipole_gain_db(elev_rad: float) -> float:
+    """Diagrama del dipolo de media onda, en dB RELATIVOS a su maximo.
+
+        F(e) = cos((pi/2) sin e) / cos e ,  con `e` la elevacion sobre el horizonte
+
+    Normalizado a F(0) = 1: en el horizonte vale 0 dB, asi que los 3 dBi de
+    catalogo siguen siendo los de catalogo y esto SOLO RESTA. Un dipolo no radia
+    igual en todas las direcciones -tiene un nulo en su propio eje-, y tratarlo
+    como un escalar era optimista en los saltos con elevacion: los cortos contra
+    la HSU, que esta a 6,50 m, o contra la NCU.
+
+    Lo que NO modela: el latigo cuelga de la viga y bascula con la mesa, asi que
+    su eje no es exactamente la vertical. Se toma vertical.
+    """
+    c = math.cos(elev_rad)
+    if abs(c) < 1e-9:
+        return -60.0                       # el nulo del eje, acotado
+    f = math.cos((math.pi / 2) * math.sin(elev_rad)) / c
+    return 20.0 * math.log10(max(abs(f), 1e-3))
+
+
 def predict_link(tx: dict, rx: dict, p: LinkParams = LinkParams(),
                  terrain: list[tuple[float, float]] | None = None,
                  obstacles: list[tuple[float, float]] | None = None,
@@ -335,7 +358,9 @@ def predict_link(tx: dict, rx: dict, p: LinkParams = LinkParams(),
         pl_diff += diffraction_loss_tables_db(d, tx_elev, rx_elev, tables, p.f_hz)
 
     pl_total = pl_2ray + pl_diff + p.l_mod_db
-    prx = p.ptx_dbm + p.gtx_dbi + p.grx_dbi - pl_total
+    # Ganancia segun la ELEVACION del enlace: espejo de `gEl` en el puerto JS.
+    g_el = 0.0 if p.ant_patron == "iso" else dipole_gain_db(math.atan2(rx_elev - tx_elev, d))
+    prx = p.ptx_dbm + (p.gtx_dbi + g_el) + (p.grx_dbi + g_el) - pl_total
     margin = prx - p.rx_sens_dbm
     return {
         "distance_m": round(d, 2),
