@@ -1042,14 +1042,20 @@ function esBifila(L,conCotas){
   const v=us.map(u=>u-fz).concat(us.map(u=>u+fz)).sort((a,b)=>a-b);
   let solapes=0;
   for(let i=1;i<v.length;i++) if(v[i]-v[i-1] > 1e-6 && v[i]-v[i-1] < 0.5) solapes++;
-  if(solapes) return {si:false, fz:0, solapes:solapes,
-    porque:"es bífilo, pero partirlo a ±"+fz+" m pondría "+solapes+" filas encima de otras: "+
-           "el punto de inserción del layout no es el centro del par. Falta el paso de fila "+
-           "de esta planta o su levantamiento"};
+  /* LOS SOLAPES SE MIDEN, PERO NO DECIDEN. Llegué a bloquear con ellos el
+     partido de Bagnarelli y Polvorín, y era mi invento: `terreno.html` —la
+     tarjeta que lleva dibujando estas plantas bien desde el principio— pone
+     las dos vigas a ±filaZ SIEMPRE, sin guarda ninguna. Aquí se hace lo mismo.
+     Los 8 cm que se pisan en cuatro sitios de Bagnarelli son ruido de sus
+     posiciones —su propio layout dice que 5 seguidores van EXTRAPOLADOS—, no
+     una razón para dibujar la mitad de la planta. Se cuentan y se enseñan, que
+     es lo que hay que hacer con una anomalía: verla, no actuar sobre ella. */
   const mono=trk.filter(t=>{ const q=tipoBlq(L,t); return q && q.mono; }).length;
-  return {si:true, fz:fz, mono:mono,
+  return {si:true, fz:fz, mono:mono, solapes:solapes,
           porque:"seguidor bífilo: dos filas a ±"+fz+" m"+
-                 (mono ? ", salvo "+mono+" de tipo mono que el layout declara de una" : "")};
+                 (mono ? ", salvo "+mono+" de tipo mono que el layout declara de una" : "")+
+                 (solapes ? " · OJO: "+solapes+" filas quedan a menos de 0,5 m de otra; "+
+                            "las posiciones de este layout no son finas" : "")};
 }
 
 /* Lo que se dibuja y lo que APANTALLA: con cotas, la FILA medida; sin ellas, el

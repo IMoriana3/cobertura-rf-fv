@@ -47,6 +47,15 @@ const SONDA = `(() => {
            conCota: UN.some(f => f.y !== 0) && UN.some(f => f.tilt !== 0),
            empar: PLANTA.empar || null,
            conTrk: UN.every(f => f.trk != null),
+           /* SEPARACIÓN REAL entre las dos vigas de un mismo seguidor. Contar
+              filas no basta: con un filaZ inventado salen las mismas 34 y en el
+              sitio equivocado, que es lo que apantalla rayos que no toca. */
+           sep: (() => { const d = [];
+             const por = {};
+             UN.forEach((f, i) => { const k = f.trk != null ? f.trk : i; (por[k] = por[k] || []).push(f); });
+             Object.values(por).forEach(v => { if (v.length === 2) d.push(Math.hypot(v[1].x - v[0].x, v[1].n - v[0].n)); });
+             d.sort((a, b) => a - b);
+             return d.length ? +d[d.length >> 1].toFixed(3) : null; })(),
            // la TCU de cada seguidor tiene que ser la fila OESTE (menor u)
            oeste: T.every(t => { const mias = UN.map((f,i)=>[f,i]).filter(([f])=>f.trk===t.trk);
                                  return mias.every(([f]) => u(f) >= u(UN[t.fila]) - 1e-6); }) };
@@ -151,6 +160,7 @@ const SONDA = `(() => {
   check('215 seguidores y 430 filas', e.trk === 215 && e.filas === 430, e);
   check('con 215 TCU', e.tcus === 215, e.tcus);
   check('las filas quedan a 6 m', Math.abs(e.paso - 6) < 0.2, e.paso);
+  check('y las dos vigas de un seguidor, a 6,00 m', Math.abs(e.sep - 6) < 0.01, e.sep);
 
   /* TODAS SON BÍFILAS SALVO DONDE EL LAYOUT DIGA OTRA COSA. Eso NO se deduce de
      la retícula: lo declara el layout, y es lo que hace `terreno.html`, que
@@ -161,44 +171,34 @@ const SONDA = `(() => {
   const tz = await carga('tunez');
   check('19 seguidores -> 38 filas', tz.trk === 19 && tz.filas === 38, [tz.trk, tz.filas]);
   check('y 19 TCU', tz.tcus === 19, tz.tcus);
+  check('con sus vigas a 6,25 m: 2 x 3,125', Math.abs(tz.sep - 6.25) < 0.01, tz.sep);
 
-  /* DOS VIGAS NO PUEDEN ESTAR EN EL MISMO SITIO, y esto es lo que impide
-     rematar Bagnarelli y Polvorín. Son bífilos —lo dice el layout y lo dice
-     quien conoce la planta— pero sus unidades están a 1,84 m y a 0,01 m unas de
-     otras, menos que su propio paso de fila: partirlas a ±filaZ pondría filas
-     ENCIMA de otras, y una fila de más apantalla un rayo que en realidad pasa.
-     Eso es peor que dejarlo como está, así que no se parte y se dice por qué.
-     Lo que falta es un dato: el paso de fila de esas dos plantas, o su
-     levantamiento. */
-  console.log('\n· las que no se pueden partir sin solapar filas: se dice, no se disimula');
-  for (const [q, trk] of [['bagnarelli', 17], ['polvorin', 119]]) {
-    const r = await carga(q);
-    check(q + ': se queda en ' + trk + ' filas, sin solapar nada',
-          r.trk === trk && r.filas === trk, [r.trk, r.filas]);
-    check(q + ': y dice que ES bífilo y qué dato falta',
-          r.bif && r.bif.si === false && r.bif.solapes > 0 &&
-          /es bífilo/.test(r.bif.porque || '') && /Falta el paso de fila/.test(r.bif.porque || ''),
-          r.bif);
-  }
+  /* BAGNARELLI Y POLVORÍN: también bífilas, y con el mismo criterio que la
+     tarjeta de planta. `terreno.html` pone las dos vigas a ±filaZ SIEMPRE, sin
+     guarda ninguna, y es la que lleva dibujando estas plantas bien desde el
+     principio. Yo llegué a bloquearlas por unos solapes de 8 cm: era mi
+     invento, y dejaba media planta sin dibujar. Los solapes se MIDEN y se
+     enseñan —el layout de Bagnarelli dice que 5 seguidores van extrapolados—
+     pero no deciden. Que Bagnarelli es bífila lo prueba su cartera: 14
+     completos x 2 alas x 21 + 3 medios x 2 x 10 = 648 por fila, y x2 = 1.296,
+     que son EXACTAMENTE los módulos declarados. */
+  console.log('\n· Bagnarelli y Polvorín: dos vigas a ±filaZ, como en la tarjeta de planta');
+  const bg = await carga('bagnarelli');
+  check('Bagnarelli: 17 seguidores -> 34 filas', bg.trk === 17 && bg.filas === 34, [bg.trk, bg.filas]);
+  check('y 17 TCU', bg.tcus === 17, bg.tcus);
+  check('con el filaZ de su layout (2,75), no uno deducido', bg.bif.fz === 2.75, bg.bif);
+  check('y las dos vigas quedan a 5,50 m: 2 x 2,75, el de SU layout',
+        Math.abs(bg.sep - 5.5) < 0.01, bg.sep);
+  check('y los solapes se cantan, pero no bloquean',
+        bg.bif.si === true && bg.bif.solapes > 0 && /OJO/.test(bg.bif.porque || ''), bg.bif);
 
-  /* EL TIPO «MONO» NO SE PRUEBA SOLO. Hoy la unica planta que lo trae —Polvorin—
-     se queda sin partir por la guarda de solapes, asi que el filtro por tipo no
-     llega a actuar nunca y ninguna mutacion lo alcanzaba: codigo muerto. Se
-     fuerza la decision para recorrer esa rama, que es la que servira el dia que
-     Polvorin traiga su paso de fila. */
-  console.log('\n· el filtro por tipo, forzando la rama que hoy no se recorre');
-  const mono = await page.evaluate(() => {
-    const antes = PLANTA.bif;
-    PLANTA.bif = { si: true, fz: 2.25 };
-    PLANTA._un = null;
-    const con = unidades().length;
-    const conMono = PLANTA.trk.filter(t => { const q = tipoBlq(PLANTA.lay, t); return q && q.mono; }).length;
-    PLANTA.bif = antes; PLANTA._un = null; PLANTA._tcus = null;
-    return { con: con, trk: PLANTA.trk.length, mono: conMono };
-  });
-  check('Polvorín tiene 2 seguidores de tipo mono', mono.mono === 2, mono);
-  check('y al partir salen 236 filas, no 238: los dos mono van de una',
-        mono.con === 2 * mono.trk - mono.mono, mono);
+  const pv = await carga('polvorin');
+  check('Polvorín: 119 seguidores -> 236 filas (117 bífilos + 2 mono)',
+        pv.trk === 119 && pv.filas === 236, [pv.trk, pv.filas]);
+  check('y 119 TCU', pv.tcus === 119, pv.tcus);
+  check('con sus vigas a 4,50 m: 2 x 2,25', Math.abs(pv.sep - 4.5) < 0.01, pv.sep);
+  check('el tipo mono se cuenta y se dice',
+        pv.bif.mono === 2 && /2 de tipo mono/.test(pv.bif.porque || ''), pv.bif);
 
   check('sin errores de JS en ninguna planta', errs.length === 0, errs.slice(0, 3));
   await browser.close();
