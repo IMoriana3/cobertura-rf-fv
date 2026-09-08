@@ -422,6 +422,36 @@ const SONDA = `(() => {
   check('el tipo mono se cuenta y se dice',
         pv.bif.mono === 2 && /2 de tipo mono/.test(pv.bif.porque || ''), pv.bif);
 
+  // ── SAN JOSÉ: 2.289 seguidores, 147 sin levantar y 10 cotas imposibles ────
+  console.log('\n· San José: los sin levantar en sus DOS vigas, y las cotas imposibles declaradas');
+  const sj = await carga('sanjose');
+  const sjx = await page.evaluate(() => {
+    const UN = PLANTA._un, por = {};
+    UN.forEach(f => { const k = f.trk; (por[k] = por[k] || []).push(f); });
+    const solas = Object.values(por).filter(v => v.length !== 2).length;
+    const sinMed = UN.filter(f => !f.med).length;
+    const raras = new Set((PLANTA._raras || []).map(r => r.trk)).size;
+    const u = terreno.userData, pos = terreno.geometry.attributes.position, dx = [];
+    for (let k = 0; k < u.Mz; k++) for (let i = 0; i < u.Mx; i++) dx.push(Math.abs(pos.getY(k * (u.Mx + 1) + i + 1) - pos.getY(k * (u.Mx + 1) + i)) / Math.max(1, u.cols[i + 1] - u.cols[i]) * 6);
+    dx.sort((a, b) => a - b);
+    const seps = Object.values(por).filter(v => v.length === 2).map(v => Math.hypot(v[1].x - v[0].x, v[1].n - v[0].n)).sort((a, b) => a - b);
+    return { solas, sinMed, sinCota: PLANTA.cot.sinCota.length, raras, saltoXmax: +dx[dx.length - 1].toFixed(1),
+             dobles: PLANTA._dobles, sepMin: +seps[0].toFixed(2), sepMax: +seps[seps.length - 1].toFixed(2), fz: filaZde(PLANTA.lay),
+             nota: /sin levantamiento, plantados en la cota de alrededor —\d+ de ellos porque su cota medida/.test(document.getElementById('note').textContent) };
+  });
+  check('2.289 seguidores y CADA UNO con sus dos filas: ninguna monofila', sj.trk === 2289 && sjx.solas === 0 && sj.filas === 4578, { trk: sj.trk, filas: sj.filas, solas: sjx.solas });
+  check('y 2.289 TCU', sj.tcus === 2289, sj.tcus);
+  check('los sin levantar van en dos vigas: 147 + 11 raros = 158 seguidores, 316 filas sin cota medida',
+        sjx.sinCota === 158 && sjx.sinMed === 316, sjx);
+  check('las 11 cotas imposibles del levantamiento (37 m sobre sus vecinas o entre sus dos filas) se detectan y se declaran',
+        sjx.raras === 11 && sjx.nota, sjx);
+  /* 183 seguidores traen sus dos filas medidas en la MISMA x (midieron el eje):
+     se abren a +-filaZ con lo medido. Y con eso TODAS las parejas de la planta
+     quedan a 2·filaZ (6,2 m), sin una sola fila encima de otra. */
+  check('183 parejas medidas en la misma x se abren a ±filaZ (3,1 m): ninguna fila encima de otra',
+        sjx.dobles === 183 && sjx.sepMin > 2 * sjx.fz - 0.5 && sjx.sepMax < 2 * sjx.fz + 1.2, sjx);
+  check('y con las cotas imposibles fuera el terreno no levanta paredes: salto máximo entre columnas < 8 m (antes 106)', sjx.saltoXmax < 8, sjx.saltoXmax);
+
   /* ── LOS ENCUADRES, CON PLANTA PUESTA ────────────────────────────────────
      Apuntaban a rows[3], a 3*P y a ncu.pos, que son del corte de estudio: con
      una planta cargada no existen. «Antena TCU» acababa mirando un punto
