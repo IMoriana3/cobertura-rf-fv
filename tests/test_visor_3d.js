@@ -528,10 +528,11 @@ const SONDA = `(() => {
     });
     check('San José son 32 módulos por ala, no los 28 de El Burgo', t.mods === 32, t.mods);
     check('y sus filas miden ~74 m, como las midieron', Math.abs(t.largo - 74.4) < 1.5, t.largo.toFixed(1));
-    /* El levantamiento tiene huecos: 103 seguidores sin medir. No se pueden
-       perder por el camino — se plantan en la cota de alrededor y se declaran. */
-    check('los seguidores sin levantamiento no se pierden',
-          t.sin > 0 && t.un === t.filas + t.sin, t.filas + ' + ' + t.sin + ' = ' + t.un);
+    /* El levantamiento tiene huecos: 147 seguidores sin medir, mas 11 con una
+       cota imposible que se tratan igual. No se pueden perder por el camino:
+       se plantan en la cota de alrededor, en sus DOS vigas, y se declaran. */
+    check('los seguidores sin levantamiento no se pierden: van en sus DOS vigas',
+          t.filas + 2 * t.sin === t.un, t.filas + ' + 2·' + t.sin + ' = ' + t.un);
     /* Está en el hemisferio SUR: con la latitud del deslizador el sol iría al
        revés y los seguidores con él. */
     check('la latitud la manda la planta (San José, hemisferio sur)', t.lat < 0, t.lat);

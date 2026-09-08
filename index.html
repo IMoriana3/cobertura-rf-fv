@@ -896,6 +896,50 @@ function cargaPlanta(nom){
           filas.forEach(f=>{ f.nm=(f.n0+f.n1)/2; f.ym=(f.y0+f.y1)/2;
                              f.len=Math.abs(f.n1-f.n0);
                              f.tilt=Math.atan2(f.y1-f.y0,f.n1-f.n0); });
+          /* COTAS IMPOSIBLES. San José trae 10 filas a 30 m y más de sus
+             vecinas —una a 38,8 donde alrededor todo está a 2,2—: un error del
+             levantamiento, no un bancal. Dibujarlas tal cual levantaba paredes
+             de 89 m en el terreno y dejaba la mesa colgada en el aire. Se
+             comparan con la mediana de las filas a menos de 15 m a través y
+             120 a lo largo (con al menos tres) y, a más de 10 m, el seguidor
+             entero pasa a "sin levantar": se planta en la cota de alrededor y
+             se DECLARA. Un bancal real (Ayora los tiene de 5 m) no llega. */
+          const raras=[];
+          /* Dos pruebas. La primera no necesita vecinas: las DOS filas de un
+             seguidor van a 6 m y sobre la misma estructura, así que no pueden
+             estar a 37 m una de otra (el 1087 de San José: −1,0 y 36,2). La
+             segunda, contra la mediana de las de alrededor. */
+          const porTrk={}; filas.forEach(f=>{ (porTrk[f.trk]=porTrk[f.trk]||[]).push(f); });
+          Object.values(porTrk).forEach(v=>{
+            if(v.length!==2) return;
+            if(Math.abs(v[0].ym-v[1].ym)>3)
+              raras.push({trk:v[0].trk, x:v[0].x, n:v[0].nm, ym:v[0].ym, vecinas:v[1].ym, par:true});
+          });
+          /* DOS FILAS EN LA MISMA X. En San José el levantamiento da a cientos
+             de seguidores sus dos filas con la misma x: midieron el EJE del
+             seguidor, no cada viga. Dibujadas tal cual caen una encima de la
+             otra —y se ve una monofila—. No son errores: la cota y la
+             pendiente valen. Se abren a ±filaZ, la del layout, con lo medido. */
+          const fzL=filaZde(PLANTA.lay)||0; let dobles=0;
+          if(fzL>0) Object.values(porTrk).forEach(v=>{
+            if(v.length===2&&Math.abs(v[0].x-v[1].x)<1){ v[0].x-=fzL; v[1].x+=fzL; dobles++; }
+          });
+          PLANTA._dobles=dobles;
+          filas.forEach(f=>{
+            // 15 m a traves (dos o tres lineas) y 120 a lo largo: la fila de al lado
+            // en la misma linea tiene el centro a 75 m, y con 60 no entraba ninguna
+            const v=[]; for(const g of filas){ if(g.trk!==f.trk&&Math.abs(g.x-f.x)<15&&Math.abs(g.nm-f.nm)<120) v.push(g.ym); }
+            if(v.length<1) return;
+            v.sort((a,b)=>a-b); const md=v[v.length>>1];
+            if(Math.abs(f.ym-md)>10) raras.push({trk:f.trk, x:f.x, n:f.nm, ym:f.ym, vecinas:md});
+          });
+          const trkRaros=new Set(raras.map(r=>r.trk));
+          if(trkRaros.size){
+            for(let i=filas.length-1;i>=0;i--) if(trkRaros.has(filas[i].trk)) filas.splice(i,1);
+            trkRaros.forEach(i=>{ if(sinCota.indexOf(i)<0) sinCota.push(i); });
+            console.warn("cotas fuera de rango en "+trkRaros.size+" seguidores (>10 m respecto a sus vecinas): se plantan en la cota de alrededor", raras);
+          }
+          PLANTA._raras=raras;
           PLANTA.cot={filas:filas, base:cot.base, xs:null};
           /* POR LÍNEA, NO POR X. Las filas de una misma línea no comparten x al
              milímetro (980,573 · 980,574 · 980,587), así que indexarlas por su x
@@ -1200,9 +1244,20 @@ function unidades(){
   const u=PLANTA.cot.filas.map(f=>({
     x:f.x, n:f.nm, y:f.ym, tilt:f.tilt, mr:Math.min(1.2,f.len/SPANP),
     rot:PLANTA.az*Math.PI/180, ncu:f.ncu, gw:f.gw, med:1, trk:f.trk, tp:tipoCerca(f.x,f.nm)}));
-  (PLANTA.cot.sinCota||[]).forEach(i=>{                 // sin medir: a la cota de alrededor, y declarado
-    const t=PLANTA.trk[i];
-    u.push({x:t.x, n:t.n, y:cotaEn(t.x,t.n), tilt:0, mr:t.mr, rot:(t.rot||0)*Math.PI/180, ncu:t.ncu, gw:t.gw, med:0, trk:i, tp:tipoDe(t)});
+  /* SIN MEDIR: a la cota de alrededor, y declarado. Y en sus DOS vigas, como
+     en las plantas sin levantamiento: iban como UNA fila en el centro del
+     seguidor, y San José salía con 147 monofilas que no existen (y contando
+     la mitad de las mesas en esos sitios). Cada viga a la cota del terreno en
+     SU sitio. */
+  const B=PLANTA.bif||{si:false,fz:0};
+  (PLANTA.cot.sinCota||[]).forEach(i=>{
+    const t=PLANTA.trk[i], rot=(t.rot||0)*Math.PI/180;
+    const base={tilt:0, mr:t.mr, rot:rot, ncu:t.ncu, gw:t.gw, med:0, trk:i, tp:tipoDe(t)};
+    const q=tipoBlq(PLANTA.lay,t);
+    if(!B.si||(q&&q.mono)){ u.push(Object.assign({x:t.x, n:t.n, y:cotaEn(t.x,t.n)}, base)); return; }
+    const dx=B.fz*Math.cos(rot), dn=-B.fz*Math.sin(rot);
+    u.push(Object.assign({x:t.x-dx, n:t.n-dn, y:cotaEn(t.x-dx,t.n-dn)}, base));   // viga del MOTOR (oeste)
+    u.push(Object.assign({x:t.x+dx, n:t.n+dn, y:cotaEn(t.x+dx,t.n+dn)}, base));   // viga gemela
   });
   return u;
 }
@@ -1260,7 +1315,7 @@ function buildTerreno(){
      Ahora la celda es el paso de fila (6 m) o menos, con tope de vértices por
      lado: la fila más lejana de un vértice queda a media celda, y a eso el
      desnivel no llega a la altura del tubo. Se comprueba fila a fila. */
-  const CELDA=6, TOPE=700;
+  const CELDA=6, TOPE=1200;
   /* Y LAS COLUMNAS, EN LAS LÍNEAS DE FILA. Con la rejilla uniforme un vértice
      cae a hasta media celda de la línea, y donde el terreno tiene un escalón
      entre dos líneas (Ayora los tiene de 5 m en 3 m) el suelo interpolado
@@ -1274,8 +1329,18 @@ function buildTerreno(){
   cols=cols.filter(x=>!lin.some(k=>Math.abs(k-x)<1.5)).concat(lin).sort((a,b)=>a-b);
   /* Si hay que recortar, se recortan las columnas de RELLENO, nunca las de las
      líneas: quitar una línea es volver a dejar su fila a media celda. */
-  const esLinea=x=>lin.some(k=>Math.abs(k-x)<1e-9);
-  while(cols.length-1>TOPE&&cols.some(x=>!esLinea(x))){ let par=0; cols=cols.filter(x=>esLinea(x)||(par++%2===0)); }
+  const setL=new Set(lin), esLinea=x=>setL.has(x);
+  /* Recorte del relleno a la mitad cada vuelta; si ya no queda relleno, las
+     líneas se quedan todas aunque pasen del tope (quitar una línea es dejar su
+     fila a media celda). Iba sin esa salida y con una sola columna de relleno
+     —que "se conservaba" en cada vuelta— no terminaba nunca: San José, con
+     sus parejas abiertas a ±filaZ, pasa de 650 líneas a mil y la página se
+     quedaba colgada construyendo el terreno. */
+  while(cols.length-1>TOPE){
+    const relleno=cols.filter(x=>!esLinea(x));
+    if(!relleno.length) break;
+    let par=0; cols=cols.filter(x=>esLinea(x)||(par++%2===1));
+  }
   const Mx=cols.length-1, Mz=Math.min(TOPE,Math.max(40,Math.ceil(h/CELDA)));
   const g=new THREE.PlaneGeometry(w,h,Mx,Mz);
   g.rotateX(-Math.PI/2);
@@ -2216,7 +2281,8 @@ function updatePlanta(sl){
   const nun=(PLANTA._un||unidades()).length;
   $("note").innerHTML=`<b>${PLANTA.titulo}</b> — ${PLANTA.trk.length} seguidores`+
     (PLANTA.cot?` (${nun} filas, ${PLANTA.cot.filas.length} con cota medida`+
-       ((PLANTA.cot.sinCota||[]).length?` y ${PLANTA.cot.sinCota.length} sin levantamiento, plantados en la cota de alrededor`:``)+`)`:``)+
+       ((PLANTA.cot.sinCota||[]).length?` y ${PLANTA.cot.sinCota.length} sin levantamiento, plantados en la cota de alrededor`+
+         ((PLANTA._raras||[]).length?` —${new Set(PLANTA._raras.map(r=>r.trk)).size} de ellos porque su cota medida está a más de 10 m de sus vecinas: un error del levantamiento, no un bancal—`:``):``)+`)`:``)+
     `, ${PLANTA.ncus.length} NCU y `+
     `${PLANTA.meteo.length} HSU en sus coordenadas del DWG, con ${PLANTA.mods} módulos por string. `+
     `Cada seguidor se colorea por el margen de su salto DIRECTO al mástil de <b>su</b> coordinador — el par (NCU, GW): `+
