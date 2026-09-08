@@ -44,8 +44,13 @@ cobertura-rf-fv/
 ├── plantas/                    # layouts y levantamientos (copia de cobertura-zigbee)
 ├── lib/                        # three.js r128 + OrbitControls (vendorizados)
 ├── tests/
-│   ├── test_visor_3d.js        # QA del visor en Chromium (103 comprobaciones)
-│   └── test_nucleo.py          # núcleo + PARIDAD .py <-> .js (19 comprobaciones)
+│   ├── test_visor_3d.js        # QA del visor en Chromium (137 comprobaciones)
+│   ├── test_bifila_plantas.js  # las plantas reales: bífila, TCU, terreno (85)
+│   ├── test_imagen.js          # LA PRUEBA DE IMAGEN: 9 vistas fijas contra
+│   │                           #   `tests/ref/`. Es la que ve lo que los otros
+│   │                           #   bancos no ven: el dibujo.
+│   ├── ref/                    # imágenes de referencia (se regeneran a mano)
+│   └── test_nucleo.py          # núcleo + PARIDAD .py <-> .js (38 comprobaciones)
 ├── README.md
 ├── INSTRUCCIONES.md            # cómo usarlo paso a paso
 ├── python/
@@ -76,11 +81,29 @@ port JS, que es lo que se rompe en silencio):
 python3 tests/test_nucleo.py
 ```
 
-**QA del visor** (necesita `playwright` y un servidor estático):
+**QA del visor** (necesita un servidor estático y dos paquetes SOLO para los
+bancos —la página no depende de nada—: `npm i -D playwright pngjs`):
 
 ```bash
 python3 -m http.server 8099      # en otra terminal
-node tests/test_visor_3d.js
+node tests/test_visor_3d.js       # cotas, matrices y física en la escena
+node tests/test_bifila_plantas.js # las plantas reales, planta a planta
+node tests/test_imagen.js         # el DIBUJO, contra las vistas de referencia
+```
+
+Los tres se reparten el trabajo y ninguno sobra: los dos primeros comprueban
+NÚMEROS (cuántas TCU se dibujan, a qué cota queda cada fila, qué margen sale);
+el tercero comprueba la FORMA de lo que se ve. Cinco defectos llegaron a
+producción siendo visibles a simple vista sin romper una sola comprobación
+numérica —el terreno comiéndose las mesas, la pendiente de las filas con el
+signo cambiado, un encuadre apuntando a otro sitio—: eso es lo que cierra
+`test_imagen.js`.
+
+Cuando un cambio legítimo mueve una vista, se regenera **a mano** y el diff de
+la imagen entra en el commit, para que quien revise vea qué cambió en pantalla:
+
+```bash
+node tests/test_imagen.js --actualizar    # y MIRAR lo que sale
 ```
 
 **Diagnóstico con tus datos:**
