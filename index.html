@@ -909,6 +909,7 @@ function cargaPlanta(nom){
           const hue=[]; for(let i=1;i<fx.length;i++){ const d=fx[i].x-fx[i-1].x; if(d>0.5) hue.push(d); }
           hue.sort((a,b)=>a-b);
           const tolL=Math.max(0.5,(hue.length?hue[hue.length>>1]:6)/2);
+          PLANTA.cot.tolL=tolL;
           PLANTA.cot.porX={}; PLANTA.cot.xs=[];
           let lin=null;
           fx.forEach(f=>{
@@ -917,6 +918,16 @@ function cargaPlanta(nom){
           });
           PLANTA.cot.xs=PLANTA.cot.xs.map(L=>{ const k=Math.round(L.xs.reduce((s2,v)=>s2+v,0)/L.xs.length*100)/100;
             PLANTA.cot.porX[k]=L.rows; return k; }).sort((a,b)=>a-b);
+          /* Y LOS PUNTOS MEDIDOS, EN UNA REJILLA DE 60 m, para rellenar donde NO
+             hay fila (pasillos anchos, bordes, viales, el sitio de la NCU) con
+             una media ponderada por distancia de los extremos de fila de
+             alrededor. Antes cada zona sin filas se quedaba PLANA a la cota de
+             su fila más cercana, y la de al lado a la de la suya: cornisas de
+             hasta 57 m entre columnas vecinas. */
+          const CEL=60, cel={}, pts=[];
+          filas.forEach(f=>{ pts.push({x:f.x,n:f.n0,y:f.y0},{x:f.x,n:f.n1,y:f.y1}); });
+          pts.forEach((q,i)=>{ const k=Math.floor(q.x/CEL)+","+Math.floor(q.n/CEL); (cel[k]=cel[k]||[]).push(i); });
+          PLANTA.cot.pts=pts; PLANTA.cot.cel=cel; PLANTA.cot.CEL=CEL; PLANTA.cot.cache={};
           PLANTA.cot.sinCota=sinCota;
         }
       }
@@ -964,23 +975,84 @@ function cotaEn(x,n){
   const xs=C.xs;
   let lo=0,hi=xs.length-1;
   while(lo<hi){ const m=(lo+hi)>>1; if(xs[m]<x) lo=m+1; else hi=m; }
-  let best=null,bd=1e9;
+  let best=null,bd=1e9,bx=0;
   for(const k of [xs[lo-1],xs[lo],xs[lo+1]]){
     if(k===undefined) continue;
     const arr=C.porX[k]; if(!arr) continue;
     for(const f of arr){
       const dn=(n<f.n0)?f.n0-n:(n>f.n1?n-f.n1:0);
       const d=Math.abs(k-x)+dn*0.25;
-      if(d<bd){ bd=d; best=f; }
+      if(d<bd){ bd=d; best=f; bx=k; }
     }
   }
+  const tolX=C.tolL||3;
   if(!best) return 0;
-  /* Más allá del extremo de la fila el suelo NO sigue su pendiente sin fin: se
-     prolonga unos metros y se queda plano. Extrapolar 400 m con la pendiente
-     de una mesa de 74 m es inventarse decenas de metros de cota. */
-  let u=(best.n1===best.n0)?0:(n-best.n0)/(best.n1-best.n0);
-  u=Math.max(-0.1,Math.min(1.1,u));
-  return best.y0+(best.y1-best.y0)*u;
+  /* DENTRO de la huella de una fila (su línea a menos de medio paso y su tramo
+     con 3 m de margen), la cota es la de esa fila, lineal entre sus extremos:
+     exacta, que es lo que evita que el suelo se coma la mesa. */
+  const dnB=(n<best.n0)?best.n0-n:(n>best.n1?n-best.n1:0);
+  if(dnB<=3&&Math.abs(bx-x)<=tolX){
+    const u=(best.n1===best.n0)?0:(n-best.n0)/(best.n1-best.n0);
+    return best.y0+(best.y1-best.y0)*Math.max(-0.1,Math.min(1.1,u));
+  }
+  /* FUERA, se rellena con los puntos medidos de alrededor (extremos de fila),
+     ponderados por 1/d²: una superficie continua, sin cornisas. Antes se
+     prolongaba la fila más cercana con su pendiente —decenas de metros de cota
+     inventada— o, después, plana: cada zona a la cota de "su" fila y
+     acantilados entre zonas. */
+  const pts=C.pts, cel=C.cel, CEL=C.CEL;
+  if(pts&&cel){
+    /* Los anillos se abren hasta encontrar puntos, SIN tope corto: en el
+       hueco del NO de Ayora —donde está la HSU 4 y no hay fila en 400 m— seis
+       anillos de 60 m no llegaban a nada y se caía al recurso de abajo, que
+       prolongaba una fila de 2,3 km más allá: un vértice a 47 m y el de al
+       lado a −3, la cornisa que se veía desde esa HSU. */
+    /* CONTINUA EN LA POSICIÓN, o hay cornisa. Buscar "los puntos de las celdas
+       de alrededor" hace que dos vértices a 12 m vean bloques distintos en un
+       hueco de 500 m —uno a 28 m de cota y el otro a 3—. Así que el radio no
+       lo pone la celda: es el DOBLE de la distancia al 6.º punto más cercano,
+       que varía suavemente con la posición, y el peso se anula en ese borde
+       (1/d² · (1−d/R)²): lo que entra en el radio entra con peso cero. */
+    const cx=Math.floor(x/CEL), cn=Math.floor(n/CEL), K=6;
+    /* Los candidatos se recogen UNA vez por celda (todos los vértices de una
+       celda de 60 m comparten los mismos anillos) y se guardan: recogerlos por
+       vértice, con 270 k vértices, dejaba la página minutos sin responder. */
+    const key=cx+","+cn;
+    let L=C.cache[key];
+    if(!L){
+      L=[]; const xc=(cx+0.5)*CEL, nc=(cn+0.5)*CEL;
+      let rMax=80, fijado=false;
+      for(let r=0;r<=rMax;r++){
+        for(let i=cx-r;i<=cx+r;i++) for(let j=cn-r;j<=cn+r;j++){
+          if(r>0&&Math.abs(i-cx)<r&&Math.abs(j-cn)<r) continue;     // solo las celdas del anillo nuevo
+          const Q=cel[i+","+j]; if(!Q) continue;
+          for(const q of Q) L.push(pts[q]);
+        }
+        /* Los puntos a menos de (r−1)·CEL del centro ya están TODOS: cuando
+           entre ellos hay K, el radio queda fijado —con margen para cualquier
+           vértice de la celda— y solo faltan los anillos que alcance. */
+        if(!fijado&&L.length>=K){
+          const d2s=L.map(P=>(P.x-xc)*(P.x-xc)+(P.n-nc)*(P.n-nc)).sort((a,b)=>a-b);
+          const dK=Math.sqrt(d2s[K-1]);
+          if(dK<=Math.max(0,r-1)*CEL){ fijado=true; rMax=Math.min(80,Math.max(r,Math.ceil((2*(dK+CEL)+CEL)/CEL)+1)); }
+        }
+      }
+      C.cache[key]=L;
+    }
+    if(L.length){
+      // los K más cercanos a ESTE vértice, sin ordenar toda la lista
+      const top=[];
+      for(const P of L){ const d2=(P.x-x)*(P.x-x)+(P.n-n)*(P.n-n);
+        if(top.length<K||d2<top[K-1]){ let i=top.length; top.push(d2); while(i>0&&top[i-1]>d2){ top[i]=top[i-1]; i--; } top[i]=d2; if(top.length>K) top.pop(); } }
+      const R=Math.max(30,2*Math.sqrt(top[top.length-1])), R2=R*R;
+      let sw=0, sy=0;
+      for(const P of L){ const d2=(P.x-x)*(P.x-x)+(P.n-n)*(P.n-n); if(d2>=R2) continue;
+        const d=Math.sqrt(d2), w=(1-d/R)*(1-d/R)/Math.max(1,d2); sw+=w; sy+=w*P.y; }
+      if(sw>0) return sy/sw;
+    }
+  }
+  const u=(best.n1===best.n0)?0:(n-best.n0)/(best.n1-best.n0);
+  return best.y0+(best.y1-best.y0)*Math.max(-0.1,Math.min(1.1,u));
 }
 
 /* QUÉ COORDINADOR VE CADA TCU. No todas las TCU hablan con todas las NCU: cada
