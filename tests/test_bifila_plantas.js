@@ -70,6 +70,47 @@ const SONDA = `(() => {
                const v1 = v[1].x * Math.sin(a2) + v[1].n * Math.cos(a2);
                d.push(Math.abs(v1 - v0)); });
              return d.length ? +Math.max(...d).toFixed(3) : null; })(),
+           /* LO QUE SE DIBUJA, PIEZA A PIEZA. Este banco preguntaba a las
+              funciones (tcusDe) y al resultado (_res.n), y las dos daban el
+              número bueno mientras el RENDER pintaba una TCU, un motor y un
+              seccionador POR FILA: El Burgo salía con 430 TCU donde hay 215 y
+              una planta bífila se veía exactamente igual que una monofila. El
+              plan de instancias describe UNA viga; instanciarlo por fila
+              duplica lo que solo va en la del motor. */
+           inst: (() => { const c = {}, l = {};
+             PLI.forEach(q => { c[q.key] = (c[q.key]||0) + q.im.count; l[q.key] = q.locals.length; });
+             const por = {}; Object.keys(c).forEach(k => por[k] = c[k] / l[k]);
+             return por; })(),
+           ant: PLANT_ANT ? PLANT_ANT.dot.count : null,
+           /* La antena a la cota del CALCULO: hA sobre el suelo de su fila. */
+           antY: (() => { if (!PLANT_ANT) return null;
+             const m = new THREE.Matrix4(), v = new THREE.Vector3(), d = [];
+             PLANT_ANT.i.forEach((iu, j) => { PLANT_ANT.dot.getMatrixAt(j, m);
+               v.setFromMatrixPosition(m); d.push(+(v.y - UN[iu].y).toFixed(4)); });
+             return d.length ? [Math.min(...d), Math.max(...d)] : null; })(),
+           hA: Math.max(0.15, HTUBE - (+document.getElementById("drop").value)),
+           /* LAS BIELAS: el eje de transmision que cruza de una viga a la otra.
+              Sin el, dos filas a 6 m con una TCU se leen como dos seguidores. Se
+              comprueba que hay uno por bifilo y que sus EXTREMOS caen en las dos
+              filas del par: un eje en el sitio equivocado o girado a lo largo
+              del tubo daria el mismo recuento. */
+           eje: (() => { if (!PLANT_EJE) return { n: 0 };
+             const por = {};
+             UN.forEach((f, i) => { const k = f.trk != null ? f.trk : i; (por[k] = por[k] || []).push(f); });
+             const bif = Object.values(por).filter(v => v.length === 2);
+             const m = new THREE.Matrix4(), v3 = new THREE.Vector3();
+             let peor = 0;
+             bif.forEach((v, j) => { PLANT_EJE.eje.getMatrixAt(j, m);
+               const sep = Math.hypot(v[1].x - v[0].x, v[1].n - v[0].n);
+               [+1, -1].forEach(sg => {
+                 v3.set(0, 0, sg * PLANT_EJE.sep / 2).applyMatrix4(m);       // extremo del eje (escalado a sep)
+                 const d = Math.min(...v.map(f => Math.hypot(v3.x - f.x, -v3.z - f.n)));
+                 peor = Math.max(peor, d); });
+               // y a la altura de la viga (la geometria ya lleva su -0,22 bajo el tubo)
+               v3.set(0, 0, 0).applyMatrix4(m);
+               peor = Math.max(peor, Math.abs(v3.y - ((v[0].y + v[1].y) / 2 + HTUBE)));
+             });
+             return { n: PLANT_EJE.n, cardanes: PLANT_EJE.car.count, sep: PLANT_EJE.sep, peor: +peor.toFixed(3) }; })(),
            // la TCU de cada seguidor tiene que ser la fila OESTE (menor u)
            oeste: T.every(t => { const mias = UN.map((f,i)=>[f,i]).filter(([f])=>f.trk===t.trk);
                                  return mias.every(([f]) => u(f) >= u(UN[t.fila]) - 1e-6); }) };
@@ -110,6 +151,20 @@ const SONDA = `(() => {
         (f.texto||'').slice(0, 120));
   check('las dos filas de un seguidor se pintan con el MISMO margen',
         f.mismoMargen === true);
+  check('y el RENDER dibuja 24 TCU, no una por fila', f.inst.tcu === 24, f.inst);
+  check('un motor y un seccionador por seguidor, no por viga',
+        f.inst.motor === 24 && f.inst.secc === 24, f.inst);
+  check('pero las mesas y los tubos sí van en las dos vigas: 48',
+        f.inst.mesa === 48 && f.inst.tube === 48, f.inst);
+  check('y la corona y su poste también, que la gemela gira igual',
+        f.inst.corona === 48 && f.inst.soporte === 48, f.inst);
+  check('y sus 24 bielas: un eje de transmisión por seguidor, con dos cardanes',
+        f.eje.n === 24 && f.eje.cardanes === 48, f.eje);
+  check('cuyos extremos caen en las dos filas del par, a la altura de la viga',
+        f.eje.peor < 0.05, f.eje);
+  check('cada TCU dibuja su antena, y cuelga a la cota que usa el cálculo',
+        f.ant === 24 && f.antY && Math.abs(f.antY[0] - f.hA) < 1e-3 &&
+        Math.abs(f.antY[1] - f.hA) < 1e-3, [f.ant, f.antY, f.hA]);
   check('las filas quedan al paso de la planta (6 m), no a 12',
         Math.abs(f.paso - 6) < 0.2, f.paso);
   /* La decisión sale del LAYOUT —de su `filaZ` y de `mesa.tipos`—, no de una
@@ -162,6 +217,9 @@ const SONDA = `(() => {
   const p = await carga('paramo');
   check('396 seguidores y 396 filas', p.trk === 396 && p.filas === 396, p);
   check('396 TCU', p.tcus === 396, p.tcus);
+  check('y en una monofila no hay biela que dibujar', p.eje.n === 0, p.eje);
+  check('y en una monofila el render dibuja una TCU por fila, que es lo mismo',
+        p.inst.tcu === 396 && p.inst.mesa === 396, p.inst);
   /* Y el motivo tiene que ser el SUYO: «declara filaZ 0», que es la planta
      diciendo que su seguidor es de una fila. No vale el mensaje de «no lo
      declara»: son dos cosas distintas y una de ellas es un dato. */
@@ -173,6 +231,13 @@ const SONDA = `(() => {
   const e = await carga('elburgo');
   check('215 seguidores y 430 filas', e.trk === 215 && e.filas === 430, e);
   check('con 215 TCU', e.tcus === 215, e.tcus);
+  check('y el render dibuja 215 TCU: El Burgo se veía monofila con 430',
+        e.inst.tcu === 215 && e.inst.motor === 215, e.inst);
+  check('con sus 430 mesas y 430 tubos, que las dos vigas llevan módulos',
+        e.inst.mesa === 430 && e.inst.tube === 430, e.inst);
+  check('y 215 antenas colgando, una por seguidor', e.ant === 215, e.ant);
+  check('y 215 bielas cruzando de una viga a la otra: se veía sin ellas',
+        e.eje.n === 215 && e.eje.peor < 0.05, e.eje);
   check('las filas quedan a 6 m', Math.abs(e.paso - 6) < 0.2, e.paso);
   check('y las dos vigas de un seguidor, a 6,00 m', Math.abs(e.sep - 6) < 0.01, e.sep);
 
@@ -214,9 +279,54 @@ const SONDA = `(() => {
   check('Polvorín: 119 seguidores -> 236 filas (117 bífilos + 2 mono)',
         pv.trk === 119 && pv.filas === 236, [pv.trk, pv.filas]);
   check('y 119 TCU', pv.tcus === 119, pv.tcus);
+  check('y 117 bielas: los dos mono no la tienen', pv.eje.n === 117 && pv.eje.peor < 0.05, pv.eje);
   check('con sus vigas a 4,50 m: 2 x 2,25', Math.abs(pv.sep - 4.5) < 0.01, pv.sep);
   check('el tipo mono se cuenta y se dice',
         pv.bif.mono === 2 && /2 de tipo mono/.test(pv.bif.porque || ''), pv.bif);
+
+  /* ── LOS ENCUADRES, CON PLANTA PUESTA ────────────────────────────────────
+     Apuntaban a rows[3], a 3*P y a ncu.pos, que son del corte de estudio: con
+     una planta cargada no existen. «Antena TCU» acababa mirando un punto
+     inventado POR ENCIMA de las mesas —con la antena colgando bajo la viga dos
+     metros mas abajo— y «NCU» reventaba contra un ncu nulo. */
+  console.log('\n· los encuadres miran al equipo de la PLANTA, no al corte de estudio');
+  await carga('elburgo');
+  for (const v of ['antena', 'motor']) {
+    const r = await page.evaluate(vv => { frame(vv);
+      const T = PLANTA._tcus;
+      const hA = Math.max(0.15, HTUBE - (+document.getElementById('drop').value));
+      let d = 1e9, y0 = 0;
+      T.forEach(t => { const th = t.d.rot || 0;
+        const x = t.d.x + Seguidor.DIMS.tcuX * Math.sin(th);
+        const z = -(t.d.n + Seguidor.DIMS.tcuX * Math.cos(th));
+        const q = Math.hypot(controls.target.x - x, controls.target.z - z);
+        if (q < d) { d = q; y0 = t.d.y; } });
+      return { cam: camera.position.toArray(), tgt: controls.target.toArray(),
+               dAnt: d, yFila: y0, hA: hA, htube: HTUBE };
+    }, v);
+    if (v === 'antena') {
+      check('«Antena TCU» apunta a una antena de verdad (a menos de 30 cm)',
+            r.dAnt < 0.3, r.dAnt);
+      check('y a la cota a la que CUELGA, no a la de la mesa',
+            Math.abs(r.tgt[1] - (r.yFila + r.hA)) < 0.05, [r.tgt[1], r.yFila + r.hA]);
+      check('con la cámara por DEBAJO del tubo: desde arriba solo se ve la mesa',
+            r.cam[1] < r.yFila + r.htube, [r.cam[1], r.yFila + r.htube]);
+    } else {
+      check('«Accionamiento» se va a un seguidor de la planta, no al corte',
+            r.dAnt < 3.5, r.dAnt);
+    }
+  }
+  const eqf = await page.evaluate(() => {
+    const o = {};
+    ['ncu', 'hsu'].forEach(t => { frame(t);
+      const e = PLEQ.find(q => q.tipo === t);
+      const p3 = e.g.localToWorld(e.ant.clone());
+      o[t] = Math.hypot(controls.target.x - p3.x, controls.target.y - p3.y, controls.target.z - p3.z);
+    });
+    return o;
+  });
+  check('«NCU» y «HSU» apuntan a SU antena, y ninguna revienta',
+        eqf.ncu < 0.05 && eqf.hsu < 0.05, eqf);
 
   check('sin errores de JS en ninguna planta', errs.length === 0, errs.slice(0, 3));
   await browser.close();

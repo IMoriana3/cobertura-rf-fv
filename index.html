@@ -1298,7 +1298,7 @@ function layout(){
 }
 
 /* ---------------------- render de la planta (instanciado) ---------------------- */
-let PLI=[], PLEQ=[], PLMESA=null;
+let PLI=[], PLEQ=[], PLMESA=null, PLANT_ANT=null, PLANT_EJE=null;
 function buildPlanta(){
   const mats=materials();
   while(fieldG.children.length){ const c=fieldG.children.pop(); disposeTree(c); }
@@ -1327,6 +1327,19 @@ function buildPlanta(){
   /* Y por TIPO de seguidor cuando la planta trae retícula medida: en El Burgo
      un interior apoya en 8 puntos y un exterior en 10, así que no pueden
      compartir plan de instancias aunque tengan los mismos módulos. */
+  /* QUÉ FILA LLEVA EL ACCIONAMIENTO. Un bífilo es UN seguidor: dos vigas, un
+     motor, una TCU y un seccionador, todo en la viga oeste. El plan de
+     instancias describe UNA viga, así que al instanciarlo por FILA cada fila se
+     llevaba su TCU y su motor: El Burgo salía con 430 TCU donde hay 215, y una
+     planta bífila se dibujaba exactamente igual que una monofila —que es lo que
+     se vio en pantalla—. La física ya contaba 215 (`tcusDe`), o sea que el
+     dibujo contradecía al cálculo de la misma página.
+     Qué pieza va en la gemela no se decide aquí: lo dice el modelo
+     (`Seguidor.esDeEstaViga`), que es quien sabe que la corona y su poste van en
+     las dos y el motor en una. */
+  const TCUS=PLANTA._tcus=tcusDe(UN);
+  const MOTRIZ=new Uint8Array(UN.length);
+  TCUS.forEach(T=>{ MOTRIZ[T.fila]=1; });
   const gru={}, meta={};
   UN.forEach((t,i)=>{
     const largo=SPANP*t.mr;
@@ -1344,17 +1357,23 @@ function buildPlanta(){
     const plan=Seguidor.instancePlan(THREE,{detail:"mass",size:"largo",west:true});
     plan.forEach(tp=>{
       if(tp.motorLink||tp.damperLink||tp.antenna) return;   // los gestiona la app por frame; en planta se omiten
+      /* Las piezas que no van en la gemela solo se instancian en la fila del
+         motor. Se filtra el índice, no se dibujan y se esconden: una instancia
+         que no se ve sigue costando matriz y llamada. */
+      const enGemela=Seguidor.esDeEstaViga(tp,false);
+      const idxP=enGemela?idx:idx.filter(i=>MOTRIZ[i]);
+      if(!idxP.length) return;
       const geom=tp.geom(THREE);
       let mat=mats[tp.mat];
       /* En planta la mesa ES el mapa de cobertura, no un panel: se pinta SIN luz
          ni tone mapping, para que el color sea exactamente el de la leyenda. */
       if(tp.key==="mesa") mat=new THREE.MeshBasicMaterial({color:0xffffff,toneMapped:false});
-      const im=new THREE.InstancedMesh(geom,mat,N*tp.locals.length);
+      const im=new THREE.InstancedMesh(geom,mat,idxP.length*tp.locals.length);
       im.frustumCulled=false; im.castShadow=!!tp.cast; im.receiveShadow=true;
       im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       plantaG.add(im);
-      PLI.push({key:tp.key,spin:tp.spin,locals:tp.locals,im:im,terr:!!tp.terrainScaled,idx:idx});
-      if(tp.key==="mesa") PLMESA.list.push({im:im,per:tp.locals.length,idx:idx});
+      PLI.push({key:tp.key,spin:tp.spin,locals:tp.locals,im:im,terr:!!tp.terrainScaled,idx:idxP});
+      if(tp.key==="mesa") PLMESA.list.push({im:im,per:tp.locals.length,idx:idxP});
     });
     /* PILOTES INTERMEDIOS. `parts()` solo trae el soporte del slew, así que la
        planta salía con cada mesa colgada de un único poste central: un tubo de
@@ -1397,6 +1416,55 @@ function buildPlanta(){
     const d=new THREE.Mesh(new THREE.SphereGeometry(0.055,12,8),mats.antena); d.position.copy(b.antPos); b.group.add(d);
     PLEQ.push({tipo:"hsu",i:i,g:b.group,dato:c,ant:b.antPos.clone()});
   });
+  /* LA ANTENA, QUE ES DE LO QUE VA ESTA PÁGINA. En planta no se dibujaba: el
+     plan de instancias trae sus piezas y el bucle las saltaba («las gestiona la
+     app por frame»), pero la app nunca las ponía. Así que el campo salía con
+     TCU sin antena y el encuadre «Antena TCU» no tenía a qué apuntar.
+     Va donde la pone la FÍSICA: colgando `drop` bajo el eje del tubo, en la X
+     de la TCU, y solo en la viga del motor. Se recoloca por frame porque el
+     deslizador de caída la mueve sin reconstruir nada. */
+  PLANT_ANT={ i:TCUS.map(T=>T.fila),
+              dot:new THREE.InstancedMesh(new THREE.SphereGeometry(0.055,10,7),
+                                          mats.antena,TCUS.length),
+              cable:new THREE.InstancedMesh(new THREE.CylinderGeometry(0.006,0.006,1,6),
+                                            mats.antena,TCUS.length) };
+  [PLANT_ANT.dot,PLANT_ANT.cable].forEach(im=>{ im.frustumCulled=false;
+    im.instanceMatrix.setUsage(THREE.DynamicDrawUsage); plantaG.add(im); });
+  /* LAS BIELAS. Un bífilo son dos vigas y UN motor: la gemela se mueve por el
+     eje de transmisión que cruza de una a otra, con un cardán en cada extremo.
+     El corte de estudio lo dibuja desde el principio; en planta faltaba, y sin
+     él dos filas a 6 m con una sola TCU se leen como dos seguidores, no como
+     uno. Es lo que hace visible el par. Va donde lo pone el modelo
+     (`ejeTransGeom`, `cardanGeom`, `cardanDz`): bajo el eje del tubo, en el
+     centro del par, cruzando las filas. No bascula con el ángulo, así que se
+     coloca una vez, como los pilotes. Con cotas medidas el centro y la
+     separación son los de las DOS filas reales, no un ±filaZ nominal. */
+  PLANT_EJE=null;
+  {
+    const por={};
+    UN.forEach((f,i)=>{ const k=f.trk!=null?f.trk:i; (por[k]=por[k]||[]).push(f); });
+    const bif=Object.values(por).filter(v=>v.length===2);
+    if(bif.length){
+      const sepDe=v=>Math.hypot(v[1].x-v[0].x,v[1].n-v[0].n);
+      const seps=bif.map(sepDe).sort((a,b)=>a-b), sepM=seps[seps.length>>1];
+      const eje=new THREE.InstancedMesh(Seguidor.ejeTransGeom(THREE,sepM),mats.steel,bif.length);
+      const car=new THREE.InstancedMesh(Seguidor.cardanGeom(THREE),mats.blue,bif.length*2);
+      [eje,car].forEach(im=>{ im.castShadow=true; im.receiveShadow=true; im.frustumCulled=false; });
+      const m=new THREE.Matrix4(), q=new THREE.Matrix4();
+      bif.forEach((v,j)=>{
+        const cx=(v[0].x+v[1].x)/2, cn=(v[0].n+v[1].n)/2, cy=(v[0].y+v[1].y)/2;
+        const sep=sepDe(v), rot=v[0].rot||0;
+        // el mismo giro que la viga: su +Z local es "a través de las filas"
+        m.makeTranslation(cx,cy+HTUBE,-cn).multiply(q.makeRotationY(Math.PI/2-rot));
+        eje.setMatrixAt(j,m.clone().multiply(q.makeScale(1,1,sep/sepM)));
+        const dz=Seguidor.cardanDz(sep);
+        car.setMatrixAt(2*j,  m.clone().multiply(q.makeTranslation(0,0, dz)));
+        car.setMatrixAt(2*j+1,m.clone().multiply(q.makeTranslation(0,0,-dz)));
+      });
+      plantaG.add(eje,car);
+      PLANT_EJE={eje:eje,car:car,n:bif.length,sep:sepM};
+    }
+  }
   links=new THREE.Group(); links.frustumCulled=false; plantaG.add(links);
   Seguidor.setModsPerStr(prev);
   buildLabelsPlanta();
@@ -1510,6 +1578,24 @@ function pintaPlanta(beta,hA){
                : VISTA==="ambito" ? colorAmbito(key) : colorFor(mg));
       PLMESA.list.forEach(g=>{ const j=g.idx.indexOf(i); if(j<0) return;
         for(let l=0;l<g.per;l++) g.im.setColorAt(j*g.per+l,_col); }); }
+  }
+  /* La antena, a la cota que usa el cálculo: `hA` sobre el suelo de SU fila. Si
+     el dibujo la pusiera en otro sitio, la imagen dejaría de ser el enlace que
+     se calcula, que es justo lo que esta página no se puede permitir. */
+  if(PLANT_ANT){
+    const drop=Math.max(0,HTUBE-hA), _m=new THREE.Matrix4();
+    PLANT_ANT.i.forEach((iu,j)=>{
+      const t=UN[iu], th=t.rot||0;
+      /* El tubo del modelo va en +X y la escena gira Y por (pi/2 - rot), asi que
+         +X del modelo cae en (sin rot, 0, -cos rot) del mundo. */
+      const ax=t.x+D.tcuX*Math.sin(th), azz=-(t.n+D.tcuX*Math.cos(th));
+      PLANT_ANT.dot.setMatrixAt(j,_m.makeTranslation(ax,t.y+hA,azz));
+      const h=Math.max(0.02,drop);
+      PLANT_ANT.cable.setMatrixAt(j,_m.makeTranslation(ax,t.y+hA+h/2,azz)
+                                       .multiply(new THREE.Matrix4().makeScale(1,h,1)));
+    });
+    PLANT_ANT.dot.instanceMatrix.needsUpdate=true;
+    PLANT_ANT.cable.instanceMatrix.needsUpdate=true;
   }
   PLI.forEach(L=>{ if(PILSUCIO||!L.pil) L.im.instanceMatrix.needsUpdate=true; });
   PILSUCIO=false;
@@ -1648,6 +1734,12 @@ function applyState(){
 /* ------------------------------ encuadres ------------------------------ */
 function frame(which){
   const span=SPAN(), width=rowX(NROWS-1);
+  /* CON PLANTA CARGADA, LOS ENCUADRES SON DE LA PLANTA. Los de abajo apuntan a
+     `rows[3]`, a `ncu.pos` y a `3*P`, que son del corte de estudio y NO EXISTEN
+     con una planta puesta: «Antena TCU» acababa mirando a un punto inventado
+     —por encima de las mesas, con la antena colgando dos metros más abajo— y
+     «NCU» reventaba contra un `ncu` nulo. */
+  if(PLANTA&&which!=="campo"){ frameEnPlanta(which); return; }
   if(which==="antena"){
     const p=rows[3]&&rows[3].ant?rows[3].ant.pos:new THREE.Vector3(3*P,HTUBE,ZANT);
     const side=(BETA>=0?-1:1);   // el canto ALTO del panel
@@ -1671,6 +1763,42 @@ function frame(which){
     const d=Math.max(total,span)*0.92+12;
     controls.target.set(total/2,HTUBE+0.4,0);
     camera.position.set(total/2-d*0.40,HTUBE+d*0.30,d*0.86);
+  }
+  controls.update();
+}
+
+/* Encuadres con planta: sobre el equipo de verdad, y a su altura. La antena de
+   una TCU CUELGA bajo la viga, así que mirarla desde arriba es mirar la mesa: la
+   cámara se pone a su cota, un poco por debajo del tubo, que es desde donde se
+   ve lo que importa —el hueco entre la antena y el canto bajo de la mesa, por
+   donde pasa el salto a la TCU vecina—. */
+function frameEnPlanta(which){
+  const eq=t=>PLEQ.find(e=>e.tipo===t);
+  if(which==="ncu"||which==="hsu"){
+    const e=eq(which)||PLEQ[0];
+    if(!e){ frame("campo"); return; }
+    const p=e.g.localToWorld(e.ant.clone());
+    controls.target.set(p.x,p.y,p.z);
+    camera.position.set(p.x+4.5,p.y+1.2,p.z+5.5);
+    controls.update(); return;
+  }
+  const UN=PLANTA._un||(PLANTA._un=unidades());
+  const TC=PLANTA._tcus||(PLANTA._tcus=tcusDe(UN));
+  if(!TC.length){ frame("campo"); return; }
+  /* La TCU del centro de la planta: la del borde deja media pantalla vacía. */
+  const e=extentPlanta(), cn=-e.cz;
+  let best=TC[0], bd=1e18;
+  TC.forEach(T=>{ const d=Math.hypot(T.d.x-e.cx,T.d.n-cn); if(d<bd){ bd=d; best=T; } });
+  const t=best.d, th=t.rot||0;
+  const hA=Math.max(0.15,HTUBE-(+$("drop").value));
+  const ax=t.x+D.tcuX*Math.sin(th), az=-(t.n+D.tcuX*Math.cos(th));
+  if(which==="antena"){
+    controls.target.set(ax,t.y+hA,az);
+    // a la cota de la antena y desde el pasillo entre filas: se ve colgar
+    camera.position.set(ax+3.0*Math.cos(th),t.y+hA+0.55,az+3.0*Math.sin(th)+3.4);
+  }else{                                            // accionamiento
+    controls.target.set(t.x,t.y+HTUBE-0.15,-t.n);
+    camera.position.set(t.x+3.4,t.y+HTUBE+1.4,-t.n+4.2);
   }
   controls.update();
 }
