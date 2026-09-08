@@ -279,6 +279,22 @@ const SONDA = `(() => {
   check('y en el centro de las 1.502 filas el suelo dibujado queda a menos de 0,5 m de su cota (p05..p95)',
         ter.n === 1502 && ter.p05 > -0.5 && ter.p95 < 0.5, ter);
   check('y NUNCA por encima del tubo: ninguna mesa comida por el terreno (max < 1 m)', ter.max < 1.0 && ter.min > -3, ter);
+  /* Y SIN CORNISAS. Fuera de las filas el suelo se rellenaba prolongando la
+     fila mas cercana -plana-, y cada zona quedaba a la cota de "su" fila con
+     acantilados entre zonas: saltos de hasta 57 m entre columnas vecinas (por
+     6 m). Se miden los saltos entre vertices vecinos en toda la rejilla; los
+     bancales reales de Ayora son de unos 5 m, y eso es el techo. */
+  const sal = await page.evaluate(() => {
+    const u = terreno.userData, pos = terreno.geometry.attributes.position, dz = [], dx = [];
+    for (let k = 0; k < u.Mz; k++) for (let i = 0; i <= u.Mx; i++) {
+      dz.push(Math.abs(pos.getY((k + 1) * (u.Mx + 1) + i) - pos.getY(k * (u.Mx + 1) + i)));
+      if (i < u.Mx) dx.push(Math.abs(pos.getY(k * (u.Mx + 1) + i + 1) - pos.getY(k * (u.Mx + 1) + i)) / Math.max(1, u.cols[i + 1] - u.cols[i]) * 6);
+    }
+    const st = v => { v.sort((a, b) => a - b); return { p99: +v[v.length * 0.99 | 0].toFixed(2), max: +v[v.length - 1].toFixed(2) }; };
+    return { z: st(dz), x: st(dx) };
+  });
+  check('el suelo es continuo: entre vértices vecinos (por 6 m) el p99 del salto baja de 2 m', sal.z.p99 < 2 && sal.x.p99 < 2, sal);
+  check('y el salto máximo no pasa de un bancal (8 m), no de una cornisa de 57', sal.z.max < 8 && sal.x.max < 8, sal);
   check('los 751 encuentran su entrada en el levantamiento',
         a.empar && a.empar.lejos === 0 && a.empar.n === 751, a.empar);
   check('ninguna entrada se reparte entre dos seguidores',
