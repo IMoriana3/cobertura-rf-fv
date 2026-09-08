@@ -80,7 +80,33 @@ const SONDA = `(() => {
            inst: (() => { const c = {}, l = {};
              PLI.forEach(q => { c[q.key] = (c[q.key]||0) + q.im.count; l[q.key] = q.locals.length; });
              const por = {}; Object.keys(c).forEach(k => por[k] = c[k] / l[k]);
+             por.tcuDib = por.tcu || 0;
              return por; })(),
+           /* EL CAD COMO NIVEL DE DETALLE. El glb son 170 k triangulos y el STEP 20 k:
+              instanciados en cada seguidor eran 140 M en Ayora y la pagina dejo de
+              atender un clic (el banco del visor murio por tiempo). Asi que van
+              TRES copias en las TCU mas cercanas a donde mira la camara, tapando
+              su caja; se comprueba que estan, que la mas cercana al encuadre lleva
+              el CAD encima de SU viga, y que su caja se ha escondido. */
+           cad: (() => { if (!PLCAD) return null;
+             frame('antena');
+             cadCerca(true);
+             const tgt = controls.target, UN = PLANTA._un;
+             let f = -1, bd = 1e18;
+             PLANTA._tcus.forEach(T => { const t = UN[T.fila]; const d = Math.hypot(t.x - tgt.x, -t.n - tgt.z); if (d < bd) { bd = d; f = T.fila; } });
+             const k = PLCAD.filas.indexOf(f);
+             const g = k >= 0 ? PLCAD.tcu[k] : null;
+             const v = new THREE.Vector3(); if (g) v.setFromMatrixPosition(g.matrix);
+             const t = UN[f];
+             // la caja de ESA fila: hay una entrada 'tcu' por grupo de modulos
+             const caja = PLI.find(L => L.key === 'tcu' && L.idx.indexOf(f) >= 0), j = caja ? caja.idx.indexOf(f) : -1;
+             const m = new THREE.Matrix4(); if (j >= 0) caja.im.getMatrixAt(j, m);
+             let tri = 0; PLCAD.tcu.forEach(gg => gg.traverse(o => { if (o.isMesh && o.geometry.index) tri += o.geometry.index.count / 3; }));
+             return { copias: PLCAD.tcu.length, secc: PLCAD.secc.length, visibles: PLCAD.tcu.filter(gg => gg.visible).length,
+                      enLaMasCercana: k >= 0 && !!g && g.visible,
+                      dViga: g ? +Math.hypot(v.x - t.x, v.z + t.n, v.y - (t.y + HTUBE)).toFixed(3) : null,
+                      cajaOculta: j >= 0 && m.elements[0] === 0 && m.elements[5] === 0,
+                      triCAD: tri, cadListo: !!CAD.tcu && !!CAD.secc }; })(),
            ant: PLANT_ANT ? PLANT_ANT.dot.count : null,
            /* La antena a la cota del CALCULO: hA sobre el suelo de su fila. */
            antY: (() => { if (!PLANT_ANT) return null;
@@ -128,7 +154,9 @@ const SONDA = `(() => {
   let cargada = false;
   const carga = async (planta) => {
     if (!cargada) { await page.goto(BASE, { waitUntil: 'networkidle' }); cargada = true;
-                    await page.waitForTimeout(800); }
+                    await page.waitForTimeout(800);
+                    // el glb y el STEP llegan por red: sin esperarlos se comprobaria la caja
+                    for (let i = 0; i < 40 && !(await page.evaluate(() => CAD.listo)); i++) await page.waitForTimeout(250); }
     await page.evaluate(p => cargaPlanta(p), planta);
     for (let i = 0; i < 60; i++) {
       const listo = await page.evaluate(() =>
@@ -151,7 +179,13 @@ const SONDA = `(() => {
         (f.texto||'').slice(0, 120));
   check('las dos filas de un seguidor se pintan con el MISMO margen',
         f.mismoMargen === true);
-  check('y el RENDER dibuja 24 TCU, no una por fila', f.inst.tcu === 24, f.inst);
+  check('y el RENDER dibuja 24 TCU, no una por fila', f.inst.tcuDib === 24, f.inst);
+  check('el CAD de la TCU y del seccionador está, como nivel de detalle: 3 copias, no 24',
+        f.cad && f.cad.cadListo && f.cad.copias === 3 && f.cad.secc === 3 && f.cad.visibles === 3, f.cad);
+  check('y la TCU que encuadra la cámara lleva el CAD ENCIMA DE SU VIGA, con su caja escondida',
+        f.cad && f.cad.enLaMasCercana && f.cad.dViga < 0.01 && f.cad.cajaOculta, f.cad);
+  check('con lo que cuesta el corte de estudio, no la planta entera (< 600 k triángulos)',
+        f.cad && f.cad.triCAD > 100000 && f.cad.triCAD < 600000, f.cad && f.cad.triCAD);
   check('un motor y un seccionador por seguidor, no por viga',
         f.inst.motor === 24 && f.inst.secc === 24, f.inst);
   check('pero las mesas y los tubos sí van en las dos vigas: 48',
@@ -219,7 +253,7 @@ const SONDA = `(() => {
   check('396 TCU', p.tcus === 396, p.tcus);
   check('y en una monofila no hay biela que dibujar', p.eje.n === 0, p.eje);
   check('y en una monofila el render dibuja una TCU por fila, que es lo mismo',
-        p.inst.tcu === 396 && p.inst.mesa === 396, p.inst);
+        p.inst.tcuDib === 396 && p.inst.mesa === 396, p.inst);
   /* Y el motivo tiene que ser el SUYO: «declara filaZ 0», que es la planta
      diciendo que su seguidor es de una fila. No vale el mensaje de «no lo
      declara»: son dos cosas distintas y una de ellas es un dato. */
@@ -232,7 +266,7 @@ const SONDA = `(() => {
   check('215 seguidores y 430 filas', e.trk === 215 && e.filas === 430, e);
   check('con 215 TCU', e.tcus === 215, e.tcus);
   check('y el render dibuja 215 TCU: El Burgo se veía monofila con 430',
-        e.inst.tcu === 215 && e.inst.motor === 215, e.inst);
+        e.inst.tcuDib === 215 && e.inst.motor === 215, e.inst);
   check('con sus 430 mesas y 430 tubos, que las dos vigas llevan módulos',
         e.inst.mesa === 430 && e.inst.tube === 430, e.inst);
   check('y 215 antenas colgando, una por seguidor', e.ant === 215, e.ant);
@@ -281,6 +315,17 @@ const SONDA = `(() => {
   check('y 119 TCU', pv.tcus === 119, pv.tcus);
   check('y 117 bielas: los dos mono no la tienen', pv.eje.n === 117 && pv.eje.peor < 0.05, pv.eje);
   check('con sus vigas a 4,50 m: 2 x 2,25', Math.abs(pv.sep - 4.5) < 0.01, pv.sep);
+  /* EL REPARTO A NCU, cuando es DERIVADO. El generador del layout no encontro
+     49 de los 119 en ningun ambito de NCU dibujado y les dio la mas cercana
+     (`ncuCerca`): 44 a la NCU 2 del norte y 5 del mismo bloque a la NCU 1, por
+     tres metros. Un reparto asi no es un dato de proyecto, y la pagina lo
+     tiene que decir en vez de pintarlo como si lo fuera. */
+  const der = await page.evaluate(() => ({
+    n: PLANTA.trk.filter(t => t.derivado).length,
+    nota: /Ojo con el reparto:\s*49 de 119/.test(document.getElementById('note').textContent),
+    lect: [...document.querySelectorAll('#lect .x')].map(e => e.textContent).filter(t => /asignados por proximidad/.test(t)).length }));
+  check('49 seguidores de Polvorín llevan la NCU por PROXIMIDAD, no por ámbito dibujado', der.n === 49, der);
+  check('y la página lo dice, en la nota y en el desglose de cada gateway', der.nota && der.lect === 2, der);
   check('el tipo mono se cuenta y se dice',
         pv.bif.mono === 2 && /2 de tipo mono/.test(pv.bif.porque || ''), pv.bif);
 

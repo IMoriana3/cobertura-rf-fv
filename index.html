@@ -506,14 +506,17 @@ const TCUMOUNT=(()=>{ const m=new THREE.Matrix4().makeRotationY(Math.PI/2);
   m.multiply(new THREE.Matrix4().makeRotationX(Math.PI));
   m.setPosition(D.tcuX,-0.16,0); return m; })();
 
-function vísteCAD(o){                       // el retoque de materiales de la casa
-  if(!o.isMesh) return;
-  const src=(o.material&&o.material.isMaterial)?o.material:null;
+function materialCAD(src){                  // el retoque de materiales de la casa
+  src=(src&&src.isMaterial)?src:null;
   const m=src?src.clone():new THREE.MeshStandardMaterial({color:0xe8e4dc});
   if(m.metalness!=null) m.metalness=Math.min(m.metalness,0.18); else m.metalness=0.15;
   if(m.roughness==null||m.roughness<0.45) m.roughness=0.6;
   if(src&&src.name==='mat_1'){ m.color=new THREE.Color(0xcc1417); m.metalness=0.10; m.roughness=0.5; }   // la SETA, roja
-  m.needsUpdate=true; o.material=m;
+  m.needsUpdate=true; return m;
+}
+function vísteCAD(o){
+  if(!o.isMesh) return;
+  o.material=materialCAD(o.material);
   o.castShadow=true; o.receiveShadow=true;
 }
 
@@ -787,7 +790,12 @@ function cargaPlanta(nom){
              31+31» entre 119). Sin ellos, ese dato se quedaba en el fichero. */
           return {x:t.x, n:t.n, rot:t.rot||0, mr:mr, medio:mr<1,
                   ncu:t.ncu||1, gw:t.gw||1, id:t.id, t:t.t||null,
-                  tp:t.tp||null, blk:t.blk||null};
+                  tp:t.tp||null, blk:t.blk||null,
+                  /* `ncuCerca`: el generador del layout NO encontró este seguidor
+                     en ningún ámbito de NCU dibujado y le dio la más cercana. Es
+                     un dato DERIVADO, y hay que verlo: en Polvorín son 49 de 119,
+                     y cinco del bloque norte cayeron en la NCU 1 por 3 m. */
+                  derivado:!!t.ncuCerca};
         }),
         ncus:(j.ncus||[]).map(c=>({x:c.x,n:c.n,name:c.name})),
         meteo:(j.meteo||[]).map(c=>({x:c.x,n:c.n,name:c.name})),
@@ -1298,7 +1306,7 @@ function layout(){
 }
 
 /* ---------------------- render de la planta (instanciado) ---------------------- */
-let PLI=[], PLEQ=[], PLMESA=null, PLANT_ANT=null, PLANT_EJE=null;
+let PLI=[], PLEQ=[], PLMESA=null, PLANT_ANT=null, PLANT_EJE=null, PLCAD=null;
 function buildPlanta(){
   const mats=materials();
   while(fieldG.children.length){ const c=fieldG.children.pop(); disposeTree(c); }
@@ -1401,6 +1409,39 @@ function buildPlanta(){
       PLI.push({key:kk,spin:false,locals:locals,im:im,pil:1,top:top,idx:idx});
     });
   });
+  /* EL CAD DE VERDAD, TAMBIÉN EN PLANTA — PERO SOLO DONDE SE MIRA. El corte de
+     estudio monta `tcu.glb` y la malla del STEP del seccionador; la planta se
+     quedaba con las cajas paramétricas del plan, que son para el sillín y las
+     cotas, no para mirarlas. Y no se pueden instanciar sin más: el glb son
+     170 k triángulos y el STEP 20 k —por 751 seguidores, 140 M, cuarenta veces
+     el presupuesto de la página, que se quedó sin atender un clic—. Así que
+     van como nivel de detalle: TRES copias (lo que ya cuesta el corte de
+     estudio) que se colocan en las tres TCU más cercanas al punto que mira la
+     cámara, tapando su caja; las demás siguen con la caja. Al acercarte a una
+     TCU, esa es de verdad. */
+  PLCAD=null;
+  if(CAD.tcu||CAD.secc){
+    const N=3, tcu=[], secc=[];
+    for(let k=0;k<N;k++){
+      if(CAD.tcu){
+        const cl=CAD.tcu.clone(true); cl.position.sub(CAD.tcuCtr); cl.traverse(vísteCAD);
+        const wrap=new THREE.Group(); wrap.add(cl); wrap.applyMatrix4(TCUMOUNT);
+        const g=new THREE.Group(); g.matrixAutoUpdate=false; g.visible=false; g.add(wrap);
+        plantaG.add(g); tcu.push(g);
+      }
+      if(CAD.secc){
+        const m=new THREE.Mesh(CAD.secc,new THREE.MeshStandardMaterial({color:0xe8ebec,roughness:.5,metalness:.08}));
+        m.castShadow=m.receiveShadow=true; m.matrixAutoUpdate=false; m.visible=false;
+        plantaG.add(m); secc.push(m);
+      }
+    }
+    const caja=key=>PLI.filter(L=>L.key===key);
+    PLCAD={n:N, tcu:tcu, secc:secc, filas:[], cache:{},
+           cajas:[caja("tcu"),caja("tcuchapa"),caja("tcuabarcon")].flat(),
+           cajasSecc:[caja("secc"),caja("seccknob"),caja("seccmaneta")].flat(),
+           seccLocal:(caja("secc")[0]||{}).locals?caja("secc")[0].locals[0]:null,
+           ultimo:new THREE.Vector3(1e9,0,0)};
+  }
   Seguidor.setModsPerStr(PLANTA.mods);
   // los equipos, en sus coordenadas del DWG
   const eq={materials:mats.equipos, antMaterial:mats.antena, shadows:true};
@@ -1426,9 +1467,11 @@ function buildPlanta(){
   PLANT_ANT={ i:TCUS.map(T=>T.fila),
               dot:new THREE.InstancedMesh(new THREE.SphereGeometry(0.055,10,7),
                                           mats.antena,TCUS.length),
-              cable:new THREE.InstancedMesh(new THREE.CylinderGeometry(0.006,0.006,1,6),
-                                            mats.antena,TCUS.length) };
-  [PLANT_ANT.dot,PLANT_ANT.cable].forEach(im=>{ im.frustumCulled=false;
+              tip:new THREE.InstancedMesh(new THREE.CylinderGeometry(0.006,0.006,D.antTip,8),
+                                          mats.antena,TCUS.length),
+              coax:new THREE.InstancedMesh(new THREE.CylinderGeometry(0.0022,0.0022,1,6),
+                                           mats.antcoax,TCUS.length) };
+  [PLANT_ANT.dot,PLANT_ANT.tip,PLANT_ANT.coax].forEach(im=>{ im.frustumCulled=false;
     im.instanceMatrix.setUsage(THREE.DynamicDrawUsage); plantaG.add(im); });
   /* LAS BIELAS. Un bífilo son dos vigas y UN motor: la gemela se mueve por el
      eje de transmisión que cruza de una a otra, con un cardán en cada extremo.
@@ -1526,6 +1569,7 @@ function pintaPlanta(beta,hA){
     const G=grupos[key]||(grupos[key]={n:0,sin:0,peor:1e9,suma:0,
                                        mast:cacheM[key]?cacheM[key].dato.name:"—"});
     G.n++; G.suma+=mg; if(mg<8)G.sin++; if(mg<G.peor)G.peor=mg;
+    if(PLANTA.trk[T.trk]&&PLANTA.trk[T.trk].derivado) G.der=(G.der||0)+1;
     peor=Math.min(peor,mg); pmed+=mg; if(mg<8)sin++;
   }
   UN.forEach((f,i)=>{ mgFila[i]=porTrk[f.trk!=null?f.trk:i]; });
@@ -1583,22 +1627,37 @@ function pintaPlanta(beta,hA){
      el dibujo la pusiera en otro sitio, la imagen dejaría de ser el enlace que
      se calcula, que es justo lo que esta página no se puede permitir. */
   if(PLANT_ANT){
-    const drop=Math.max(0,HTUBE-hA), _m=new THREE.Matrix4();
+    /* Igual que en el corte de estudio: el coax sale del conector REAL de la
+       TCU (el dorado del glb, si el CAD ha llegado), basculado con el tubo, y
+       baja hasta el látigo. El látigo y el punto van a `hA` sobre el suelo de
+       la fila —la cota del cálculo— en la vertical del conector. Antes era una
+       varilla gruesa colgada del eje del tubo: ni salía de la TCU ni era un
+       coax, y de cerca se veía. */
+    const A=anclaAntena(), _m=new THREE.Matrix4(), _w=new THREE.Vector3();
+    const _q=new THREE.Quaternion(), _u=new THREE.Vector3(0,1,0), _d=new THREE.Vector3();
     PLANT_ANT.i.forEach((iu,j)=>{
-      const t=UN[iu], th=t.rot||0;
-      /* El tubo del modelo va en +X y la escena gira Y por (pi/2 - rot), asi que
-         +X del modelo cae en (sin rot, 0, -cos rot) del mundo. */
-      const ax=t.x+D.tcuX*Math.sin(th), azz=-(t.n+D.tcuX*Math.cos(th));
-      PLANT_ANT.dot.setMatrixAt(j,_m.makeTranslation(ax,t.y+hA,azz));
-      const h=Math.max(0.02,drop);
-      PLANT_ANT.cable.setMatrixAt(j,_m.makeTranslation(ax,t.y+hA+h/2,azz)
-                                       .multiply(new THREE.Matrix4().makeScale(1,h,1)));
+      const t=UN[iu];
+      _mT.makeTranslation(t.x,t.y+HTUBE,-t.n);
+      _mB.makeRotationY(Math.PI/2-(t.rot||0)); _mB.premultiply(_mT);
+      if(t.tilt) _mB.multiply(new THREE.Matrix4().makeRotationZ(-t.tilt));
+      _w.copy(A).applyMatrix4(_m.copy(_mB).multiply(_mR));      // el conector, en el mundo
+      const yTip=t.y+hA;
+      PLANT_ANT.dot.setMatrixAt(j,_m.makeTranslation(_w.x,yTip,_w.z));
+      PLANT_ANT.tip.setMatrixAt(j,_m.makeTranslation(_w.x,yTip,_w.z));
+      const y1=yTip+D.antTip/2, L=_w.y-y1;                      // del conector a la cabeza del látigo
+      if(L>0.005){
+        _d.set(0,-1,0); _q.setFromUnitVectors(_u,_d);
+        _m.compose(new THREE.Vector3(_w.x,(_w.y+y1)/2,_w.z),_q,new THREE.Vector3(1,L,1));
+      }else _m.makeScale(0,0,0);
+      PLANT_ANT.coax.setMatrixAt(j,_m);
     });
     PLANT_ANT.dot.instanceMatrix.needsUpdate=true;
-    PLANT_ANT.cable.instanceMatrix.needsUpdate=true;
+    PLANT_ANT.tip.instanceMatrix.needsUpdate=true;
+    PLANT_ANT.coax.instanceMatrix.needsUpdate=true;
   }
   PLI.forEach(L=>{ if(PILSUCIO||!L.pil) L.im.instanceMatrix.needsUpdate=true; });
   PILSUCIO=false;
+  cadCerca(true);                                   // las matrices se acaban de reescribir
   if(PLMESA) PLMESA.list.forEach(g=>{ if(g.im.instanceColor) g.im.instanceColor.needsUpdate=true; });
   /* Lo que ha salido, guardado en la planta. No es para el dibujo: es para que
      se pueda COMPROBAR desde fuera qué contó el render de verdad, y no solo qué
@@ -1607,6 +1666,46 @@ function pintaPlanta(beta,hA){
   PLANTA._res={peor:peor, medio:pmed/NTOT, sin:sin, n:NTOT};
   PLANTA._mgFila=mgFila;
   return {peor:peor, medio:pmed/NTOT, sin:sin, n:NTOT, grupos:grupos};
+}
+
+/* El CAD de la TCU y del seccionador, en las N TCU más cercanas a donde mira la
+   cámara. Su caja se esconde (escala 0) mientras el CAD está encima, y se
+   restaura cuando el CAD se va a otra: las matrices se guardan al esconderlas.
+   `forzar` tras `pintaPlanta`, que reescribe todas las matrices. */
+const _cadM=new THREE.Matrix4(), _cadT=new THREE.Matrix4(), _cadB=new THREE.Matrix4(), _cadZ=new THREE.Matrix4().makeScale(0,0,0);
+function cadCerca(forzar){
+  if(!PLCAD||!PLANTA||!PLANTA._tcus) return;
+  const tgt=controls.target;
+  if(!forzar&&tgt.distanceToSquared(PLCAD.ultimo)<0.04) return;
+  PLCAD.ultimo.copy(tgt);
+  const UN=PLANTA._un, TC=PLANTA._tcus;
+  const cerca=TC.map(T=>{ const t=UN[T.fila]; const dx=t.x-tgt.x, dz=-t.n-tgt.z; return {f:T.fila,d:dx*dx+dz*dz}; })
+                .sort((a,b)=>a.d-b.d).slice(0,PLCAD.n).map(q=>q.f);
+  const esconde=(entradas,fila,si)=>{
+    entradas.forEach(L=>{
+      const j=L.idx.indexOf(fila); if(j<0) return;
+      for(let l=0;l<L.locals.length;l++){
+        const k=j*L.locals.length+l, ck=L.key+":"+fila+":"+l;
+        if(si){ L.im.getMatrixAt(k,_cadM); if(_cadM.elements[0]!==0||_cadM.elements[5]!==0) PLCAD.cache[ck]=_cadM.clone();
+                L.im.setMatrixAt(k,_cadZ); }
+        else if(PLCAD.cache[ck]){ L.im.setMatrixAt(k,PLCAD.cache[ck]); delete PLCAD.cache[ck]; }
+      }
+      L.im.instanceMatrix.needsUpdate=true;
+    });
+  };
+  if(!forzar) PLCAD.filas.forEach(f=>{ if(cerca.indexOf(f)<0){ esconde(PLCAD.cajas,f,false); esconde(PLCAD.cajasSecc,f,false); } });
+  PLCAD.filas=cerca;
+  for(let k=0;k<PLCAD.n;k++){
+    const g=PLCAD.tcu[k], sc=PLCAD.secc[k];
+    if(k>=cerca.length){ if(g) g.visible=false; if(sc) sc.visible=false; continue; }
+    const t=UN[cerca[k]];
+    _cadT.makeTranslation(t.x,t.y+HTUBE,-t.n);
+    _cadB.makeRotationY(Math.PI/2-(t.rot||0)); _cadB.premultiply(_cadT);
+    if(t.tilt) _cadB.multiply(new THREE.Matrix4().makeRotationZ(-t.tilt));
+    _cadB.multiply(_mR);                                        // bascula con el tubo
+    if(g){ g.matrix.copy(_cadB); g.visible=true; esconde(PLCAD.cajas,cerca[k],true); }
+    if(sc&&PLCAD.seccLocal){ sc.matrix.copy(_cadB).multiply(PLCAD.seccLocal); sc.visible=true; esconde(PLCAD.cajasSecc,cerca[k],true); }
+  }
 }
 
 /* ------------------------------ estado dinámico ------------------------------ */
@@ -1794,8 +1893,9 @@ function frameEnPlanta(which){
   const ax=t.x+D.tcuX*Math.sin(th), az=-(t.n+D.tcuX*Math.cos(th));
   if(which==="antena"){
     controls.target.set(ax,t.y+hA,az);
-    // a la cota de la antena y desde el pasillo entre filas: se ve colgar
-    camera.position.set(ax+3.0*Math.cos(th),t.y+hA+0.55,az+3.0*Math.sin(th)+3.4);
+    // a la cota de la antena, a dos metros y desde el pasillo entre filas: se
+    // ve colgar del conector de la TCU, que a esa distancia es el CAD
+    camera.position.set(ax+1.5*Math.cos(th),t.y+hA+0.45,az+1.5*Math.sin(th)+1.7);
   }else{                                            // accionamiento
     controls.target.set(t.x,t.y+HTUBE-0.15,-t.n);
     camera.position.set(t.x+3.4,t.y+HTUBE+1.4,-t.n+4.2);
@@ -1833,7 +1933,7 @@ function tick(t){
       $("hora").value=m; update();
     }
   }else _tPrev=t;
-  resize(); controls.update(); renderer.render(scene,camera); drawLabels();
+  resize(); controls.update(); if(PLANTA) cadCerca(false); renderer.render(scene,camera); drawLabels();
 }
 
 /* ------------------------------ interfaz ------------------------------ */
@@ -1947,7 +2047,8 @@ function updatePlanta(sl){
              `<span class="d" style="background:${c}"></span>`+
              `<span class="n">NCU ${k.split(".")[0]} · GW ${k.split(".")[1]}</span>`+
              `<span class="m" style="color:${c}">${md.toFixed(1)} dB</span>`+
-             `<span class="x">${g.n} filas · ${g.sin} bajo 8 dB · peor ${g.peor.toFixed(1)} · mástil ${g.mast}</span></div>`;
+             `<span class="x">${g.n} filas · ${g.sin} bajo 8 dB · peor ${g.peor.toFixed(1)} · mástil ${g.mast}`+
+             (g.der?` · <b>${g.der} asignados por proximidad</b>, sin ámbito dibujado`:``)+`</span></div>`;
     }).join("");
   $("sunl").innerHTML = sl.noche
     ? `<b>Noche</b> — sol a ${sl.elev.toFixed(1)}°, seguidores en stow a ${STOW}°.`
@@ -1961,6 +2062,10 @@ function updatePlanta(sl){
     `Cada seguidor se colorea por el margen de su salto DIRECTO al mástil de <b>su</b> coordinador — el par (NCU, GW): `+
     `no todas las TCU hablan con todas las NCU, cada NCU lleva dos gateways y cada TCU cuelga de uno. `+
     `Verde = llega sola; rojo = depende de la malla, y de la malla de SU gateway, no de la de la planta. `+
+    ((PLANTA.trk.filter(t=>t.derivado).length)?
+      `<b>Ojo con el reparto:</b> ${PLANTA.trk.filter(t=>t.derivado).length} de ${PLANTA.trk.length} seguidores no caen en ningún `+
+      `ámbito de NCU dibujado en el DWG de comunicaciones y el layout les asignó la NCU <b>más cercana</b> (marcados <code>ncuCerca</code>): `+
+      `es un reparto DERIVADO, no un dato de proyecto. `:``)+
     `El reparto viene en el propio layout —cada seguidor trae su <code>ncu</code> y su <code>gw</code>, `+
     `los mismos del <i>coords_&lt;planta&gt;_NCU&lt;n&gt;_GW&lt;g&gt;.csv</i> de Cobertura 3D—: para ver CUÁLES son de cada uno, `+
     `pon el color en <b>«De qué GW es»</b> o pincha su fila en el desglose de abajo y se queda solo ese. `+
@@ -2053,7 +2158,9 @@ if(webgl){
   tick();
   /* El CAD llega por red: la página ya se ve con las cajas paramétricas y se
      rehace cuando esté. Si no llega (file://), no pasa nada. */
-  cargaCAD().then(()=>{ if(CAD.tcu||CAD.secc){ buildField(); update(); } });
+  /* Y si para entonces ya hay una planta puesta, se reconstruye LA PLANTA: con
+     `buildField()` se montaba el corte de estudio debajo de la planta. */
+  cargaCAD().then(()=>{ if(CAD.tcu||CAD.secc){ if(PLANTA) buildPlanta(); else buildField(); update(); } });
 
   segClick("seg",  b=>{ ground=b.dataset.g; update(); });
   segClick("segr", b=>{ PTX=+b.dataset.p; update(); });
