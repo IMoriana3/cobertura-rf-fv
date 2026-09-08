@@ -539,7 +539,15 @@ function cargaCAD(){
     }));
   }
   pend.push(fetch('secc.json',{cache:'no-store'}).then(r=>{ if(!r.ok) throw 0; return r.json(); })
-    .then(j=>{ const g=new THREE.BufferGeometryLoader().parse(j); g.rotateY(Math.PI/2); CAD.secc=g; })
+    .then(j=>{ const g=new THREE.BufferGeometryLoader().parse(j); g.rotateY(Math.PI/2);
+      /* Y EL MANDO HACIA ABAJO. Medido sobre la malla cruda: el cuerpo largo va
+         por Z y el mando —el disco con su maneta— sobresale por +X. El giro de
+         90° en Y pone el largo a lo largo del tubo, bien, pero deja el mando
+         mirando a −Z: la rueda de lado. Va colgado bajo la viga y se acciona
+         desde abajo, así que la rueda mira al SUELO: −Z → −Y, un giro de −90°
+         en X. */
+      g.rotateX(-Math.PI/2);
+      CAD.secc=g; })
     .catch(()=>{}));
   return Promise.all(pend).then(()=>{ CAD.listo=true; });
 }
@@ -644,7 +652,9 @@ function buildField(){
     if(west){
       const coax=new THREE.Mesh(new THREE.CylinderGeometry(0.0022,0.0022,1,6),mats.antcoax);
       const tip =new THREE.Mesh(new THREE.CylinderGeometry(0.006,0.006,D.antTip,10),mats.antena);
-      const dot =new THREE.Mesh(new THREE.SphereGeometry(0.055,12,8),mats.antena);
+      /* El punto cian marca el extremo del enlace (leyenda «antena / patrón»);
+         a Ø11 cm era una borla colgando del látigo. Un punto discreto. */
+      const dot =new THREE.Mesh(new THREE.SphereGeometry(0.018,10,7),mats.antena);
       coax.castShadow=tip.castShadow=true;
       const patG=new THREE.Group();
       yaw.add(coax,tip,dot,patG);
@@ -887,9 +897,26 @@ function cargaPlanta(nom){
                              f.len=Math.abs(f.n1-f.n0);
                              f.tilt=Math.atan2(f.y1-f.y0,f.n1-f.n0); });
           PLANTA.cot={filas:filas, base:cot.base, xs:null};
-          PLANTA.cot.xs=[...new Set(filas.map(f=>Math.round(f.x*100)/100))].sort((a,b)=>a-b);
-          PLANTA.cot.porX={};
-          filas.forEach(f=>{ const k=Math.round(f.x*100)/100; (PLANTA.cot.porX[k]=PLANTA.cot.porX[k]||[]).push(f); });
+          /* POR LÍNEA, NO POR X. Las filas de una misma línea no comparten x al
+             milímetro (980,573 · 980,574 · 980,587), así que indexarlas por su x
+             daba 1.502 claves para 1.502 filas, y `cotaEn`, que mira las TRES
+             claves más cercanas, se quedaba con tres filas de la MISMA línea:
+             si el punto caía fuera de sus tramos, extrapolaba la pendiente de
+             una de ellas cientos de metros —hasta 30 m de error— y el terreno
+             dibujado se comía las mesas o las dejaba flotando. Se agrupan con
+             la tolerancia de medio paso, como `filasPlanta()`. */
+          const fx=[...filas].sort((a,b)=>a.x-b.x);
+          const hue=[]; for(let i=1;i<fx.length;i++){ const d=fx[i].x-fx[i-1].x; if(d>0.5) hue.push(d); }
+          hue.sort((a,b)=>a-b);
+          const tolL=Math.max(0.5,(hue.length?hue[hue.length>>1]:6)/2);
+          PLANTA.cot.porX={}; PLANTA.cot.xs=[];
+          let lin=null;
+          fx.forEach(f=>{
+            if(!lin||f.x-lin.x0>tolL){ lin={x0:f.x, xs:[], rows:[]}; PLANTA.cot.xs.push(lin); }
+            lin.xs.push(f.x); lin.rows.push(f);
+          });
+          PLANTA.cot.xs=PLANTA.cot.xs.map(L=>{ const k=Math.round(L.xs.reduce((s2,v)=>s2+v,0)/L.xs.length*100)/100;
+            PLANTA.cot.porX[k]=L.rows; return k; }).sort((a,b)=>a-b);
           PLANTA.cot.sinCota=sinCota;
         }
       }
@@ -948,7 +975,11 @@ function cotaEn(x,n){
     }
   }
   if(!best) return 0;
-  const u=(best.n1===best.n0)?0:(n-best.n0)/(best.n1-best.n0);
+  /* Más allá del extremo de la fila el suelo NO sigue su pendiente sin fin: se
+     prolonga unos metros y se queda plano. Extrapolar 400 m con la pendiente
+     de una mesa de 74 m es inventarse decenas de metros de cota. */
+  let u=(best.n1===best.n0)?0:(n-best.n0)/(best.n1-best.n0);
+  u=Math.max(-0.1,Math.min(1.1,u));
   return best.y0+(best.y1-best.y0)*u;
 }
 
@@ -1148,19 +1179,46 @@ function buildTerreno(){
   if(terreno){ scene.remove(terreno); terreno.geometry.dispose(); terreno=null; }
   if(!PLANTA||!PLANTA.cot) { groundMesh.visible=true; return; }
   groundMesh.visible=false;
-  const e=extentPlanta(), M=140, mg=40;
+  const e=extentPlanta(), mg=40;
   const w=e.w+2*mg, h=e.h+2*mg;
-  const g=new THREE.PlaneGeometry(w,h,M,M);
+  /* LA REJILLA, AL PASO DE LAS FILAS. Iba a 140×140 fijo: en Ayora (2,5 × 2,9 km)
+     son celdas de 18 × 21 m sobre un terreno que baja decenas de metros, y entre
+     dos vértices el suelo interpolado pasaba hasta 10 m por ENCIMA de la fila
+     —mesas comidas por el terreno— y 40 por debajo, con las filas flotando.
+     Ahora la celda es el paso de fila (6 m) o menos, con tope de vértices por
+     lado: la fila más lejana de un vértice queda a media celda, y a eso el
+     desnivel no llega a la altura del tubo. Se comprueba fila a fila. */
+  const CELDA=6, TOPE=700;
+  /* Y LAS COLUMNAS, EN LAS LÍNEAS DE FILA. Con la rejilla uniforme un vértice
+     cae a hasta media celda de la línea, y donde el terreno tiene un escalón
+     entre dos líneas (Ayora los tiene de 5 m en 3 m) el suelo interpolado
+     seguía subiéndose 2 m a la mesa baja. Así que la rejilla en X no es
+     uniforme: una columna EN cada línea de fila y las intermedias cada 6 m
+     donde no hay líneas. La fila queda sobre un vértice con SU cota exacta, y
+     el escalón se reparte en el pasillo, que es donde está. */
+  const lin=(PLANTA.cot.xs||[]).slice().sort((a,b)=>a-b);
+  let cols=[];
+  for(let x=e.cx-w/2; x<=e.cx+w/2+1e-6; x+=CELDA) cols.push(x);
+  cols=cols.filter(x=>!lin.some(k=>Math.abs(k-x)<1.5)).concat(lin).sort((a,b)=>a-b);
+  /* Si hay que recortar, se recortan las columnas de RELLENO, nunca las de las
+     líneas: quitar una línea es volver a dejar su fila a media celda. */
+  const esLinea=x=>lin.some(k=>Math.abs(k-x)<1e-9);
+  while(cols.length-1>TOPE&&cols.some(x=>!esLinea(x))){ let par=0; cols=cols.filter(x=>esLinea(x)||(par++%2===0)); }
+  const Mx=cols.length-1, Mz=Math.min(TOPE,Math.max(40,Math.ceil(h/CELDA)));
+  const g=new THREE.PlaneGeometry(w,h,Mx,Mz);
   g.rotateX(-Math.PI/2);
   const pos=g.attributes.position;
   for(let i=0;i<pos.count;i++){
-    const X=pos.getX(i)+e.cx, Zc=pos.getZ(i)+e.cz;
+    const ix=i%(Mx+1);
+    pos.setX(i,cols[ix]-e.cx);
+    const X=cols[ix], Zc=pos.getZ(i)+e.cz;
     pos.setY(i,cotaEn(X,-Zc));
   }
   g.computeVertexNormals();
   terreno=new THREE.Mesh(g,new THREE.MeshStandardMaterial({
     map:groundMesh.material.map, roughness:0.98, metalness:0, color:0x6f6a58}));
   terreno.position.set(e.cx,-0.02,e.cz);
+  terreno.userData={cx:e.cx,cz:e.cz,w:w,h:h,Mx:Mx,Mz:Mz,cols:cols};   // para muestrearlo desde fuera
   terreno.receiveShadow=true; scene.add(terreno);
 }
 
@@ -1465,7 +1523,7 @@ function buildPlanta(){
      de la TCU, y solo en la viga del motor. Se recoloca por frame porque el
      deslizador de caída la mueve sin reconstruir nada. */
   PLANT_ANT={ i:TCUS.map(T=>T.fila),
-              dot:new THREE.InstancedMesh(new THREE.SphereGeometry(0.055,10,7),
+              dot:new THREE.InstancedMesh(new THREE.SphereGeometry(0.018,10,7),
                                           mats.antena,TCUS.length),
               tip:new THREE.InstancedMesh(new THREE.CylinderGeometry(0.006,0.006,D.antTip,8),
                                           mats.antena,TCUS.length),
