@@ -199,6 +199,21 @@ const SONDA = `(() => {
   check('cada TCU dibuja su antena, y cuelga a la cota que usa el cálculo',
         f.ant === 24 && f.antY && Math.abs(f.antY[0] - f.hA) < 1e-3 &&
         Math.abs(f.antY[1] - f.hA) < 1e-3, [f.ant, f.antY, f.hA]);
+  /* EL SECCIONADOR, BIEN ORIENTADO. La malla del STEP se cargaba con un giro de
+     90 grados que la dejaba CRUZADA al tubo y con la rueda mirando de lado. Se
+     mide la propia geometria: el largo (0,27) tiene que ir en X (el tubo) y el
+     mando -que sobresale del cuerpo- hacia -Y, el suelo. */
+  const sec = await page.evaluate(() => {
+    if (!CAD.secc) return null;
+    const g = CAD.secc; g.computeBoundingBox(); const bb = g.boundingBox, sz = bb.getSize(new THREE.Vector3());
+    // el cuerpo ocupa la parte alta; lo que asoma por debajo del cuerpo es el mando
+    const pos = g.attributes.position; let bajo = 0, alto = 0;
+    for (let i = 0; i < pos.count; i++) { const y = pos.getY(i); if (y < bb.min.y + 0.02) bajo++; if (y > bb.max.y - 0.02) alto++; }
+    return { sx: +sz.x.toFixed(3), sy: +sz.y.toFixed(3), sz: +sz.z.toFixed(3), bajo, alto };
+  });
+  check('el seccionador va con el largo A LO LARGO del tubo (0,27 m en X)', sec && sec.sx > 0.25 && sec.sz < 0.15, sec);
+  check('y con la rueda hacia el SUELO: lo que asoma por abajo es el mando, no una cara entera',
+        sec && sec.bajo > 500 && sec.bajo < sec.alto, sec);
   check('las filas quedan al paso de la planta (6 m), no a 12',
         Math.abs(f.paso - 6) < 0.2, f.paso);
   /* La decisión sale del LAYOUT —de su `filaZ` y de `mesa.tipos`—, no de una
@@ -234,6 +249,36 @@ const SONDA = `(() => {
   check('y la TCU es la fila oeste del par', a.oeste === true);
   check('sigue teniendo el levantamiento: las filas van a su cota, no a 0',
         a.conCota === true);
+  /* EL TERRENO NO SE COME LAS MESAS. La rejilla del suelo iba a 140x140 fijo:
+     en Ayora, celdas de 18x21 m sobre decenas de metros de desnivel, y el suelo
+     interpolado pasaba hasta 10 m por ENCIMA de la fila. Se muestrea el terreno
+     (bilineal, como lo dibuja la GPU) en el centro de CADA fila medida y se
+     compara con la cota de la fila. */
+  const ter = await page.evaluate(() => {
+    const u = terreno.userData, pos = terreno.geometry.attributes.position;
+    const alt = (X, Zc) => {
+      // columnas NO uniformes en X (una en cada linea de fila): se busca la celda
+      let ix = 0; while (ix < u.Mx - 1 && u.cols[ix + 1] <= X) ix++;
+      const fz = (Zc - u.cz + u.h / 2) / u.h * u.Mz;
+      const iz = Math.min(Math.max(Math.floor(fz), 0), u.Mz - 1);
+      const tx = Math.min(1, Math.max(0, (X - u.cols[ix]) / (u.cols[ix + 1] - u.cols[ix]))), tz = fz - iz;
+      const at = (i, k) => pos.getY(k * (u.Mx + 1) + i);
+      return (at(ix, iz) * (1 - tx) + at(ix + 1, iz) * tx) * (1 - tz) + (at(ix, iz + 1) * (1 - tx) + at(ix + 1, iz + 1) * tx) * tz; };
+    const d = PLANTA.cot.filas.map(f => alt(f.x, -f.nm) - f.ym).sort((a, b) => a - b);
+    return { n: d.length, min: +d[0].toFixed(2), p05: +d[d.length * 0.05 | 0].toFixed(2), p95: +d[d.length * 0.95 | 0].toFixed(2), max: +d[d.length - 1].toFixed(2),
+             celda: [+Math.max(...u.cols.slice(1).map((c, i) => c - u.cols[i])).toFixed(1), +(u.h / u.Mz).toFixed(1)], vertices: pos.count,
+             // cuantas lineas de fila tienen SU columna en la rejilla
+             enLinea: PLANTA.cot.xs.filter(k => u.cols.some(c => Math.abs(c - k) < 1e-6)).length, lineas: PLANTA.cot.xs.length };
+  });
+  // a lo largo de la fila, 6 m; a traves, una columna por linea y relleno cada
+  // 6 m donde no las hay (en un pasillo sin filas puede llegar a dos celdas)
+  check('la rejilla del terreno va al paso de las filas (6 m a lo largo, <= 12 m de relleno a través)',
+        ter.celda[0] <= 12.5 && ter.celda[1] <= 6.05, ter);
+  check('y cada línea de fila tiene su columna: la fila queda sobre un vértice con su cota exacta',
+        ter.enLinea === ter.lineas && ter.lineas > 100, ter);
+  check('y en el centro de las 1.502 filas el suelo dibujado queda a menos de 0,5 m de su cota (p05..p95)',
+        ter.n === 1502 && ter.p05 > -0.5 && ter.p95 < 0.5, ter);
+  check('y NUNCA por encima del tubo: ninguna mesa comida por el terreno (max < 1 m)', ter.max < 1.0 && ter.min > -3, ter);
   check('los 751 encuentran su entrada en el levantamiento',
         a.empar && a.empar.lejos === 0 && a.empar.n === 751, a.empar);
   check('ninguna entrada se reparte entre dos seguidores',
