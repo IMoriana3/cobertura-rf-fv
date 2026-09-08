@@ -1524,7 +1524,7 @@ function layout(){
 }
 
 /* ---------------------- render de la planta (instanciado) ---------------------- */
-let PLI=[], PLEQ=[], PLMESA=null, PLANT_ANT=null, PLANT_EJE=null, PLCAD=null;
+let PLI=[], PLEQ=[], PLMESA=null, PLANT_ANT=null, PLANT_EJE=null, PLCAD=null, PLANT_LNK=null;
 function buildPlanta(){
   const mats=materials();
   while(fieldG.children.length){ const c=fieldG.children.pop(); disposeTree(c); }
@@ -1726,6 +1726,45 @@ function buildPlanta(){
       PLANT_EJE={eje:eje,car:car,n:bif.length,sep:sepM};
     }
   }
+  /* LOS ENLACES, EN PLANTA. `drawLink` monta dos cilindros por salto: vale
+     para los tres del corte de estudio y no para 2.289. Aquí van como un solo
+     `LineSegments` con color por vértice —el mismo `colorFor` de la leyenda—,
+     que son dos vértices por enlace y una llamada de dibujo. Los que no llegan
+     (bajo 8 dB) van a trazos, como en el corte.
+     Hasta ahora este grupo se creaba VACÍO: la casilla «Enlaces a la NCU»
+     estaba marcada y no dibujaba nada con una planta puesta. */
+  const TRAZOS=5;                                    // celdas de un enlace a trazos
+  const maxSeg=TCUS.length*TRAZOS;
+  /* TUBOS, no líneas. Una `LineSegments` sale siempre de UN píxel —WebGL ignora
+     `linewidth`— y un enlace de la TCU a su NCU va a menos de un metro del
+     suelo, entre postes y por debajo de las mesas: a un píxel no se ve nada.
+     Como en el corte de estudio, cilindro sólido + su FANTASMA sin test de
+     profundidad, que es el que deja leer por dónde va el salto aunque lo tape
+     una mesa. Instanciados y compartiendo geometría: dos llamadas de dibujo
+     para los 2.289 saltos de San José. */
+  const geoL=new THREE.CylinderGeometry(1,1,1,6,1,true);
+  /* El grosor, a escala de la planta: 0,6 m en El Burgo (600 m de diagonal) y
+     2 m en Ayora (3,8 km). Fijo no vale: lo que en una planta pequeña es un
+     tubo fino, en una grande es medio píxel y vuelve a no verse. */
+  const _e0=extentPlanta();
+  PLANT_LNK={ trazos:TRAZOS, n:0, r:Math.min(2,Math.max(0.25,_e0.diag/1000)),
+              solid:new THREE.InstancedMesh(geoL,new THREE.MeshBasicMaterial({
+                toneMapped:false}),maxSeg),
+              ghost:new THREE.InstancedMesh(geoL,new THREE.MeshBasicMaterial({
+                toneMapped:false, transparent:true, opacity:0.30, depthTest:false}),maxSeg) };
+  PLANT_LNK.ghost.renderOrder=6;
+  [PLANT_LNK.solid,PLANT_LNK.ghost].forEach(o=>{ o.frustumCulled=false; o.count=0;
+    o.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    /* El color por instancia, RESERVADO YA. Si se deja que lo cree el primer
+       `setColorAt`, entre medias el bucle de dibujo puede compilar el shader sin
+       él y los enlaces salen NEGROS. */
+    o.instanceColor=new THREE.InstancedBufferAttribute(new Float32Array(maxSeg*3).fill(1),3);
+    o.instanceColor.setUsage(THREE.DynamicDrawUsage); });
+  /* Van en `plantaG`, NO en `links`: `updatePlanta` vacía y DESTRUYE ese grupo
+     en cada refresco —está escrito para los tres saltos del corte de estudio,
+     que se rehacen por frame—, así que estos dos se creaban y se borraban acto
+     seguido. Es lo que los hacía invisibles: no era el grosor. */
+  plantaG.add(PLANT_LNK.solid,PLANT_LNK.ghost);
   links=new THREE.Group(); links.frustumCulled=false; plantaG.add(links);
   Seguidor.setModsPerStr(prev);
   buildLabelsPlanta();
@@ -1768,7 +1807,7 @@ function pintaPlanta(beta,hA){
      dos filas de un bífilo comparten TCU y comparten resultado: calcularlo dos
      veces daba dos números (cada fila tiene su x) y contaba el equipo dos veces
      en las estadísticas de su NCU. */
-  const porTrk={};
+  const porTrk={}, porMast={};
   for(const T of TCUS){
     const t=T.d;
     let mg=-99;
@@ -1784,6 +1823,7 @@ function pintaPlanta(beta,hA){
       mg=Z.predictLink({x:0,y:0,ground:o.y,h:hA},{x:d,y:0,ground:c.y,h:c.h},p,null,null,tabs).marginDb;
     }
     porTrk[T.trk]=mg;
+    porMast[T.trk]=cacheM[key]?posDe(cacheM[key]):null;   // a dónde va SU enlace
     const G=grupos[key]||(grupos[key]={n:0,sin:0,peor:1e9,suma:0,
                                        mast:cacheM[key]?cacheM[key].dato.name:"—"});
     G.n++; G.suma+=mg; if(mg<8)G.sin++; if(mg<G.peor)G.peor=mg;
@@ -1860,6 +1900,14 @@ function pintaPlanta(beta,hA){
        coax, y de cerca se veía. */
     const A=anclaAntena(), _m=new THREE.Matrix4(), _w=new THREE.Vector3();
     const _q=new THREE.Quaternion(), _u=new THREE.Vector3(0,1,0), _d=new THREE.Vector3();
+    /* El enlace sale de la ANTENA, no del centro de la mesa: se arma aquí,
+       que es donde se sabe dónde ha quedado. `SOLO` aísla un ámbito y los
+       enlaces lo siguen: con 2.289 saltos a la vez no se lee nada, y con uno
+       solo se ve por dónde va cada uno. */
+    const verL=PLANT_LNK&&$("lnk").checked;
+    let nseg=0;
+    const _lq=new THREE.Quaternion(), _lu=new THREE.Vector3(0,1,0), _ld=new THREE.Vector3();
+    const _lp=new THREE.Vector3(), _ls=new THREE.Vector3(), _lm=new THREE.Matrix4();
     PLANT_ANT.i.forEach((iu,j)=>{
       const t=UN[iu];
       _mT.makeTranslation(t.x,t.y+HTUBE,-t.n);
@@ -1875,7 +1923,40 @@ function pintaPlanta(beta,hA){
         _m.compose(new THREE.Vector3(_w.x,(_w.y+y1)/2,_w.z),_q,new THREE.Vector3(1,L,1));
       }else _m.makeScale(0,0,0);
       PLANT_ANT.coax.setMatrixAt(j,_m);
+      if(!verL) return;
+      const T=TCUS[j], c=porMast[T.trk], mg=porTrk[T.trk];
+      if(!c) return;
+      const key=(t.ncu||1)+"."+(t.gw||1);
+      if(SOLO&&SOLO!==key) return;
+      /* QUÉ SALTOS SE DIBUJAN. Los 2.289 de San José a la vez son una maraña
+         que no dice nada. Sin ámbito aislado se dibujan solo los que NO llegan
+         —que son los accionables: los que dependen de la malla, y por dónde
+         irían—; al aislar un gateway (pinchando su fila en el desglose), TODOS
+         los suyos. Se dice bajo el lienzo. */
+      if(!SOLO&&mg>=8) return;
+      _col.set(colorFor(mg));
+      const bx=c.x, by=c.y+c.h, bz=-c.n;
+      // bajo 8 dB, a trazos: el 55 % de cada celda, como en el corte de estudio
+      const cel=(mg<8)?PLANT_LNK.trazos:1, fill=(mg<8)?0.55:1;
+      const r=PLANT_LNK.r;
+      for(let k2=0;k2<cel;k2++){
+        const u0=k2/cel, u1=(k2+fill)/cel;
+        const ax=_w.x+(bx-_w.x)*u0, ay=yTip+(by-yTip)*u0, az2=_w.z+(bz-_w.z)*u0;
+        const cx2=_w.x+(bx-_w.x)*u1, cy2=yTip+(by-yTip)*u1, cz2=_w.z+(bz-_w.z)*u1;
+        _ld.set(cx2-ax,cy2-ay,cz2-az2); const L2=_ld.length(); if(L2<1e-4) continue;
+        _lq.setFromUnitVectors(_lu,_ld.divideScalar(L2));
+        _lp.set((ax+cx2)/2,(ay+cy2)/2,(az2+cz2)/2); _ls.set(r,L2,r);
+        _lm.compose(_lp,_lq,_ls);
+        PLANT_LNK.solid.setMatrixAt(nseg,_lm); PLANT_LNK.ghost.setMatrixAt(nseg,_lm);
+        PLANT_LNK.solid.setColorAt(nseg,_col); PLANT_LNK.ghost.setColorAt(nseg,_col);
+        nseg++;
+      }
     });
+    if(PLANT_LNK){
+      [PLANT_LNK.solid,PLANT_LNK.ghost].forEach(o=>{ o.count=nseg;
+        o.instanceMatrix.needsUpdate=true; if(o.instanceColor) o.instanceColor.needsUpdate=true; });
+      PLANT_LNK.n=nseg;
+    }
     PLANT_ANT.dot.instanceMatrix.needsUpdate=true;
     PLANT_ANT.tip.instanceMatrix.needsUpdate=true;
     PLANT_ANT.coax.instanceMatrix.needsUpdate=true;
@@ -2295,6 +2376,8 @@ function updatePlanta(sl){
     `El reparto viene en el propio layout —cada seguidor trae su <code>ncu</code> y su <code>gw</code>, `+
     `los mismos del <i>coords_&lt;planta&gt;_NCU&lt;n&gt;_GW&lt;g&gt;.csv</i> de Cobertura 3D—: para ver CUÁLES son de cada uno, `+
     `pon el color en <b>«De qué GW es»</b> o pincha su fila en el desglose de abajo y se queda solo ese. `+
+    `<b>Los enlaces</b> que se dibujan son los que NO llegan —los que dependen de la malla, para ver por dónde irían—; `+
+    `al aislar un gateway se dibujan TODOS los suyos, lleguen o no. `+
     (PLANTA.az?`Eje a ${PLANTA.az.toFixed(1)}°: las filas y los cruces se calculan en el marco del eje. `:``)+
     (PLANTA.cot
       ? `<b>Con las cotas MEDIDAS</b>: cada fila a su altura y con su pendiente N-S, y el rayo corre sobre ese terreno — la mesa que apantalla lo hace a SU cota, no a la de nadie. `
