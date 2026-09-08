@@ -295,6 +295,38 @@ const SONDA = `(() => {
   });
   check('el suelo es continuo: entre vértices vecinos (por 6 m) el p99 del salto baja de 2 m', sal.z.p99 < 2 && sal.x.p99 < 2, sal);
   check('y el salto máximo no pasa de un bancal (8 m), no de una cornisa de 57', sal.z.max < 8 && sal.x.max < 8, sal);
+  /* LA PENDIENTE DE CADA FILA, CON SU SIGNO. El tubo iba girado al reves: en
+     la fila de mas desnivel (5,5 m entre extremos) quedaba 7 m al aire en un
+     extremo y 4 m bajo tierra en el otro, con los postes colgando. Se
+     reconstruye la matriz de la viga como la escribe pintaPlanta y se mira
+     donde caen sus DOS extremos respecto al suelo. Y los pies de los postes. */
+  const inc = await page.evaluate(() => {
+    const u = terreno.userData, pos = terreno.geometry.attributes.position;
+    const alt = (X, Zc) => { let ix = 0; while (ix < u.Mx - 1 && u.cols[ix + 1] <= X) ix++;
+      const fz = (Zc - u.cz + u.h / 2) / u.h * u.Mz, iz = Math.min(Math.max(Math.floor(fz), 0), u.Mz - 1);
+      const tx = Math.min(1, Math.max(0, (X - u.cols[ix]) / (u.cols[ix + 1] - u.cols[ix]))), tz = fz - iz;
+      const at = (i, k) => pos.getY(k * (u.Mx + 1) + i);
+      return (at(ix, iz) * (1 - tx) + at(ix + 1, iz) * tx) * (1 - tz) + (at(ix, iz + 1) * (1 - tx) + at(ix + 1, iz + 1) * tx) * tz; };
+    const UN = PLANTA._un, d = [];
+    UN.forEach(t => { if (!t.med) return;
+      const L = PLI.find(q => q.key === 'tube' && q.idx.indexOf(UN.indexOf(t)) >= 0); if (!L) return;
+      const j = L.idx.indexOf(UN.indexOf(t)), m = new THREE.Matrix4(); L.im.getMatrixAt(j * L.locals.length, m);
+      // el primer tubo es media viga en +X: su centro esta a +len/4; de ahi a los extremos
+      const half = (t.mr * SPANP) / 2, c = new THREE.Vector3().setFromMatrixPosition(m);
+      const dir = new THREE.Vector3(1, 0, 0).transformDirection(m);
+      [+1, -1].forEach(sg => { const e = c.clone().addScaledVector(dir, sg * half - half / 2); d.push(e.y - HTUBE - alt(e.x, e.z)); });
+    });
+    d.sort((a, b) => a - b);
+    const P = PLI.find(q => q.key === 'pilote'), m = new THREE.Matrix4(), v = new THREE.Vector3(), s = new THREE.Vector3(), q = new THREE.Quaternion(), dp = [];
+    for (let j = 0; j < P.im.count; j++) { P.im.getMatrixAt(j, m); m.decompose(v, q, s); dp.push(v.y - s.y / 2 - alt(v.x, v.z)); }
+    dp.sort((a, b) => a - b);
+    return { extremos: { n: d.length, p01: +d[d.length * 0.01 | 0].toFixed(2), p99: +d[d.length * 0.99 | 0].toFixed(2), max: +Math.max(-d[0], d[d.length - 1]).toFixed(2) },
+             pies: { n: dp.length, p01: +dp[dp.length * 0.01 | 0].toFixed(2), p99: +dp[dp.length * 0.99 | 0].toFixed(2), max: +Math.max(-dp[0], dp[dp.length - 1]).toFixed(2) } };
+  });
+  check('los DOS extremos de cada tubo van a 1,5 m de SU suelo: la pendiente con el signo bueno (p01..p99 en ±0,3 m)',
+        inc.extremos.n > 2000 && inc.extremos.p01 > -0.3 && inc.extremos.p99 < 0.3, inc.extremos);
+  check('y ningún extremo se va más de 1 m (antes: 7 m al aire y 4 bajo tierra)', inc.extremos.max < 1.0, inc.extremos);
+  check('los pies de los postes tocan el suelo (p01..p99 en ±0,3 m), no cuelgan', inc.pies.p01 > -0.3 && inc.pies.p99 < 0.3, inc.pies);
   check('los 751 encuentran su entrada en el levantamiento',
         a.empar && a.empar.lejos === 0 && a.empar.n === 751, a.empar);
   check('ninguna entrada se reparte entre dos seguidores',

@@ -1287,8 +1287,31 @@ function buildTerreno(){
     pos.setY(i,cotaEn(X,-Zc));
   }
   g.computeVertexNormals();
-  terreno=new THREE.Mesh(g,new THREE.MeshStandardMaterial({
-    map:groundMesh.material.map, roughness:0.98, metalness:0, color:0x6f6a58}));
+  /* QUE EL RELIEVE SE LEA. Con 70 m de desnivel en 2,5 km la pendiente es del
+     3 %: el sombreado no la distingue y el suelo se ve como una lámina lisa
+     con las filas pegadas. Como en un plano: curvas de nivel cada metro
+     (finas) y cada cinco (marcadas), y un tinte por cota —más claro arriba—,
+     escrito sobre el material estándar sin perder textura ni sombras. */
+  let ymin=1e9, ymax=-1e9;
+  for(let i=0;i<pos.count;i++){ const y=pos.getY(i); if(y<ymin)ymin=y; if(y>ymax)ymax=y; }
+  const matT=new THREE.MeshStandardMaterial({
+    map:groundMesh.material.map, roughness:0.98, metalness:0, color:0x6f6a58});
+  matT.onBeforeCompile=sh=>{
+    sh.uniforms.uYmin={value:ymin}; sh.uniforms.uYmax={value:Math.max(ymin+1,ymax)};
+    sh.vertexShader=sh.vertexShader
+      .replace("#include <common>","#include <common>\nvarying float vCota;")
+      .replace("#include <begin_vertex>","#include <begin_vertex>\nvCota=(modelMatrix*vec4(position,1.0)).y;");
+    sh.fragmentShader=sh.fragmentShader
+      .replace("#include <common>","#include <common>\nvarying float vCota; uniform float uYmin; uniform float uYmax;")
+      .replace("#include <map_fragment>",
+        "#include <map_fragment>\n"+
+        "{ float t=clamp((vCota-uYmin)/(uYmax-uYmin),0.0,1.0);\n"+
+        "  diffuseColor.rgb*=mix(vec3(0.80,0.84,0.72),vec3(1.18,1.14,1.02),t);\n"+   // bajo: más oscuro y verdoso; alto: claro
+        "  float w1=fwidth(vCota), c1=abs(fract(vCota+0.5)-0.5)/max(w1,1e-4), c5=abs(fract(vCota/5.0+0.5)-0.5)*5.0/max(w1,1e-4);\n"+
+        "  float l1=1.0-smoothstep(0.6,1.4,c1), l5=1.0-smoothstep(0.9,2.0,c5);\n"+
+        "  diffuseColor.rgb*=1.0-0.18*l1*step(w1,0.35)-0.30*l5*step(w1,1.5); }");
+  };
+  terreno=new THREE.Mesh(g,matT);
   terreno.position.set(e.cx,-0.02,e.cz);
   terreno.userData={cx:e.cx,cz:e.cz,w:w,h:h,Mx:Mx,Mz:Mz,cols:cols};   // para muestrearlo desde fuera
   terreno.receiveShadow=true; scene.add(terreno);
@@ -1714,7 +1737,14 @@ function pintaPlanta(beta,hA){
        +X y el norte de la escena es -Z, asi que el giro es pi/2 - az. */
     _mB.makeRotationY(Math.PI/2-(t.rot||0));
     _mB.premultiply(_mT);
-    if(t.tilt) _mB.multiply(new THREE.Matrix4().makeRotationZ(-t.tilt));
+    /* EL SIGNO DE LA PENDIENTE. `tilt = atan2(y1−y0, n1−n0)`: positivo si la
+       fila SUBE hacia el norte. El tubo del modelo va en +X, y +X cae en el
+       norte de la escena (tras el giro de pi/2 − rot), así que levantar el
+       extremo +X es girar en Z en POSITIVO. Iba con el signo cambiado: en la
+       fila de más desnivel de Ayora (5,5 m entre extremos) el tubo quedaba
+       7 m al aire en un extremo y 4 m bajo tierra en el otro, con los postes
+       colgando. Se comprueba fila a fila. */
+    if(t.tilt) _mB.multiply(new THREE.Matrix4().makeRotationZ(t.tilt));
     // sin escala de largo: cada mesa se monta ya con SUS módulos
     for(let k=0;k<PLI.length;k++){
       const L=PLI[k];
@@ -1769,7 +1799,7 @@ function pintaPlanta(beta,hA){
       const t=UN[iu];
       _mT.makeTranslation(t.x,t.y+HTUBE,-t.n);
       _mB.makeRotationY(Math.PI/2-(t.rot||0)); _mB.premultiply(_mT);
-      if(t.tilt) _mB.multiply(new THREE.Matrix4().makeRotationZ(-t.tilt));
+      if(t.tilt) _mB.multiply(new THREE.Matrix4().makeRotationZ(t.tilt));
       _w.copy(A).applyMatrix4(_m.copy(_mB).multiply(_mR));      // el conector, en el mundo
       const yTip=t.y+hA;
       PLANT_ANT.dot.setMatrixAt(j,_m.makeTranslation(_w.x,yTip,_w.z));
@@ -1831,7 +1861,7 @@ function cadCerca(forzar){
     const t=UN[cerca[k]];
     _cadT.makeTranslation(t.x,t.y+HTUBE,-t.n);
     _cadB.makeRotationY(Math.PI/2-(t.rot||0)); _cadB.premultiply(_cadT);
-    if(t.tilt) _cadB.multiply(new THREE.Matrix4().makeRotationZ(-t.tilt));
+    if(t.tilt) _cadB.multiply(new THREE.Matrix4().makeRotationZ(t.tilt));
     _cadB.multiply(_mR);                                        // bascula con el tubo
     if(g){ g.matrix.copy(_cadB); g.visible=true; esconde(PLCAD.cajas,cerca[k],true); }
     if(sc&&PLCAD.seccLocal){ sc.matrix.copy(_cadB).multiply(PLCAD.seccLocal); sc.visible=true; esconde(PLCAD.cajasSecc,cerca[k],true); }
