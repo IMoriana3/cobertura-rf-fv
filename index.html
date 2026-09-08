@@ -1298,7 +1298,7 @@ function layout(){
 }
 
 /* ---------------------- render de la planta (instanciado) ---------------------- */
-let PLI=[], PLEQ=[], PLMESA=null, PLANT_ANT=null;
+let PLI=[], PLEQ=[], PLMESA=null, PLANT_ANT=null, PLANT_EJE=null;
 function buildPlanta(){
   const mats=materials();
   while(fieldG.children.length){ const c=fieldG.children.pop(); disposeTree(c); }
@@ -1430,6 +1430,41 @@ function buildPlanta(){
                                             mats.antena,TCUS.length) };
   [PLANT_ANT.dot,PLANT_ANT.cable].forEach(im=>{ im.frustumCulled=false;
     im.instanceMatrix.setUsage(THREE.DynamicDrawUsage); plantaG.add(im); });
+  /* LAS BIELAS. Un bífilo son dos vigas y UN motor: la gemela se mueve por el
+     eje de transmisión que cruza de una a otra, con un cardán en cada extremo.
+     El corte de estudio lo dibuja desde el principio; en planta faltaba, y sin
+     él dos filas a 6 m con una sola TCU se leen como dos seguidores, no como
+     uno. Es lo que hace visible el par. Va donde lo pone el modelo
+     (`ejeTransGeom`, `cardanGeom`, `cardanDz`): bajo el eje del tubo, en el
+     centro del par, cruzando las filas. No bascula con el ángulo, así que se
+     coloca una vez, como los pilotes. Con cotas medidas el centro y la
+     separación son los de las DOS filas reales, no un ±filaZ nominal. */
+  PLANT_EJE=null;
+  {
+    const por={};
+    UN.forEach((f,i)=>{ const k=f.trk!=null?f.trk:i; (por[k]=por[k]||[]).push(f); });
+    const bif=Object.values(por).filter(v=>v.length===2);
+    if(bif.length){
+      const sepDe=v=>Math.hypot(v[1].x-v[0].x,v[1].n-v[0].n);
+      const seps=bif.map(sepDe).sort((a,b)=>a-b), sepM=seps[seps.length>>1];
+      const eje=new THREE.InstancedMesh(Seguidor.ejeTransGeom(THREE,sepM),mats.steel,bif.length);
+      const car=new THREE.InstancedMesh(Seguidor.cardanGeom(THREE),mats.blue,bif.length*2);
+      [eje,car].forEach(im=>{ im.castShadow=true; im.receiveShadow=true; im.frustumCulled=false; });
+      const m=new THREE.Matrix4(), q=new THREE.Matrix4();
+      bif.forEach((v,j)=>{
+        const cx=(v[0].x+v[1].x)/2, cn=(v[0].n+v[1].n)/2, cy=(v[0].y+v[1].y)/2;
+        const sep=sepDe(v), rot=v[0].rot||0;
+        // el mismo giro que la viga: su +Z local es "a través de las filas"
+        m.makeTranslation(cx,cy+HTUBE,-cn).multiply(q.makeRotationY(Math.PI/2-rot));
+        eje.setMatrixAt(j,m.clone().multiply(q.makeScale(1,1,sep/sepM)));
+        const dz=Seguidor.cardanDz(sep);
+        car.setMatrixAt(2*j,  m.clone().multiply(q.makeTranslation(0,0, dz)));
+        car.setMatrixAt(2*j+1,m.clone().multiply(q.makeTranslation(0,0,-dz)));
+      });
+      plantaG.add(eje,car);
+      PLANT_EJE={eje:eje,car:car,n:bif.length,sep:sepM};
+    }
+  }
   links=new THREE.Group(); links.frustumCulled=false; plantaG.add(links);
   Seguidor.setModsPerStr(prev);
   buildLabelsPlanta();

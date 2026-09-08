@@ -89,6 +89,28 @@ const SONDA = `(() => {
                v.setFromMatrixPosition(m); d.push(+(v.y - UN[iu].y).toFixed(4)); });
              return d.length ? [Math.min(...d), Math.max(...d)] : null; })(),
            hA: Math.max(0.15, HTUBE - (+document.getElementById("drop").value)),
+           /* LAS BIELAS: el eje de transmision que cruza de una viga a la otra.
+              Sin el, dos filas a 6 m con una TCU se leen como dos seguidores. Se
+              comprueba que hay uno por bifilo y que sus EXTREMOS caen en las dos
+              filas del par: un eje en el sitio equivocado o girado a lo largo
+              del tubo daria el mismo recuento. */
+           eje: (() => { if (!PLANT_EJE) return { n: 0 };
+             const por = {};
+             UN.forEach((f, i) => { const k = f.trk != null ? f.trk : i; (por[k] = por[k] || []).push(f); });
+             const bif = Object.values(por).filter(v => v.length === 2);
+             const m = new THREE.Matrix4(), v3 = new THREE.Vector3();
+             let peor = 0;
+             bif.forEach((v, j) => { PLANT_EJE.eje.getMatrixAt(j, m);
+               const sep = Math.hypot(v[1].x - v[0].x, v[1].n - v[0].n);
+               [+1, -1].forEach(sg => {
+                 v3.set(0, 0, sg * PLANT_EJE.sep / 2).applyMatrix4(m);       // extremo del eje (escalado a sep)
+                 const d = Math.min(...v.map(f => Math.hypot(v3.x - f.x, -v3.z - f.n)));
+                 peor = Math.max(peor, d); });
+               // y a la altura de la viga (la geometria ya lleva su -0,22 bajo el tubo)
+               v3.set(0, 0, 0).applyMatrix4(m);
+               peor = Math.max(peor, Math.abs(v3.y - ((v[0].y + v[1].y) / 2 + HTUBE)));
+             });
+             return { n: PLANT_EJE.n, cardanes: PLANT_EJE.car.count, sep: PLANT_EJE.sep, peor: +peor.toFixed(3) }; })(),
            // la TCU de cada seguidor tiene que ser la fila OESTE (menor u)
            oeste: T.every(t => { const mias = UN.map((f,i)=>[f,i]).filter(([f])=>f.trk===t.trk);
                                  return mias.every(([f]) => u(f) >= u(UN[t.fila]) - 1e-6); }) };
@@ -136,6 +158,10 @@ const SONDA = `(() => {
         f.inst.mesa === 48 && f.inst.tube === 48, f.inst);
   check('y la corona y su poste también, que la gemela gira igual',
         f.inst.corona === 48 && f.inst.soporte === 48, f.inst);
+  check('y sus 24 bielas: un eje de transmisión por seguidor, con dos cardanes',
+        f.eje.n === 24 && f.eje.cardanes === 48, f.eje);
+  check('cuyos extremos caen en las dos filas del par, a la altura de la viga',
+        f.eje.peor < 0.05, f.eje);
   check('cada TCU dibuja su antena, y cuelga a la cota que usa el cálculo',
         f.ant === 24 && f.antY && Math.abs(f.antY[0] - f.hA) < 1e-3 &&
         Math.abs(f.antY[1] - f.hA) < 1e-3, [f.ant, f.antY, f.hA]);
@@ -191,6 +217,7 @@ const SONDA = `(() => {
   const p = await carga('paramo');
   check('396 seguidores y 396 filas', p.trk === 396 && p.filas === 396, p);
   check('396 TCU', p.tcus === 396, p.tcus);
+  check('y en una monofila no hay biela que dibujar', p.eje.n === 0, p.eje);
   check('y en una monofila el render dibuja una TCU por fila, que es lo mismo',
         p.inst.tcu === 396 && p.inst.mesa === 396, p.inst);
   /* Y el motivo tiene que ser el SUYO: «declara filaZ 0», que es la planta
@@ -209,6 +236,8 @@ const SONDA = `(() => {
   check('con sus 430 mesas y 430 tubos, que las dos vigas llevan módulos',
         e.inst.mesa === 430 && e.inst.tube === 430, e.inst);
   check('y 215 antenas colgando, una por seguidor', e.ant === 215, e.ant);
+  check('y 215 bielas cruzando de una viga a la otra: se veía sin ellas',
+        e.eje.n === 215 && e.eje.peor < 0.05, e.eje);
   check('las filas quedan a 6 m', Math.abs(e.paso - 6) < 0.2, e.paso);
   check('y las dos vigas de un seguidor, a 6,00 m', Math.abs(e.sep - 6) < 0.01, e.sep);
 
@@ -250,6 +279,7 @@ const SONDA = `(() => {
   check('Polvorín: 119 seguidores -> 236 filas (117 bífilos + 2 mono)',
         pv.trk === 119 && pv.filas === 236, [pv.trk, pv.filas]);
   check('y 119 TCU', pv.tcus === 119, pv.tcus);
+  check('y 117 bielas: los dos mono no la tienen', pv.eje.n === 117 && pv.eje.peor < 0.05, pv.eje);
   check('con sus vigas a 4,50 m: 2 x 2,25', Math.abs(pv.sep - 4.5) < 0.01, pv.sep);
   check('el tipo mono se cuenta y se dice',
         pv.bif.mono === 2 && /2 de tipo mono/.test(pv.bif.porque || ''), pv.bif);
