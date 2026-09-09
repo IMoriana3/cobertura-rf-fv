@@ -84,9 +84,19 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { banco: test_visor_3d.js,       nombre: 'visor 3D',                    tope: 30 }
-          - { banco: test_bifila_plantas.js, nombre: 'plantas reales',              tope: 90 }
+          - { banco: test_visor_3d.js,       nombre: 'visor 3D',                      tope: 30 }
           - { banco: test_imagen.js,         nombre: 'imagen (vistas de referencia)', tope: 45 }
+          # `plantas reales` ya no es UN job: hacía el trabajo de tres y se comió
+          # los 45 minutos. Ahora son cuatro grupos en paralelo, y un rojo dice
+          # QUÉ parte se rompió sin abrir el log. Medido aquí:
+          #   chicas 13 s · grandes 42 s · reparto 73 s · relieve 23 s
+          # Sumados, 151 s — contra 541 s del banco entero: la misma faena cuesta
+          # 3,6 veces menos repartida, porque una sola sesión encadena 19 cargas
+          # de planta y se degrada. Topes con el factor 5 del runner y holgura.
+          - { banco: test_bifila_plantas.js, nombre: 'plantas · chicas',  grupo: plantas-chicas,  tope: 20 }
+          - { banco: test_bifila_plantas.js, nombre: 'plantas · grandes', grupo: plantas-grandes, tope: 25 }
+          - { banco: test_bifila_plantas.js, nombre: 'plantas · reparto', grupo: reparto,         tope: 30 }
+          - { banco: test_bifila_plantas.js, nombre: 'plantas · relieve', grupo: relieve,         tope: 20 }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -123,7 +133,11 @@ jobs:
           if [ "${{ inputs.actualizar_imagenes }}" = "true" ] && [ "${{ matrix.banco }}" = "test_imagen.js" ]; then
             node tests/${{ matrix.banco }} --actualizar
           else
-            node tests/${{ matrix.banco }}
+            # `matrix.grupo` va vacío en los bancos que no se parten, y el banco
+            # lo lee como «todo». Un grupo mal escrito NO pasa en verde: aborta
+            # con la lista de los que hay, y además el banco exige haber corrido
+            # alguna comprobación — el fallo más caro es el banco que no mira.
+            node tests/${{ matrix.banco }} ${{ matrix.grupo }}
           fi
 
       # Un fallo de píxeles sin la imagen es un número que no dice nada.
