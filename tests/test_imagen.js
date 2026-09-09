@@ -39,7 +39,14 @@ const fs = require('fs');
 const path = require('path');
 
 const BASE = process.env.URL || 'http://127.0.0.1:8099/index.html';
-const EXEC = process.env.PW_CHROMIUM || '/opt/pw-browsers/chromium';
+/* DÓNDE ESTÁ CHROMIUM. `PW_CHROMIUM` si se dice; si no, el del contenedor de
+   desarrollo cuando existe; y si tampoco, NADA — que es lo que hace que
+   Playwright use el navegador que él mismo gestiona. Estaba clavada la ruta
+   del contenedor como valor POR DEFECTO, y en un runner de GitHub eso es
+   «executable doesn't exist»: los tres bancos de navegador morían en un
+   segundo, antes de comprobar nada. */
+const PW_DEV = '/opt/pw-browsers/chromium';
+const EXEC = process.env.PW_CHROMIUM || (require('fs').existsSync(PW_DEV) ? PW_DEV : undefined);
 const REF = path.join(__dirname, 'ref');
 const SALIDA = process.env.SALIDA || '/tmp/imagen-visor';
 const ACTUALIZAR = process.argv.includes('--actualizar');
