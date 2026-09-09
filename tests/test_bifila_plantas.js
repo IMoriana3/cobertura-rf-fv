@@ -29,6 +29,28 @@ const BASE = process.env.URL || 'http://127.0.0.1:8099/index.html';
 const PW_DEV = '/opt/pw-browsers/chromium';
 const EXEC = process.env.PW_CHROMIUM || (require('fs').existsSync(PW_DEV) ? PW_DEV : undefined);
 let ok = 0, ko = 0;
+/* ─── EL BANCO SE PARTE EN GRUPOS ───────────────────────────────────────────
+   Este banco crecio hasta hacer el trabajo de tres: 105 comprobaciones, 19
+   construcciones de planta, y un dia se comio los 45 minutos de tope del CI.
+   Subir el tope compraba tiempo; esto es el arreglo.
+
+   Un grupo por argumento (o por $GRUPO) y la matriz del CI lo lanza cuatro
+   veces en paralelo. Ademas de caber en el presupuesto, un rojo dice QUE parte
+   se rompio sin abrir el log.
+
+   Sin argumento corre TODO, que es lo que uno quiere en su maquina.
+
+   OJO AL VERDE VACIO: un grupo mal escrito no puede pasar en verde sin
+   comprobar nada —el fallo mas caro de un banco es el que no mira—. Un nombre
+   desconocido aborta, y al final se exige que haya corrido alguna. */
+const GRUPOS = ['plantas-chicas', 'plantas-grandes', 'reparto', 'relieve'];
+const GRUPO = process.env.GRUPO || process.argv[2] || 'todo';
+if (GRUPO !== 'todo' && !GRUPOS.includes(GRUPO)) {
+  console.error(`grupo desconocido: ${JSON.stringify(GRUPO)}\nlos que hay: ${GRUPOS.join(' · ')} (o nada para correr todo)`);
+  process.exit(2);
+}
+const toca = g => GRUPO === 'todo' || GRUPO === g;
+
 const check = (n, cond, extra) => { if (cond) { ok++; console.log('OK   ' + n); }
   else { ko++; console.log('FAIL ' + n + (extra !== undefined ? '  -> ' + JSON.stringify(extra) : '')); } };
 
@@ -191,6 +213,7 @@ const SONDA = `(() => {
   };
 
   // ── FAYÓN: el caso que se veía a ojo ──────────────────────────────────────
+  if (toca('plantas-chicas')) {
   console.log('\n· Fayón: 24 seguidores, 48 filas, 24 TCU');
   const f = await carga('fayon');
   check('el layout trae 24 seguidores', f.trk === 24, f.trk);
@@ -251,6 +274,8 @@ const SONDA = `(() => {
      fichero de cotas 754. El emparejamiento va por SITIO: si fuera por índice,
      como antes, el guard de "mismo número" fallaría y Ayora se quedaría sin
      levantamiento —terreno plano— sin decir nada. */
+  }
+  if (toca('plantas-grandes')) {
   console.log('\n· Ayora: levantamiento emparejado por sitio, y una TCU por seguidor');
   const a = await carga('ayora');
   check('751 seguidores (tres TCU retiradas, as-built)', a.trk === 751, a.trk);
@@ -362,6 +387,8 @@ const SONDA = `(() => {
         a.empar && a.empar.dmax < 4, a.empar && a.empar.dmax);
 
   // ── PÁRAMO: monofila de verdad. No se parte ───────────────────────────────
+  }
+  if (toca('plantas-chicas')) {
   console.log('\n· Páramo: filaZ 0. Ni se parte ni se inventa nada');
   const p = await carga('paramo');
   check('396 seguidores y 396 filas', p.trk === 396 && p.filas === 396, p);
@@ -376,6 +403,8 @@ const SONDA = `(() => {
         p.bif && p.bif.si === false && /declara filaZ 0/.test(p.bif.porque || ''), p.bif);
 
   // ── EL BURGO: el seguidor canónico. No declara filaZ porque ES el de la casa
+  }
+  if (toca('plantas-grandes')) {
   console.log('\n· El Burgo: bífila por las cotas canónicas de seguidor.js');
   const e = await carga('elburgo');
   check('215 seguidores y 430 filas', e.trk === 215 && e.filas === 430, e);
@@ -395,6 +424,8 @@ const SONDA = `(() => {
      lleva dibujando estas plantas bien desde el principio. Inferirlo —midiendo
      si al partir el paso se quedaba en la mitad— acertaba en unas y fallaba en
      otras: dejaba Túnez y Polvorín de una fila cuando son bífilos. */
+  }
+  if (toca('plantas-chicas')) {
   console.log('\n· Túnez: 19 seguidores -> 38 filas');
   const tz = await carga('tunez');
   check('19 seguidores -> 38 filas', tz.trk === 19 && tz.filas === 38, [tz.trk, tz.filas]);
@@ -410,6 +441,8 @@ const SONDA = `(() => {
      pero no deciden. Que Bagnarelli es bífila lo prueba su cartera: 14
      completos x 2 alas x 21 + 3 medios x 2 x 10 = 648 por fila, y x2 = 1.296,
      que son EXACTAMENTE los módulos declarados. */
+  }
+  if (toca('plantas-chicas')) {
   console.log('\n· Bagnarelli y Polvorín: dos vigas a ±filaZ, como en la tarjeta de planta');
   const bg = await carga('bagnarelli');
   check('Bagnarelli: 17 seguidores -> 34 filas', bg.trk === 17 && bg.filas === 34, [bg.trk, bg.filas]);
@@ -445,6 +478,8 @@ const SONDA = `(() => {
         pv.bif.mono === 2 && /2 de tipo mono/.test(pv.bif.porque || ''), pv.bif);
 
   // ── SAN JOSÉ: 2.289 seguidores, 147 sin levantar y 10 cotas imposibles ────
+  }
+  if (toca('plantas-grandes')) {
   console.log('\n· San José: los sin levantar en sus DOS vigas, y las cotas imposibles declaradas');
   const sj = await carga('sanjose');
   const sjx = await page.evaluate(() => {
@@ -479,6 +514,8 @@ const SONDA = `(() => {
      una planta cargada no existen. «Antena TCU» acababa mirando un punto
      inventado POR ENCIMA de las mesas —con la antena colgando bajo la viga dos
      metros mas abajo— y «NCU» reventaba contra un ncu nulo. */
+  }
+  if (toca('reparto')) {
   console.log('\n· los encuadres miran al equipo de la PLANTA, no al corte de estudio');
   await carga('elburgo');
   for (const v of ['antena', 'motor']) {
@@ -538,6 +575,8 @@ const SONDA = `(() => {
      Y de propina, la razón por la que esto NO puede ir clavado en el código:
      Ayora da +2,98 y San José −3,09. Signos OPUESTOS. Un número a mano habría
      roto una de las dos plantas. */
+  }
+  if (toca('reparto')) {
   console.log('\n· Las parejas deducidas caen donde caerían las medidas');
   const despPorPlanta = {};
   for (const planta of ['sanjose', 'ayora']) {
@@ -600,6 +639,8 @@ const SONDA = `(() => {
      centroide en unidades del radio del propio grupo. Medido sobre las ocho
      plantas: por índice el peor cociente es 1,38; por nombre, 14,16. El listón
      va en 3, al doble de uno y a la quinta parte del otro. */
+  }
+  if (toca('reparto')) {
   console.log('\n· El mástil de cada (NCU, GW), en las ocho plantas');
   for (const planta of ['fayon', 'tunez', 'bagnarelli', 'polvorin',
                         'elburgo', 'paramo', 'ayora', 'sanjose']) {
@@ -636,6 +677,8 @@ const SONDA = `(() => {
      importa— que el relieve CAMBIA el resultado: un banco que solo mirase que
      «se dibuja algo» dejaría pasar un DEM que se carga y no entra en la física,
      que es exactamente el defecto que se quiere impedir. */
+  }
+  if (toca('relieve')) {
   console.log('\n· El relieve de las plantas sin levantamiento');
   {
     const DEM = require('fs').readFileSync(require('path').join(__dirname, 'fixtures', 'dem_cerro.png'));
@@ -718,9 +761,15 @@ const SONDA = `(() => {
     await ctx.close();
   }
 
+  }
   check('sin errores de JS en ninguna planta', errs.length === 0, errs.slice(0, 3));
   await browser.close();
   console.log('');
+  /* Un banco que no comprueba NADA no puede salir en verde. */
+  if (ok + ko === 0) {
+    console.log(`el grupo ${JSON.stringify(GRUPO)} no ha corrido ni una comprobación`);
+    process.exit(2);
+  }
   if (ko) { console.log(ko + ' FALLOS (' + ok + ' OK)'); process.exit(1); }
   console.log('TODAS OK (' + ok + ' comprobaciones)');
 })().catch(e => { console.error(e); process.exit(1); });
