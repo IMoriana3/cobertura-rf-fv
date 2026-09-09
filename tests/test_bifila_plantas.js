@@ -153,9 +153,24 @@ const SONDA = `(() => {
   const browser = await chromium.launch({ executablePath: EXEC,
     args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const page = await browser.newPage({ viewport: { width: 1100, height: 800 } });
+  /* EL RELIEVE NO SE BAJA EN UN BANCO.
+     El simulador pide las teselas Terrarium a un CDN para las plantas sin
+     levantamiento. Dejar que un banco salga a Internet es pedir dos problemas:
+     el resultado depende de que el CDN conteste (y de LO QUE conteste), y en un
+     runner sin salida el banco fallaria por algo que no es el codigo.
+     Asi que se corta SIEMPRE y a proposito. La pagina se queda plana y lo dice,
+     que es su comportamiento declarado sin relieve. El DEM tiene su propia
+     seccion mas abajo, con una tesela CONOCIDA del repo. */
+  await page.route('**/elevation-tiles-prod/**', r => r.abort());
   const errs = [];
   page.on('pageerror', e => errs.push('pageerror: ' + e.message));
-  page.on('console', m => { if (m.type() === 'error' && !/favicon|WebGL|GPU/.test(m.text())) errs.push(m.text()); });
+  /* Las teselas de relieve las corta el propio banco (arriba), y el navegador
+     registra ese corte como error de consola. Es ruido DELIBERADO: se filtra
+     por la URL del recurso, no por el texto —«Failed to load resource» no dice
+     de qué recurso—, para no tapar de paso un error de verdad. */
+  const esTesela = m => { try { return /elevation-tiles-prod/.test((m.location() || {}).url || ''); }
+                          catch (e) { return false; } };
+  page.on('console', m => { if (m.type() === 'error' && !/favicon|WebGL|GPU/.test(m.text()) && !esTesela(m)) errs.push(m.text()); });
 
   // la planta se elige con el selector de la página, como haría cualquiera
   let cargada = false;
@@ -524,6 +539,7 @@ const SONDA = `(() => {
      Ayora da +2,98 y San José −3,09. Signos OPUESTOS. Un número a mano habría
      roto una de las dos plantas. */
   console.log('\n· Las parejas deducidas caen donde caerían las medidas');
+  const despPorPlanta = {};
   for (const planta of ['sanjose', 'ayora']) {
     await carga(planta);
     const r = await page.evaluate(() => {
@@ -544,6 +560,7 @@ const SONDA = `(() => {
                mMed: mediana(med), mDed: mediana(ded),
                desp: PLANTA._despMedido, semi: PLANTA._semiMedido };
     });
+    despPorPlanta[planta] = r.desp;
     check(`${planta}: el desplazamiento se MIDE en la planta, no se asume`,
           r.desp !== null && Math.abs(r.desp) > 0.5, JSON.stringify(r));
     if (r.deducidas > 0) {
@@ -554,12 +571,14 @@ const SONDA = `(() => {
       check(`${planta}: no tiene parejas coincidentes que deducir`, r.deducidas === 0, r.deducidas);
     }
   }
-  /* El signo NO es una constante del mundo: es de cada planta. */
+  /* El signo NO es una constante del mundo: es de cada planta. Se comparan los
+     valores YA medidos en el bucle de arriba: recargar las dos plantas solo
+     para volver a leer un número costaba dos cargas de San José (2.289
+     seguidores) y no comprobaba nada más. */
   {
-    const sj = await carga('sanjose').then(() => page.evaluate(() => PLANTA._despMedido));
-    const ay = await carga('ayora').then(() => page.evaluate(() => PLANTA._despMedido));
+    const sj = despPorPlanta.sanjose, ay = despPorPlanta.ayora;
     check('y no es un número clavado: Ayora y San José lo tienen con signo OPUESTO',
-          sj !== null && ay !== null && Math.sign(sj) !== Math.sign(ay),
+          sj != null && ay != null && Math.sign(sj) !== Math.sign(ay),
           `sanjose ${sj && sj.toFixed(2)} · ayora ${ay && ay.toFixed(2)}`);
   }
 
@@ -604,6 +623,99 @@ const SONDA = `(() => {
     });
     check(`${planta}: los ${r.grupos} mástiles caen en el entorno de su grupo`,
           r.peor < 3, JSON.stringify(r.quien));
+  }
+
+  /* ── EL RELIEVE DE LAS PLANTAS SIN LEVANTAMIENTO ──────────────────────────
+     Seis de las ocho plantas no tienen levantamiento y se dibujaban PLANAS. A
+     2,4 GHz eso no es decorado: un cerro entre una TCU y su NCU es un
+     obstáculo, y con el suelo plano ese cerro no existe.
+
+     Aquí NO se baja nada de Internet. Se sirve una tesela Terrarium del repo
+     (`tests/fixtures/dem_cerro.png`: un cerro gaussiano de 120 m), que es
+     conocida y reproducible. Lo que se comprueba es la fontanería y —lo que
+     importa— que el relieve CAMBIA el resultado: un banco que solo mirase que
+     «se dibuja algo» dejaría pasar un DEM que se carga y no entra en la física,
+     que es exactamente el defecto que se quiere impedir. */
+  console.log('\n· El relieve de las plantas sin levantamiento');
+  {
+    const DEM = require('fs').readFileSync(require('path').join(__dirname, 'fixtures', 'dem_cerro.png'));
+    const lee = async (pg) => pg.evaluate(() => ({
+      cot: !!PLANTA.cot,
+      dem: PLANTA.dem ? { z: PLANTA.dem.z, teselas: PLANTA.dem.teselas,
+                          desnivel: +PLANTA.dem.desnivel.toFixed(1) } : null,
+      fallo: PLANTA.demFallo,
+      terreno: !!(typeof terreno !== 'undefined' && terreno),
+      ys: (() => { const u = PLANTA._un || unidades(), y = u.map(t => t.y);
+                   return { min: +Math.min(...y).toFixed(1), max: +Math.max(...y).toFixed(1) }; })(),
+      margenes: [...document.querySelectorAll('#lect .m')].map(e => parseFloat(e.textContent)),
+      nota: document.getElementById('note').textContent || '',
+    }));
+    /* UN SOLO CONTEXTO, y la ruta se cambia entre cargas. Abrir un navegador
+       nuevo por comprobación costaba tres páginas y tres plantas enteras — y
+       este banco ya carga las ocho plantas más arriba. `unroute` + `route`
+       deja el mismo control sin volver a arrancar nada. */
+    const ctx = await browser.newContext({ viewport: { width: 1100, height: 800 } });
+    const pg = await ctx.newPage();
+    const sirve = async (sirveDem) => {
+      await ctx.unroute('**/elevation-tiles-prod/**');
+      await ctx.route('**/elevation-tiles-prod/**', r => sirveDem
+        ? r.fulfill({ status: 200, contentType: 'image/png',
+                      headers: { 'access-control-allow-origin': '*' }, body: DEM })
+        : r.abort());
+    };
+    await sirve(false);
+    await pg.goto(BASE, { waitUntil: 'networkidle' });
+    await pg.waitForTimeout(600);
+    const abre = async (sirveDem, planta, hastaElRender = true) => {
+      await sirve(sirveDem);
+      await pg.evaluate(p => cargaPlanta(p), planta);
+      /* La comprobación de Ayora solo mira si el DEM se ha descargado o no, y
+         eso se sabe en cuanto existe `PLANTA`: esperar a que se construyan sus
+         1.502 filas y su terreno era la carga más cara de la sección, y no
+         añadía ni una comprobación. */
+      await pg.waitForFunction(([p, r]) => { try {
+          return !!(PLANTA && PLANTA.nom === p && (!r || (PLI && PLI.length))); }
+          catch (e) { return false; } }, [planta, hastaElRender], { timeout: 180000 });
+      await pg.waitForTimeout(hastaElRender ? 1200 : 200);
+      return lee(pg);
+    };
+
+    const plano = await abre(false, 'elburgo');
+    check('sin DEM la planta se queda plana… y la nota NO lo llama llano',
+          plano.dem === null && Math.abs(plano.ys.max - plano.ys.min) < 0.01
+            && /no porque lo sea/.test(plano.nota),
+          JSON.stringify({ dem: plano.dem, ys: plano.ys }));
+
+    const conDem = await abre(true, 'elburgo');
+    check('con la tesela del repo, El Burgo tiene relieve',
+          conDem.dem !== null && conDem.dem.desnivel > 5 && conDem.terreno,
+          JSON.stringify(conDem.dem));
+    check('y los seguidores SIGUEN al terreno, no se quedan en el cero',
+          conDem.ys.max - conDem.ys.min > 5,
+          JSON.stringify(conDem.ys));
+    check('y la nota declara que el relieve es del DEM, no medido',
+          /DEM global/.test(conDem.nota) && /no para leer una mesa/.test(conDem.nota),
+          conDem.nota.slice(0, 160));
+
+    /* LO QUE DE VERDAD IMPORTA: que entre en la física. */
+    const dif = conDem.margenes.map((v, i) => v - plano.margenes[i]).filter(v => !Number.isNaN(v));
+    check('y el relieve CAMBIA los márgenes: no es decorado',
+          dif.some(v => Math.abs(v) > 1),
+          `plano ${JSON.stringify(plano.margenes)} · con relieve ${JSON.stringify(conDem.margenes)}`);
+    /* Y en los DOS sentidos: el cerro tapa unos saltos y levanta otros. Un
+       cambio que solo mejorase sería sospechoso de estar subiendo la planta
+       entera en vez de darle forma. */
+    check('y en los dos sentidos: alguno mejora y alguno empeora',
+          dif.some(v => v > 0.5) && dif.some(v => v < -0.5),
+          JSON.stringify(dif.map(v => +v.toFixed(1))));
+
+    /* EL LEVANTAMIENTO MANDA. Con cotas medidas el DEM no se baja siquiera:
+       30 m de paso contra una fila de 74 sería cambiar una medida por un mapa. */
+    const ayora = await abre(true, 'ayora', false);
+    check('Ayora, que SÍ tiene levantamiento, ignora el DEM',
+          ayora.cot === true && ayora.dem === null,
+          JSON.stringify({ cot: ayora.cot, dem: ayora.dem }));
+    await ctx.close();
   }
 
   check('sin errores de JS en ninguna planta', errs.length === 0, errs.slice(0, 3));

@@ -194,6 +194,15 @@ function compara(a, b) {
   const browser = await chromium.launch({ executablePath: EXEC,
     args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--force-device-scale-factor=1'] });
   const page = await browser.newPage({ viewport: { width: W, height: H + 420 }, deviceScaleFactor: 1 });
+  /* EL RELIEVE NO SE BAJA EN UN BANCO.
+     El simulador pide las teselas Terrarium a un CDN para las plantas sin
+     levantamiento. Dejar que un banco salga a Internet es pedir dos problemas:
+     el resultado depende de que el CDN conteste (y de LO QUE conteste), y en un
+     runner sin salida el banco fallaria por algo que no es el codigo.
+     Asi que se corta SIEMPRE y a proposito. La pagina se queda plana y lo dice,
+     que es su comportamiento declarado sin relieve. El DEM tiene su propia
+     seccion mas abajo, con una tesela CONOCIDA del repo. */
+  await page.route('**/elevation-tiles-prod/**', r => r.abort());
   await page.addInitScript(SEMILLA);
   const errs = [];
   page.on('pageerror', e => errs.push('pageerror: ' + e.message));

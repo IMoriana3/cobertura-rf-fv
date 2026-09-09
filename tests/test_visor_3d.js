@@ -241,9 +241,24 @@ const SONDA = `(() => {
   const browser = await chromium.launch({ executablePath: EXEC,
     args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  /* EL RELIEVE NO SE BAJA EN UN BANCO.
+     El simulador pide las teselas Terrarium a un CDN para las plantas sin
+     levantamiento. Dejar que un banco salga a Internet es pedir dos problemas:
+     el resultado depende de que el CDN conteste (y de LO QUE conteste), y en un
+     runner sin salida el banco fallaria por algo que no es el codigo.
+     Asi que se corta SIEMPRE y a proposito. La pagina se queda plana y lo dice,
+     que es su comportamiento declarado sin relieve. El DEM tiene su propia
+     seccion mas abajo, con una tesela CONOCIDA del repo. */
+  await page.route('**/elevation-tiles-prod/**', r => r.abort());
   const errs = [];
   page.on('pageerror', e => errs.push('pageerror: ' + e.message));
-  page.on('console', m => { if (m.type() === 'error' && !/favicon/.test(m.text())) errs.push(m.text()); });
+  /* Las teselas de relieve las corta el propio banco (arriba), y el navegador
+     registra ese corte como error de consola. Es ruido DELIBERADO: se filtra
+     por la URL del recurso, no por el texto —«Failed to load resource» no dice
+     de qué recurso—, para no tapar de paso un error de verdad. */
+  const esTesela = m => { try { return /elevation-tiles-prod/.test((m.location() || {}).url || ''); }
+                          catch (e) { return false; } };
+  page.on('console', m => { if (m.type() === 'error' && !/favicon/.test(m.text()) && !esTesela(m)) errs.push(m.text()); });
   await page.goto(URL, { waitUntil: 'networkidle' });
   /* El CAD (tcu.glb + secc.json) llega por red y la escena se rehace al
      llegar. Sin esperarlo, medio banco saldría distinto según la carga. */
