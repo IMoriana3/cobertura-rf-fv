@@ -916,13 +916,52 @@ function cargaPlanta(nom){
               raras.push({trk:v[0].trk, x:v[0].x, n:v[0].nm, ym:v[0].ym, vecinas:v[1].ym, par:true});
           });
           /* DOS FILAS EN LA MISMA X. En San José el levantamiento da a cientos
-             de seguidores sus dos filas con la misma x: midieron el EJE del
-             seguidor, no cada viga. Dibujadas tal cual caen una encima de la
-             otra —y se ve una monofila—. No son errores: la cota y la
-             pendiente valen. Se abren a ±filaZ, la del layout, con lo medido. */
+             de seguidores sus dos filas con la misma x. Dibujadas tal cual caen
+             una encima de la otra —y se ve una monofila—. No son errores: la
+             cota y la pendiente valen; falta saber DÓNDE va cada viga.
+
+             Esto las abría a ±filaZ, simétricas respecto a la x medida, dando
+             por hecho que se había medido el EJE. Los datos dicen que no. En
+             San José, sobre las 1.959 parejas que SÍ traen sus dos vigas:
+
+               centro de las dos vigas − x del layout = −3,09 m
+                                          (p5 −3,16 · p95 −3,03: clavado)
+
+             O sea que la `x` del layout no es el eje: es una de las vigas. Y en
+             las 227 coincidentes la x medida ES la del layout (mediana −0,018),
+             luego se anotó esa misma viga para las dos filas. Abrirlas
+             simétricas ponía el seguidor entero 3,09 m —MEDIA distancia entre
+             filas— al otro lado, intercalado con sus vecinos bien colocados.
+             Eso es lo que se veía como «mal implantado», y salía justo en las
+             NCU con más coincidentes (MU-06_2-11 con 25, MU-07_2-09 con 20).
+
+             Ahora el desplazamiento y la semiseparación NO se asumen: se MIDEN
+             en la propia planta, con sus parejas bien medidas. Si no hay
+             suficientes para medirlo, se cae a lo de antes y se dice. */
           const fzL=filaZde(PLANTA.lay)||0; let dobles=0;
+          let desp=null, semi=fzL;
+          {
+            const dd=[], ss=[];
+            Object.values(porTrk).forEach(v=>{
+              if(v.length!==2||Math.abs(v[0].x-v[1].x)<1) return;
+              const t=PLANTA.trk[v[0].trk]; if(!t) return;
+              dd.push((v[0].x+v[1].x)/2 - t.x); ss.push(Math.abs(v[0].x-v[1].x)/2);
+            });
+            /* 30 parejas es poco para una planta y de sobra para una mediana;
+               por debajo de eso no se toca nada, que es lo prudente. */
+            if(dd.length>=30){
+              dd.sort((a,b)=>a-b); ss.sort((a,b)=>a-b);
+              desp=dd[dd.length>>1]; semi=ss[ss.length>>1];
+            }
+          }
+          PLANTA._despMedido=desp; PLANTA._semiMedido=semi;
           if(fzL>0) Object.values(porTrk).forEach(v=>{
-            if(v.length===2&&Math.abs(v[0].x-v[1].x)<1){ v[0].x-=fzL; v[1].x+=fzL; dobles++; }
+            if(v.length!==2||Math.abs(v[0].x-v[1].x)>=1) return;
+            const t=PLANTA.trk[v[0].trk];
+            /* con desplazamiento medido: el centro va donde la planta dice que
+               va, no donde estaba la marca. Sin él: simétricas, como antes. */
+            const c=(desp!=null&&t)? t.x+desp : v[0].x;
+            v[0].x=c-semi; v[1].x=c+semi; dobles++;
           });
           PLANTA._dobles=dobles;
           filas.forEach(f=>{

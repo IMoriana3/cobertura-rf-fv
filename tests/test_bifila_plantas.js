@@ -503,6 +503,66 @@ const SONDA = `(() => {
   check('«NCU» y «HSU» apuntan a SU antena, y ninguna revienta',
         eqf.ncu < 0.05 && eqf.hsu < 0.05, eqf);
 
+  /* ── LAS PAREJAS DEDUCIDAS, DONDE CAERÍAN SI ESTUVIERAN MEDIDAS ───────────
+     En San José el levantamiento da a cientos de seguidores sus dos filas con
+     la MISMA x: se anotó una viga para las dos. Hay que abrirlas, y la pregunta
+     es hacia dónde.
+
+     Se abrían simétricas respecto a esa x, dando por hecho que se había medido
+     el eje. No: sobre las parejas que SÍ traen sus dos vigas, el centro cae a
+     −3,09 m de la x del layout (p5 −3,16 · p95 −3,03), o sea que la x del
+     layout es una VIGA. Abrirlas simétricas ponía esos 183 seguidores 3,09 m
+     —media distancia entre filas— al otro lado, intercalados con sus vecinos
+     bien colocados. Eso es lo que se veía como «mal implantado».
+
+     Lo que se comprueba es lo único que importa: que las DEDUCIDAS caigan donde
+     caerían si estuvieran medidas. Se compara la mediana de (centro − x del
+     layout) de las dos poblaciones; antes se separaban 3,09 m, que es
+     exactamente el defecto.
+
+     Y de propina, la razón por la que esto NO puede ir clavado en el código:
+     Ayora da +2,98 y San José −3,09. Signos OPUESTOS. Un número a mano habría
+     roto una de las dos plantas. */
+  console.log('\n· Las parejas deducidas caen donde caerían las medidas');
+  for (const planta of ['sanjose', 'ayora']) {
+    await carga(planta);
+    const r = await page.evaluate(() => {
+      const filas = (PLANTA.cot && PLANTA.cot.filas) || [];
+      const porTrk = {};
+      filas.forEach(f => { (porTrk[f.trk] = porTrk[f.trk] || []).push(f); });
+      const med = [], ded = [];
+      Object.values(porTrk).forEach(v => {
+        if (v.length !== 2) return;
+        const t = PLANTA.trk[v[0].trk]; if (!t) return;
+        const c = (v[0].x + v[1].x) / 2 - t.x;
+        // una pareja DEDUCIDA quedó exactamente a 2·semi; las medidas, no
+        const sep = Math.abs(v[0].x - v[1].x);
+        (Math.abs(sep - 2 * PLANTA._semiMedido) < 1e-9 ? ded : med).push(c);
+      });
+      const mediana = a => { if (!a.length) return null; a.sort((x, y) => x - y); return a[a.length >> 1]; };
+      return { medidas: med.length, deducidas: ded.length,
+               mMed: mediana(med), mDed: mediana(ded),
+               desp: PLANTA._despMedido, semi: PLANTA._semiMedido };
+    });
+    check(`${planta}: el desplazamiento se MIDE en la planta, no se asume`,
+          r.desp !== null && Math.abs(r.desp) > 0.5, JSON.stringify(r));
+    if (r.deducidas > 0) {
+      check(`${planta}: las ${r.deducidas} deducidas caen con las ${r.medidas} medidas`,
+            r.mDed !== null && r.mMed !== null && Math.abs(r.mDed - r.mMed) < 0.5,
+            `mediana deducidas ${(r.mDed||0).toFixed(2)} vs medidas ${(r.mMed||0).toFixed(2)}`);
+    } else {
+      check(`${planta}: no tiene parejas coincidentes que deducir`, r.deducidas === 0, r.deducidas);
+    }
+  }
+  /* El signo NO es una constante del mundo: es de cada planta. */
+  {
+    const sj = await carga('sanjose').then(() => page.evaluate(() => PLANTA._despMedido));
+    const ay = await carga('ayora').then(() => page.evaluate(() => PLANTA._despMedido));
+    check('y no es un número clavado: Ayora y San José lo tienen con signo OPUESTO',
+          sj !== null && ay !== null && Math.sign(sj) !== Math.sign(ay),
+          `sanjose ${sj && sj.toFixed(2)} · ayora ${ay && ay.toFixed(2)}`);
+  }
+
   /* ── CADA TCU CONTRA EL MÁSTIL QUE ES EL SUYO ──────────────────────────────
      El margen de un seguidor se mide contra el mástil de SU (NCU, GW). Si el
      mástil se elige mal, todo el color de la planta es mentira y no se nota:
