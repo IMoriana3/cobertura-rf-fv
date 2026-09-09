@@ -703,6 +703,14 @@ const SONDA = `(() => {
         porTipo: PLANTA.pil && PLANTA.pil.porTipo,
         tipos: PLANTA._un.reduce((a2, u) => { a2[u.tp] = (a2[u.tp] || 0) + 1; return a2; }, {}),
         muestras,
+        /* SE FUERZA UN DIBUJO ANTES DE LEER LOS CONTADORES. `renderer.info.render`
+           describe el ÚLTIMO frame pintado, no la escena de ahora: leyéndolo a
+           secas se gana la carrera al siguiente `requestAnimationFrame` y sale
+           la planta ANTERIOR. En el runner de GitHub salieron 17,89 M de
+           triángulos con El Burgo cargado — que es exactamente la cifra de San
+           José, la planta de antes— y aquí pasaba por los pelos. Un frame
+           forzado y el número es el de esta escena, aquí y allí. */
+        ...(renderer.render(scene, camera) || {}),
         tris: renderer.info.render.triangles,
         calls: renderer.info.render.calls,
       };
@@ -758,13 +766,13 @@ const SONDA = `(() => {
     /* Y LAS LLAMADAS DE DIBUJO, que es el listón que NO depende de la máquina.
        Lo que dejó la página sin atender un clic no fueron los triángulos: fue
        mandar miles de mallas sueltas a la GPU. Con todo instanciado, El Burgo
-       entero da 1.103 medidas EN ESTE PUNTO del banco (un sondeo suelto con
-       otra cámara da 682: el recorte por frustum cuenta, así que el número hay
-       que tomarlo donde se va a comprobar). El tope va en 1.400: si alguien
-       deja de instanciar una pieza esto se dispara, aunque los triángulos no se
-       muevan, y no depende del procesador — que es lo que le pasa al reloj. */
-    check('y en menos de 1.400 llamadas de dibujo: todo va instanciado',
-          t.calls < 1400, t.calls + ' llamadas');
+       entero da 682 con el frame forzado. (Sin forzarlo salían 1.103, que era
+       el frame de OTRA planta: el mismo defecto que disparó los triángulos.)
+       El tope va en 900: si alguien deja de instanciar una pieza esto se
+       dispara aunque los triángulos no se muevan, y no depende del procesador
+       — que es lo que le pasa al reloj. */
+    check('y en menos de 900 llamadas de dibujo: todo va instanciado',
+          t.calls < 900, t.calls + ' llamadas');
     /* Y LO QUE DE VERDAD SE NOTA: cuánto tarda en rehacer la escena. Un
        presupuesto de triángulos es un proxy —y uno que hay que recalibrar cada
        vez que la geometría cambia—; esto mide el síntoma. El fallo que se
