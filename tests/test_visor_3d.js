@@ -60,6 +60,31 @@ let ok = 0, ko = 0;
    y habilitado —lo dice el propio log del fallo— y lo que sobra es esperar a
    que se quede quieto algo que por diseño no se queda quieto. */
 const CLIC = { noWaitAfter: true, timeout: 120000, force: true };
+
+/* ABRIR UNA PLANTA POR EL BOTON, SIN RELOJ.
+   El manejador del boton es `cargaPlanta(nom).then(casillas)`: dispara la
+   descarga y vuelve en el acto, asi que el clic de Playwright se resuelve con
+   la planta todavia sin cargar. El banco tapaba eso con un `waitForTimeout`
+   fijo — una apuesta a la velocidad de la maquina, y en el runner los 2.500 ms
+   se quedaron cortos: `PLANTA` seguia a null y el banco reventaba leyendo
+   `PLANTA.trk`. (El resto del banco no se enteraba porque carga las plantas con
+   `page.evaluate(() => cargaPlanta(...))`, que SI espera a la promesa.)
+   Aqui se espera a la CONDICION —la planta pedida esta puesta y con equipos— y
+   el tope es generoso, que es lo unico que un reloj debe medir: que no se
+   cuelgue. `rehacer()` es sincrono dentro del `then`, asi que ver `PLANTA.nom`
+   ya puesto significa que la escena esta construida. */
+async function abrePlanta(page, nom) {
+  await page.click(`#segpl [data-p="${nom}"]`, CLIC);
+  await page.waitForFunction(
+    /* Sin `window.`: la pagina declara `PLANTA`/`PLEQ` con `let` en el script,
+       y un `let` de primer nivel NO cuelga de `window`. Con `window.PLANTA` la
+       condicion era falsa SIEMPRE y la espera agotaba el tope. */
+    n => { try { return n ? !!(PLANTA && PLANTA.nom === n && PLEQ && PLEQ.length > 0)
+                          : (PLANTA === null && PLNOM === ''); }
+           catch (e) { return false; } },
+    nom, { timeout: 120000 });
+  await page.waitForTimeout(150);   // un respiro para que el frame se pinte
+}
 const near = (a, b, tol) => Math.abs(a - b) <= tol;
 const check = (n, cond, extra) => { if (cond) { ok++; console.log('OK   ' + n); }
   else { ko++; console.log('FAIL ' + n + (extra !== undefined ? ' -> ' + extra : '')); } };
@@ -443,7 +468,7 @@ const SONDA = `(() => {
         await page.evaluate(() => document.getElementById('tilt').disabled));
 
   /* ---- 18. planta real: layout, equipos donde dice el DWG y colocación ---- */
-  await page.click('[data-p="fayon"]', CLIC); await page.waitForTimeout(2500);
+  await abrePlanta(page, 'fayon');
   {
     const t = await page.evaluate(() => ({
       trk: PLANTA.trk.length, ncus: PLANTA.ncus.length, hsus: PLANTA.meteo.length,
@@ -525,7 +550,7 @@ const SONDA = `(() => {
        con el relieve real son muchas más. El terreno no es decoración. */
     check('el relieve cambia el resultado, y mucho', t.sin > 60, t.sin + ' filas por debajo de 8 dB');
   }
-  await page.click('[data-p=""]', CLIC); await page.waitForTimeout(1200);
+  await abrePlanta(page, '');
 
   /* ---- 18c. San José: 32 módulos por ala, huecos del levantamiento y sur ---- */
   await page.evaluate(() => cargaPlanta('sanjose'));
@@ -803,7 +828,7 @@ const SONDA = `(() => {
           ms < TOPE_MS, ms.toFixed(0) + ' ms');
   }
 
-  await page.click('[data-p=""]', CLIC); await page.waitForTimeout(2000);
+  await abrePlanta(page, '');
 
   /* ---- 18d-ter. el corte de estudio: apoyos en la retícula, y el
           amortiguador apoyado en un poste que existe ---- */
@@ -865,7 +890,7 @@ const SONDA = `(() => {
           t.planta && t.un > 200 && t.inst > 0, JSON.stringify(t));
     await set('htube', 1.5); await page.waitForTimeout(2000);
   }
-  await page.click('[data-p=""]', CLIC); await page.waitForTimeout(1500);
+  await abrePlanta(page, '');
 
   /* ---- 18f. la CALIBRACIÓN: qué modelo está hablando ---- */
   {
@@ -918,7 +943,7 @@ const SONDA = `(() => {
   }
 
   /* ---- 19. el rizado de dos rayos, dicho y no escondido ---- */
-  await page.click('[data-p=""]', CLIC); await page.waitForTimeout(1500);
+  await abrePlanta(page, '');
   {
     /* Es lo que hace que alejar un equipo pueda MEJORAR el margen. Con suelo
        perfecto el rebote es un espejo y el rizado es enorme; con tierra real,
