@@ -1,5 +1,7 @@
 # Cobertura RF — Zigbee 2.4 GHz en plantas FV con seguidores
 
+[![bancos](https://github.com/IMoriana3/cobertura-rf-fv/actions/workflows/bancos.yml/badge.svg)](https://github.com/IMoriana3/cobertura-rf-fv/actions/workflows/bancos.yml)
+
 Modelo físico de propagación y herramienta de visualización para los enlaces
 Zigbee / 802.15.4 (Digi XBee RR) entre las TCU de los seguidores y las NCU de
 una planta fotovoltaica.
@@ -90,6 +92,15 @@ node tests/test_visor_3d.js       # cotas, matrices y física en la escena
 node tests/test_bifila_plantas.js # las plantas reales, planta a planta
 node tests/test_imagen.js         # el DIBUJO, contra las vistas de referencia
 ```
+
+**Y se corren solos.** `.github/workflows/bancos.yml` los pasa en cada push a
+`main` y en cada pull request, cada uno en su propio job y en paralelo. El
+navegador va **pinchado** por la versión de `playwright`, para que el runner
+dibuje con el mismo Chromium que generó las imágenes de referencia. Si la
+prueba de imagen no casa, el workflow **sube lo que vio** (la vista de ahora y
+el diff) como artefacto; y tiene un botón manual —«Run workflow» con
+*actualizar_imagenes*— que regenera las referencias EN EL RUNNER y las deja en
+otro artefacto, para bajarlas, mirarlas y commitearlas.
 
 Los tres se reparten el trabajo y ninguno sobra: los dos primeros comprueban
 NÚMEROS (cuántas TCU se dibujan, a qué cota queda cada fila, qué margen sale);

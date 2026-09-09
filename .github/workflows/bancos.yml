@@ -1,0 +1,128 @@
+# LOS BANCOS, SOLOS.
+#
+# Hasta ahora se corrían a mano y tardan veinte minutos entre todos: en la
+# práctica eso significa que un cambio se podía mergear sin que nadie los
+# hubiera pasado. Cinco defectos visibles llegaron a producción por ese hueco.
+#
+# CÓMO ESTÁ MONTADO, y por qué así:
+#
+#   · Chromium PINCHADO por la versión de `playwright` (1.62.1). El paquete npm
+#     fija el binario del navegador, así que el runner dibuja con el MISMO que
+#     generó las imágenes de referencia. Sin ese pin, una actualización de
+#     Chromium rompería la prueba de imagen sin que nada del repo cambiara.
+#   · Cada banco en su propio job y `fail-fast: false`: si falla el de imagen se
+#     quiere saber igualmente si el del visor pasa. Y corren en paralelo.
+#   · El de imagen SUBE lo que ha visto cuando falla (la vista de ahora y el
+#     diff), que es lo único que hace accionable un fallo de píxeles.
+#
+# LO QUE NO SE PUEDE PROMETER DESDE FUERA. El dibujo lo hace SwiftShader por
+# software, y despacha según las instrucciones del procesador: la misma escena
+# en otra máquina puede mover píxeles de borde. Por eso la prueba de imagen
+# decide por BLOQUES de 8x8 (medido: el ruido propio es 0,056 % de bloques y un
+# defecto real mueve entre el 19 y el 32 %), y por eso existe el botón de
+# abajo: si el runner no casa con las referencias, se regeneran EN EL RUNNER y
+# se bajan del artefacto para commitearlas.
+name: bancos
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      actualizar_imagenes:
+        description: 'Regenerar las imágenes de referencia EN EL RUNNER y subirlas como artefacto (luego hay que MIRARLAS y commitearlas)'
+        type: boolean
+        default: false
+
+# No acumular ejecuciones sobre la misma rama: la última es la que importa.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PLAYWRIGHT_VERSION: 1.62.1
+  PNGJS_VERSION: 7.0.0
+
+jobs:
+  # El núcleo físico y la PARIDAD entre el .py y su port JS. Segundos, sin
+  # navegador: si esto falla, lo demás da igual.
+  nucleo:
+    name: núcleo + paridad py/js
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - run: python3 tests/test_nucleo.py
+
+  # Los tres bancos de navegador. Cada uno tarda entre cinco y quince minutos
+  # dibujando por software, así que van en paralelo.
+  navegador:
+    name: ${{ matrix.nombre }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { banco: test_visor_3d.js,       nombre: 'visor 3D' }
+          - { banco: test_bifila_plantas.js, nombre: 'plantas reales' }
+          - { banco: test_imagen.js,         nombre: 'imagen (vistas de referencia)' }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+
+      # `--no-save` a propósito: este repo NO lleva package.json (la página no
+      # depende de nada; las dependencias son solo de los bancos) y las
+      # versiones se fijan aquí arriba, a la vista.
+      - name: dependencias de los bancos
+        run: npm install --no-save --no-audit --no-fund
+             playwright@${{ env.PLAYWRIGHT_VERSION }} pngjs@${{ env.PNGJS_VERSION }}
+
+      - name: cache del navegador
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: chromium-${{ runner.os }}-${{ env.PLAYWRIGHT_VERSION }}
+
+      - name: Chromium
+        run: npx playwright install --with-deps chromium
+
+      # La página se sirve por HTTP: con doble clic (file://) los layouts y el
+      # CAD no llegan, que es justo lo que los bancos vienen a comprobar.
+      - name: servidor estático
+        run: |
+          python3 -m http.server 8099 >/dev/null 2>&1 &
+          for i in $(seq 1 30); do curl -sf -o /dev/null http://127.0.0.1:8099/index.html && break; sleep 1; done
+          curl -sf -o /dev/null http://127.0.0.1:8099/index.html
+
+      - name: ${{ matrix.nombre }}
+        env:
+          SALIDA: ${{ github.workspace }}/salida-imagen
+        run: |
+          if [ "${{ inputs.actualizar_imagenes }}" = "true" ] && [ "${{ matrix.banco }}" = "test_imagen.js" ]; then
+            node tests/${{ matrix.banco }} --actualizar
+          else
+            node tests/${{ matrix.banco }}
+          fi
+
+      # Un fallo de píxeles sin la imagen es un número que no dice nada.
+      - name: qué se vio (cuando la imagen no casa)
+        if: failure() && matrix.banco == 'test_imagen.js'
+        uses: actions/upload-artifact@v4
+        with:
+          name: imagen-que-no-casa
+          path: salida-imagen/
+          if-no-files-found: warn
+
+      # Referencias regeneradas en el runner, para bajarlas y commitearlas
+      # DESPUÉS DE MIRARLAS. Nunca se commitean solas.
+      - name: referencias regeneradas
+        if: always() && inputs.actualizar_imagenes && matrix.banco == 'test_imagen.js'
+        uses: actions/upload-artifact@v4
+        with:
+          name: referencias-del-runner
+          path: tests/ref/
