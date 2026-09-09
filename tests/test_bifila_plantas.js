@@ -539,6 +539,7 @@ const SONDA = `(() => {
      Ayora da +2,98 y San José −3,09. Signos OPUESTOS. Un número a mano habría
      roto una de las dos plantas. */
   console.log('\n· Las parejas deducidas caen donde caerían las medidas');
+  const despPorPlanta = {};
   for (const planta of ['sanjose', 'ayora']) {
     await carga(planta);
     const r = await page.evaluate(() => {
@@ -559,6 +560,7 @@ const SONDA = `(() => {
                mMed: mediana(med), mDed: mediana(ded),
                desp: PLANTA._despMedido, semi: PLANTA._semiMedido };
     });
+    despPorPlanta[planta] = r.desp;
     check(`${planta}: el desplazamiento se MIDE en la planta, no se asume`,
           r.desp !== null && Math.abs(r.desp) > 0.5, JSON.stringify(r));
     if (r.deducidas > 0) {
@@ -569,12 +571,14 @@ const SONDA = `(() => {
       check(`${planta}: no tiene parejas coincidentes que deducir`, r.deducidas === 0, r.deducidas);
     }
   }
-  /* El signo NO es una constante del mundo: es de cada planta. */
+  /* El signo NO es una constante del mundo: es de cada planta. Se comparan los
+     valores YA medidos en el bucle de arriba: recargar las dos plantas solo
+     para volver a leer un número costaba dos cargas de San José (2.289
+     seguidores) y no comprobaba nada más. */
   {
-    const sj = await carga('sanjose').then(() => page.evaluate(() => PLANTA._despMedido));
-    const ay = await carga('ayora').then(() => page.evaluate(() => PLANTA._despMedido));
+    const sj = despPorPlanta.sanjose, ay = despPorPlanta.ayora;
     check('y no es un número clavado: Ayora y San José lo tienen con signo OPUESTO',
-          sj !== null && ay !== null && Math.sign(sj) !== Math.sign(ay),
+          sj != null && ay != null && Math.sign(sj) !== Math.sign(ay),
           `sanjose ${sj && sj.toFixed(2)} · ayora ${ay && ay.toFixed(2)}`);
   }
 
@@ -646,20 +650,34 @@ const SONDA = `(() => {
       margenes: [...document.querySelectorAll('#lect .m')].map(e => parseFloat(e.textContent)),
       nota: document.getElementById('note').textContent || '',
     }));
-    const abre = async (sirveDem, planta) => {
-      const ctx = await browser.newContext({ viewport: { width: 1100, height: 800 } });
+    /* UN SOLO CONTEXTO, y la ruta se cambia entre cargas. Abrir un navegador
+       nuevo por comprobación costaba tres páginas y tres plantas enteras — y
+       este banco ya carga las ocho plantas más arriba. `unroute` + `route`
+       deja el mismo control sin volver a arrancar nada. */
+    const ctx = await browser.newContext({ viewport: { width: 1100, height: 800 } });
+    const pg = await ctx.newPage();
+    const sirve = async (sirveDem) => {
+      await ctx.unroute('**/elevation-tiles-prod/**');
       await ctx.route('**/elevation-tiles-prod/**', r => sirveDem
         ? r.fulfill({ status: 200, contentType: 'image/png',
                       headers: { 'access-control-allow-origin': '*' }, body: DEM })
         : r.abort());
-      const pg = await ctx.newPage();
-      await pg.goto(BASE, { waitUntil: 'networkidle' });
-      await pg.waitForTimeout(600);
+    };
+    await sirve(false);
+    await pg.goto(BASE, { waitUntil: 'networkidle' });
+    await pg.waitForTimeout(600);
+    const abre = async (sirveDem, planta, hastaElRender = true) => {
+      await sirve(sirveDem);
       await pg.evaluate(p => cargaPlanta(p), planta);
-      await pg.waitForFunction(p => { try { return !!(PLANTA && PLANTA.nom === p && PLI && PLI.length); }
-                                      catch (e) { return false; } }, planta, { timeout: 180000 });
-      await pg.waitForTimeout(1200);
-      const r = await lee(pg); await ctx.close(); return r;
+      /* La comprobación de Ayora solo mira si el DEM se ha descargado o no, y
+         eso se sabe en cuanto existe `PLANTA`: esperar a que se construyan sus
+         1.502 filas y su terreno era la carga más cara de la sección, y no
+         añadía ni una comprobación. */
+      await pg.waitForFunction(([p, r]) => { try {
+          return !!(PLANTA && PLANTA.nom === p && (!r || (PLI && PLI.length))); }
+          catch (e) { return false; } }, [planta, hastaElRender], { timeout: 180000 });
+      await pg.waitForTimeout(hastaElRender ? 1200 : 200);
+      return lee(pg);
     };
 
     const plano = await abre(false, 'elburgo');
@@ -693,10 +711,11 @@ const SONDA = `(() => {
 
     /* EL LEVANTAMIENTO MANDA. Con cotas medidas el DEM no se baja siquiera:
        30 m de paso contra una fila de 74 sería cambiar una medida por un mapa. */
-    const ayora = await abre(true, 'ayora');
+    const ayora = await abre(true, 'ayora', false);
     check('Ayora, que SÍ tiene levantamiento, ignora el DEM',
           ayora.cot === true && ayora.dem === null,
           JSON.stringify({ cot: ayora.cot, dem: ayora.dem }));
+    await ctx.close();
   }
 
   check('sin errores de JS en ninguna planta', errs.length === 0, errs.slice(0, 3));

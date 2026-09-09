@@ -62,14 +62,31 @@ jobs:
   navegador:
     name: ${{ matrix.nombre }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # UN TOPE POR BANCO, MEDIDO. Los tres tardan cosas muy distintas y un tope
+    # unico solo puede ser el del mas lento, que es no vigilar a los otros dos.
+    #
+    #   banco             aqui     en el runner     tope
+    #   visor 3D           ~90 s      4 min          30
+    #   imagen            ~17 min    19 min          45
+    #   plantas reales    626 s      >45 min (!)     90
+    #
+    # `plantas reales` se comio los 45 minutos y el tope lo CORTO —hizo justo su
+    # trabajo—. No es un cuelgue: el banco hace 19 construcciones de planta y sus
+    # comprobaciones son el 91 % del tiempo (las cargas son 55 s de 626), asi que
+    # el presupuesto estaba corto, no el banco desbocado. Se sube a 90 con la
+    # medida delante.
+    #
+    # Y queda dicho lo que toca de verdad: este banco ha crecido hasta hacer el
+    # trabajo de tres y deberia PARTIRSE en varias entradas de esta matriz. Subir
+    # el tope compra tiempo; partirlo es el arreglo.
+    timeout-minutes: ${{ matrix.tope }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { banco: test_visor_3d.js,       nombre: 'visor 3D' }
-          - { banco: test_bifila_plantas.js, nombre: 'plantas reales' }
-          - { banco: test_imagen.js,         nombre: 'imagen (vistas de referencia)' }
+          - { banco: test_visor_3d.js,       nombre: 'visor 3D',                    tope: 30 }
+          - { banco: test_bifila_plantas.js, nombre: 'plantas reales',              tope: 90 }
+          - { banco: test_imagen.js,         nombre: 'imagen (vistas de referencia)', tope: 45 }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
