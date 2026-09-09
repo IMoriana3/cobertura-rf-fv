@@ -33,7 +33,14 @@
 const { chromium } = require('playwright');
 
 const URL  = process.env.URL || 'http://127.0.0.1:8099/index.html';
-const EXEC = process.env.PW_CHROMIUM || '/opt/pw-browsers/chromium';
+/* DÓNDE ESTÁ CHROMIUM. `PW_CHROMIUM` si se dice; si no, el del contenedor de
+   desarrollo cuando existe; y si tampoco, NADA — que es lo que hace que
+   Playwright use el navegador que él mismo gestiona. Estaba clavada la ruta
+   del contenedor como valor POR DEFECTO, y en un runner de GitHub eso es
+   «executable doesn't exist»: los tres bancos de navegador morían en un
+   segundo, antes de comprobar nada. */
+const PW_DEV = '/opt/pw-browsers/chromium';
+const EXEC = process.env.PW_CHROMIUM || (require('fs').existsSync(PW_DEV) ? PW_DEV : undefined);
 let ok = 0, ko = 0;
 /* Estos botones no navegan a ningún sitio, pero Playwright espera igual a que
    «terminen las navegaciones programadas» — y esa espera necesita el hilo
@@ -42,8 +49,17 @@ let ok = 0, ko = 0;
    agotaba sin que nada estuviera mal en la página.
    Y por lo mismo, 30 s no bastan para la comprobación de «estable», que se hace
    con requestAnimationFrame: con el hilo así de cargado, agotarla no dice nada
-   de la página. 120 s. */
-const CLIC = { noWaitAfter: true, timeout: 120000 };
+   de la página. 120 s.
+
+   Y NI CON 120 s: la comprobación de «estable» pide DOS frames seguidos con el
+   mismo rectángulo, y esta página no para de dibujar nunca —el bucle de render
+   corre siempre—, así que en San José, con 2.289 seguidores y frames de
+   segundos, no se cumple jamás. Aquí fallaba dos veces seguidas en local y
+   luego en el runner de GitHub, siempre en el mismo clic, sin que la página
+   tuviera nada. `force` se salta esa comprobación: el botón está ahí, visible
+   y habilitado —lo dice el propio log del fallo— y lo que sobra es esperar a
+   que se quede quieto algo que por diseño no se queda quieto. */
+const CLIC = { noWaitAfter: true, timeout: 120000, force: true };
 const near = (a, b, tol) => Math.abs(a - b) <= tol;
 const check = (n, cond, extra) => { if (cond) { ok++; console.log('OK   ' + n); }
   else { ko++; console.log('FAIL ' + n + (extra !== undefined ? ' -> ' + extra : '')); } };
@@ -316,7 +332,7 @@ const SONDA = `(() => {
 
   /* ---- 13. el tramo dibujado es el que se anuncia ---- */
   for (const [mods, largo] of [[7, 16.57], [28, 64.70]]) {
-    await page.click('[data-m="' + mods + '"]'); await page.waitForTimeout(1200);
+    await page.click('[data-m="' + mods + '"]', CLIC); await page.waitForTimeout(1200);
     const t = await page.evaluate(SONDA);
     check('tramo de ' + mods + ' módulos por ala = ' + largo + ' m', near(t.span, largo, 0.02), t.span);
   }

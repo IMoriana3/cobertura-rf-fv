@@ -39,7 +39,14 @@ const fs = require('fs');
 const path = require('path');
 
 const BASE = process.env.URL || 'http://127.0.0.1:8099/index.html';
-const EXEC = process.env.PW_CHROMIUM || '/opt/pw-browsers/chromium';
+/* DÓNDE ESTÁ CHROMIUM. `PW_CHROMIUM` si se dice; si no, el del contenedor de
+   desarrollo cuando existe; y si tampoco, NADA — que es lo que hace que
+   Playwright use el navegador que él mismo gestiona. Estaba clavada la ruta
+   del contenedor como valor POR DEFECTO, y en un runner de GitHub eso es
+   «executable doesn't exist»: los tres bancos de navegador morían en un
+   segundo, antes de comprobar nada. */
+const PW_DEV = '/opt/pw-browsers/chromium';
+const EXEC = process.env.PW_CHROMIUM || (require('fs').existsSync(PW_DEV) ? PW_DEV : undefined);
 const REF = path.join(__dirname, 'ref');
 const SALIDA = process.env.SALIDA || '/tmp/imagen-visor';
 const ACTUALIZAR = process.argv.includes('--actualizar');
@@ -52,6 +59,17 @@ const W = 640, H = 360;
    5 y el 93 %. Hay sitio de sobra entre una cosa y la otra; el banco vigila
    ese margen y lo dice si se estrecha. */
 const UMBRAL = 12, MAX_PCT = 0.35;
+
+/* Y UNA SEGUNDA MEDIDA, POR BLOQUES, que es la que DECIDE. Motivo: el
+   rasterizado por software (SwiftShader) despacha según las instrucciones del
+   procesador, así que la misma escena en otra máquina —un runner de GitHub, el
+   portátil de otro— puede mover píxeles sueltos en los bordes sin que nada
+   haya cambiado en el dibujo. Comparar píxel a píxel ataría las referencias a
+   ESTE ordenador. Promediando en bloques de 8x8 esas diferencias se van y lo
+   que queda es la forma: un seguidor en otro sitio, el terreno donde no toca,
+   un encuadre movido. La medida fina se sigue calculando y se sigue enseñando
+   —y es la que pinta el diff— pero no es la que falla. */
+const BLOQUE = 8, UMBRAL_B = 8, MAX_PCT_B = 1.0;
 
 let ok = 0, ko = 0;
 const check = (n, cond, extra) => { if (cond) { ok++; console.log('OK   ' + n); }
@@ -145,7 +163,7 @@ const foto = async (page) => Buffer.from((await page.evaluate(
 
 function compara(a, b) {
   const A = PNG.sync.read(a), B = PNG.sync.read(b);
-  if (A.width !== B.width || A.height !== B.height) return { medida: true, pct: 100, dif: null, A, B };
+  if (A.width !== B.width || A.height !== B.height) return { medida: true, pct: 100, pctB: 100, dif: null };
   const dif = new PNG({ width: A.width, height: A.height });
   let n = 0;
   for (let i = 0; i < A.data.length; i += 4) {
@@ -154,7 +172,22 @@ function compara(a, b) {
     dif.data[i] = malo ? 255 : A.data[i] >> 2; dif.data[i+1] = malo ? 0 : A.data[i+1] >> 2;
     dif.data[i+2] = malo ? 255 : A.data[i+2] >> 2; dif.data[i+3] = 255;
   }
-  return { medida: false, pct: 100 * n / (A.width * A.height), dif };
+  // por bloques: media de cada bloque en las dos imágenes, y cuántos se mueven
+  const bx = Math.ceil(A.width / BLOQUE), by = Math.ceil(A.height / BLOQUE);
+  let nb = 0;
+  for (let gy = 0; gy < by; gy++) for (let gx = 0; gx < bx; gx++) {
+    let sa = [0, 0, 0], sb = [0, 0, 0], c = 0;
+    for (let y = gy * BLOQUE; y < Math.min((gy + 1) * BLOQUE, A.height); y++)
+      for (let x = gx * BLOQUE; x < Math.min((gx + 1) * BLOQUE, A.width); x++) {
+        const i = (y * A.width + x) * 4;
+        for (let k = 0; k < 3; k++) { sa[k] += A.data[i + k]; sb[k] += B.data[i + k]; }
+        c++;
+      }
+    let peor = 0;
+    for (let k = 0; k < 3; k++) peor = Math.max(peor, Math.abs(sa[k] - sb[k]) / c);
+    if (peor > UMBRAL_B) nb++;
+  }
+  return { medida: false, pct: 100 * n / (A.width * A.height), pctB: 100 * nb / (bx * by), dif };
 }
 
 (async () => {
@@ -175,7 +208,7 @@ function compara(a, b) {
 
   fs.mkdirSync(SALIDA, { recursive: true });
   let cargada = null;
-  const ruido = [];
+  const ruido = [], ruidoFino = [];
 
   for (const v of VISTAS) {
     if (cargada !== v.planta) { await page.evaluate(p => cargaPlanta(p), v.planta);
@@ -187,7 +220,7 @@ function compara(a, b) {
     const img = await foto(page);
     // ruido propio: dos renders de la MISMA escena
     const img2 = await foto(page);
-    ruido.push(compara(img, img2).pct);
+    const rn = compara(img, img2); ruido.push(rn.pctB); ruidoFino.push(rn.pct);
 
     const ref = path.join(REF, v.n + '.png');
     if (ACTUALIZAR || !fs.existsSync(ref)) {
@@ -197,20 +230,21 @@ function compara(a, b) {
     }
     const r = compara(fs.readFileSync(ref), img);
     if (r.medida) { check(v.n + ': la vista mide lo que su referencia', false, 'tamaño distinto'); continue; }
-    if (r.pct > MAX_PCT) {
+    if (r.pctB > MAX_PCT_B) {
       fs.writeFileSync(path.join(SALIDA, v.n + '-ahora.png'), img);
       fs.writeFileSync(path.join(SALIDA, v.n + '-dif.png'), PNG.sync.write(r.dif));
     }
-    check(v.n + ' se ve como su referencia (' + r.pct.toFixed(2) + ' % de píxeles movidos)',
-          r.pct <= MAX_PCT, r.pct.toFixed(2) + ' % > ' + MAX_PCT + ' % · mira ' + SALIDA + '/' + v.n + '-dif.png');
+    check(v.n + ' se ve como su referencia (' + r.pctB.toFixed(2) + ' % de bloques · ' + r.pct.toFixed(2) + ' % de píxeles)',
+          r.pctB <= MAX_PCT_B, r.pctB.toFixed(2) + ' % > ' + MAX_PCT_B + ' % de bloques · mira ' + SALIDA + '/' + v.n + '-dif.png');
   }
 
   /* Y QUE LA TOLERANCIA SIGA VALIENDO. Si el ruido propio del render se acerca
      a la tolerancia, la prueba deja de distinguir un defecto de un parpadeo y
      hay que enterarse ANTES de que empiece a fallar sola. */
-  const peor = Math.max(...ruido);
+  const peor = Math.max(...ruido), peorF = Math.max(...ruidoFino);
   check('el ruido del propio render queda MUY por debajo de la tolerancia (' +
-        peor.toFixed(3) + ' % frente a ' + MAX_PCT + ' %)', peor < MAX_PCT / 3, peor.toFixed(3));
+        peor.toFixed(3) + ' % de bloques y ' + peorF.toFixed(3) + ' % de píxeles, frente a ' +
+        MAX_PCT_B + ' %)', peor < MAX_PCT_B / 3, peor.toFixed(3));
   check('sin errores de JS en ninguna vista', errs.length === 0, errs.slice(0, 3));
 
   await browser.close();
