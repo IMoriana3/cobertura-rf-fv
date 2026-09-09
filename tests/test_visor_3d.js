@@ -704,6 +704,7 @@ const SONDA = `(() => {
         tipos: PLANTA._un.reduce((a2, u) => { a2[u.tp] = (a2[u.tp] || 0) + 1; return a2; }, {}),
         muestras,
         tris: renderer.info.render.triangles,
+        calls: renderer.info.render.calls,
       };
     });
     /* EL BURGO TIENE RETÍCULA MEDIDA, la de los círculos del Tierras.dwg, y es
@@ -754,6 +755,16 @@ const SONDA = `(() => {
        TIEMPO de rehacer la escena, que es lo que de verdad se nota. */
     check('y sin dispararse: la planta se dibuja con menos de 3,5 M de triángulos',
           t.tris < 3.5e6, (t.tris / 1e6).toFixed(2) + ' M');
+    /* Y LAS LLAMADAS DE DIBUJO, que es el listón que NO depende de la máquina.
+       Lo que dejó la página sin atender un clic no fueron los triángulos: fue
+       mandar miles de mallas sueltas a la GPU. Con todo instanciado, El Burgo
+       entero da 1.103 medidas EN ESTE PUNTO del banco (un sondeo suelto con
+       otra cámara da 682: el recorte por frustum cuenta, así que el número hay
+       que tomarlo donde se va a comprobar). El tope va en 1.400: si alguien
+       deja de instanciar una pieza esto se dispara, aunque los triángulos no se
+       muevan, y no depende del procesador — que es lo que le pasa al reloj. */
+    check('y en menos de 1.400 llamadas de dibujo: todo va instanciado',
+          t.calls < 1400, t.calls + ' llamadas');
     /* Y LO QUE DE VERDAD SE NOTA: cuánto tarda en rehacer la escena. Un
        presupuesto de triángulos es un proxy —y uno que hay que recalibrar cada
        vez que la geometría cambia—; esto mide el síntoma. El fallo que se
@@ -764,12 +775,24 @@ const SONDA = `(() => {
       rehacer();
       return performance.now() - t0;
     });
-    /* Medido: 49 ms con El Burgo bífilo entero y renderizado por software
+    /* Medido: 44 ms con El Burgo bífilo entero y renderizado por software
        (swiftshader), que es más lento que cualquier máquina real. El listón va
        en 500 ms — diez veces el valor medido — para que sea un tope que cace un
-       atasco de verdad y no un número decorativo. */
-    check('y la escena se rehace en menos de 500 ms: la página sigue respondiendo',
-          ms < 500, ms.toFixed(0) + ' ms');
+       atasco de verdad y no un número decorativo.
+
+       PERO NO EN UN RUNNER COMPARTIDO. Este mismo código, en GitHub Actions,
+       dio 34.499 ms en una ejecución y pasó holgado en la anterior: ahí el
+       reloj de pared mide a los vecinos de la máquina, no a la página, y un
+       banco que falla por eso enseña a ignorar los rojos. En CI el listón pasa
+       a «que no se cuelgue» (dos minutos), que es el fallo catastrófico que
+       sigue mereciendo un rojo en cualquier sitio; el listón fino de verdad lo
+       pone arriba el número de llamadas de dibujo, que no depende del
+       procesador. */
+    const EN_CI = !!process.env.CI, TOPE_MS = EN_CI ? 120000 : 500;
+    check('y la escena se rehace ' + (EN_CI
+            ? 'sin colgarse (en CI el reloj mide la máquina, no la página)'
+            : 'en menos de 500 ms: la página sigue respondiendo'),
+          ms < TOPE_MS, ms.toFixed(0) + ' ms');
   }
 
   await page.click('[data-p=""]', CLIC); await page.waitForTimeout(2000);
