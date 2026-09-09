@@ -60,6 +60,31 @@ let ok = 0, ko = 0;
    y habilitado —lo dice el propio log del fallo— y lo que sobra es esperar a
    que se quede quieto algo que por diseño no se queda quieto. */
 const CLIC = { noWaitAfter: true, timeout: 120000, force: true };
+
+/* ABRIR UNA PLANTA POR EL BOTON, SIN RELOJ.
+   El manejador del boton es `cargaPlanta(nom).then(casillas)`: dispara la
+   descarga y vuelve en el acto, asi que el clic de Playwright se resuelve con
+   la planta todavia sin cargar. El banco tapaba eso con un `waitForTimeout`
+   fijo — una apuesta a la velocidad de la maquina, y en el runner los 2.500 ms
+   se quedaron cortos: `PLANTA` seguia a null y el banco reventaba leyendo
+   `PLANTA.trk`. (El resto del banco no se enteraba porque carga las plantas con
+   `page.evaluate(() => cargaPlanta(...))`, que SI espera a la promesa.)
+   Aqui se espera a la CONDICION —la planta pedida esta puesta y con equipos— y
+   el tope es generoso, que es lo unico que un reloj debe medir: que no se
+   cuelgue. `rehacer()` es sincrono dentro del `then`, asi que ver `PLANTA.nom`
+   ya puesto significa que la escena esta construida. */
+async function abrePlanta(page, nom) {
+  await page.click(`#segpl [data-p="${nom}"]`, CLIC);
+  await page.waitForFunction(
+    /* Sin `window.`: la pagina declara `PLANTA`/`PLEQ` con `let` en el script,
+       y un `let` de primer nivel NO cuelga de `window`. Con `window.PLANTA` la
+       condicion era falsa SIEMPRE y la espera agotaba el tope. */
+    n => { try { return n ? !!(PLANTA && PLANTA.nom === n && PLEQ && PLEQ.length > 0)
+                          : (PLANTA === null && PLNOM === ''); }
+           catch (e) { return false; } },
+    nom, { timeout: 120000 });
+  await page.waitForTimeout(150);   // un respiro para que el frame se pinte
+}
 const near = (a, b, tol) => Math.abs(a - b) <= tol;
 const check = (n, cond, extra) => { if (cond) { ok++; console.log('OK   ' + n); }
   else { ko++; console.log('FAIL ' + n + (extra !== undefined ? ' -> ' + extra : '')); } };
@@ -443,7 +468,7 @@ const SONDA = `(() => {
         await page.evaluate(() => document.getElementById('tilt').disabled));
 
   /* ---- 18. planta real: layout, equipos donde dice el DWG y colocación ---- */
-  await page.click('[data-p="fayon"]', CLIC); await page.waitForTimeout(2500);
+  await abrePlanta(page, 'fayon');
   {
     const t = await page.evaluate(() => ({
       trk: PLANTA.trk.length, ncus: PLANTA.ncus.length, hsus: PLANTA.meteo.length,
@@ -525,7 +550,7 @@ const SONDA = `(() => {
        con el relieve real son muchas más. El terreno no es decoración. */
     check('el relieve cambia el resultado, y mucho', t.sin > 60, t.sin + ' filas por debajo de 8 dB');
   }
-  await page.click('[data-p=""]', CLIC); await page.waitForTimeout(1200);
+  await abrePlanta(page, '');
 
   /* ---- 18c. San José: 32 módulos por ala, huecos del levantamiento y sur ---- */
   await page.evaluate(() => cargaPlanta('sanjose'));
@@ -703,7 +728,16 @@ const SONDA = `(() => {
         porTipo: PLANTA.pil && PLANTA.pil.porTipo,
         tipos: PLANTA._un.reduce((a2, u) => { a2[u.tp] = (a2[u.tp] || 0) + 1; return a2; }, {}),
         muestras,
+        /* SE FUERZA UN DIBUJO ANTES DE LEER LOS CONTADORES. `renderer.info.render`
+           describe el ÚLTIMO frame pintado, no la escena de ahora: leyéndolo a
+           secas se gana la carrera al siguiente `requestAnimationFrame` y sale
+           la planta ANTERIOR. En el runner de GitHub salieron 17,89 M de
+           triángulos con El Burgo cargado — que es exactamente la cifra de San
+           José, la planta de antes— y aquí pasaba por los pelos. Un frame
+           forzado y el número es el de esta escena, aquí y allí. */
+        ...(renderer.render(scene, camera) || {}),
         tris: renderer.info.render.triangles,
+        calls: renderer.info.render.calls,
       };
     });
     /* EL BURGO TIENE RETÍCULA MEDIDA, la de los círculos del Tierras.dwg, y es
@@ -754,6 +788,16 @@ const SONDA = `(() => {
        TIEMPO de rehacer la escena, que es lo que de verdad se nota. */
     check('y sin dispararse: la planta se dibuja con menos de 3,5 M de triángulos',
           t.tris < 3.5e6, (t.tris / 1e6).toFixed(2) + ' M');
+    /* Y LAS LLAMADAS DE DIBUJO, que es el listón que NO depende de la máquina.
+       Lo que dejó la página sin atender un clic no fueron los triángulos: fue
+       mandar miles de mallas sueltas a la GPU. Con todo instanciado, El Burgo
+       entero da 682 con el frame forzado. (Sin forzarlo salían 1.103, que era
+       el frame de OTRA planta: el mismo defecto que disparó los triángulos.)
+       El tope va en 900: si alguien deja de instanciar una pieza esto se
+       dispara aunque los triángulos no se muevan, y no depende del procesador
+       — que es lo que le pasa al reloj. */
+    check('y en menos de 900 llamadas de dibujo: todo va instanciado',
+          t.calls < 900, t.calls + ' llamadas');
     /* Y LO QUE DE VERDAD SE NOTA: cuánto tarda en rehacer la escena. Un
        presupuesto de triángulos es un proxy —y uno que hay que recalibrar cada
        vez que la geometría cambia—; esto mide el síntoma. El fallo que se
@@ -764,15 +808,27 @@ const SONDA = `(() => {
       rehacer();
       return performance.now() - t0;
     });
-    /* Medido: 49 ms con El Burgo bífilo entero y renderizado por software
+    /* Medido: 44 ms con El Burgo bífilo entero y renderizado por software
        (swiftshader), que es más lento que cualquier máquina real. El listón va
        en 500 ms — diez veces el valor medido — para que sea un tope que cace un
-       atasco de verdad y no un número decorativo. */
-    check('y la escena se rehace en menos de 500 ms: la página sigue respondiendo',
-          ms < 500, ms.toFixed(0) + ' ms');
+       atasco de verdad y no un número decorativo.
+
+       PERO NO EN UN RUNNER COMPARTIDO. Este mismo código, en GitHub Actions,
+       dio 34.499 ms en una ejecución y pasó holgado en la anterior: ahí el
+       reloj de pared mide a los vecinos de la máquina, no a la página, y un
+       banco que falla por eso enseña a ignorar los rojos. En CI el listón pasa
+       a «que no se cuelgue» (dos minutos), que es el fallo catastrófico que
+       sigue mereciendo un rojo en cualquier sitio; el listón fino de verdad lo
+       pone arriba el número de llamadas de dibujo, que no depende del
+       procesador. */
+    const EN_CI = !!process.env.CI, TOPE_MS = EN_CI ? 120000 : 500;
+    check('y la escena se rehace ' + (EN_CI
+            ? 'sin colgarse (en CI el reloj mide la máquina, no la página)'
+            : 'en menos de 500 ms: la página sigue respondiendo'),
+          ms < TOPE_MS, ms.toFixed(0) + ' ms');
   }
 
-  await page.click('[data-p=""]', CLIC); await page.waitForTimeout(2000);
+  await abrePlanta(page, '');
 
   /* ---- 18d-ter. el corte de estudio: apoyos en la retícula, y el
           amortiguador apoyado en un poste que existe ---- */
@@ -834,7 +890,7 @@ const SONDA = `(() => {
           t.planta && t.un > 200 && t.inst > 0, JSON.stringify(t));
     await set('htube', 1.5); await page.waitForTimeout(2000);
   }
-  await page.click('[data-p=""]', CLIC); await page.waitForTimeout(1500);
+  await abrePlanta(page, '');
 
   /* ---- 18f. la CALIBRACIÓN: qué modelo está hablando ---- */
   {
@@ -887,7 +943,7 @@ const SONDA = `(() => {
   }
 
   /* ---- 19. el rizado de dos rayos, dicho y no escondido ---- */
-  await page.click('[data-p=""]', CLIC); await page.waitForTimeout(1500);
+  await abrePlanta(page, '');
   {
     /* Es lo que hace que alejar un equipo pueda MEJORAR el margen. Con suelo
        perfecto el rebote es un espejo y el rizado es enorme; con tierra real,
