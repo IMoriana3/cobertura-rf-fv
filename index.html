@@ -774,6 +774,99 @@ const CON_COTAS={ayora:1, sanjose:1};
    por ala -> filas de 74 m en vez de 64,7, y sus cotas medidas lo confirman
    (74,4 m de media). Con el 28 por defecto, sus mesas saldrían cortas. */
 const MODS_PLANTA={sanjose:32};
+/* ───────── EL RELIEVE DE LAS PLANTAS SIN LEVANTAMIENTO ─────────
+   Ayora y San José traen su levantamiento; las otras seis no, y se dibujaban
+   PLANAS. A 2,4 GHz eso no es decorado: un cerro entre una TCU y su NCU es un
+   obstáculo, y con el suelo plano ese cerro no existe — los márgenes salen
+   OPTIMISTAS. Y justo en El Burgo, que es la planta con medidas reales contra
+   las que calibrar.
+
+   `terreno.html` lleva tiempo bajándose el relieve de las teselas Terrarium
+   (elevation-tiles-prod). Es la misma fuente, con dos reglas que importan:
+
+     · EL LEVANTAMIENTO MANDA. Donde hay cotas medidas no se toca nada. El DEM
+       da unos 30 m de paso y una fila mide 74: sirve para ver el valle, no
+       para leer una mesa. Por eso solo entra donde no hay nada mejor.
+     · SI NO SE PUEDE BAJAR, SE DICE. Sin red, o con el CDN caído, la planta se
+       queda plana y la nota lo declara. Nunca se finge un relieve que no se ha
+       podido leer — que es la diferencia entre «no lo sé» y «es llano».
+
+   Terrarium mete la cota en el color: (R·256 + G + B/256) − 32768 metros. */
+const DEM_TESELA=(z,x,y)=>`https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`;
+const lon2tx=(lon,z)=>(lon+180)/360*Math.pow(2,z);
+const lat2ty=(lat,z)=>{ const r=lat*Math.PI/180;
+  return (1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*Math.pow(2,z); };
+function cargaImg(u){ return new Promise((res,rej)=>{ const im=new Image();
+  im.crossOrigin="anonymous"; im.onload=()=>res(im); im.onerror=()=>rej(new Error(u)); im.src=u; }); }
+
+/* El marco local del layout es métrico y centrado en (clat, clon): x al este,
+   n al norte. Un grado de latitud son 111.320 m; uno de longitud, eso por el
+   coseno de la latitud. A la escala de una planta (kilómetros) la aproximación
+   plana sobra — el error es de centímetros. */
+function llDe(lay){
+  const mLat=111320, mLon=111320*Math.cos((lay.clat||0)*Math.PI/180);
+  return { lat:(n)=>lay.clat+n/mLat, lon:(x)=>lay.clon+x/mLon };
+}
+
+async function cargaDEM(lay){
+  if(typeof lay.clat!=="number"||typeof lay.clon!=="number")
+    return {ok:false, porque:"el layout no trae clat/clon: no se puede georreferenciar"};
+  const T=lay.trackers||[];
+  if(!T.length) return {ok:false, porque:"el layout no trae seguidores"};
+  let x0=1e9,x1=-1e9,n0=1e9,n1=-1e9;
+  const mete=q=>{ x0=Math.min(x0,q.x);x1=Math.max(x1,q.x);n0=Math.min(n0,q.n);n1=Math.max(n1,q.n); };
+  T.forEach(mete); (lay.ncus||[]).forEach(mete); (lay.meteo||[]).forEach(mete);
+  /* 300 m de margen: la NCU puede estar fuera del campo, y el terreno se dibuja
+     con holgura alrededor de la planta. */
+  const MG=300; x0-=MG; x1+=MG; n0-=MG; n1+=MG;
+  const ll=llDe(lay);
+  const latN=ll.lat(n1), latS=ll.lat(n0), lonW=ll.lon(x0), lonE=ll.lon(x1);
+  /* Mismo criterio que terreno.html: las plantas grandes piden una tesela más
+     fina o el terreno sale aterrazado. */
+  const z=(Math.max(x1-x0,n1-n0)>1500)?15:14;
+  const txmin=Math.floor(lon2tx(lonW,z)), txmax=Math.floor(lon2tx(lonE,z));
+  const tymin=Math.floor(lat2ty(latN,z)), tymax=Math.floor(lat2ty(latS,z));
+  const W=(txmax-txmin+1)*256, H=(tymax-tymin+1)*256;
+  const cv=document.createElement("canvas"); cv.width=W; cv.height=H;
+  const ctx=cv.getContext("2d", {willReadFrequently:true});
+  let ok=0, fallan=0;
+  const tareas=[];
+  for(let tx=txmin;tx<=txmax;tx++) for(let ty=tymin;ty<=tymax;ty++){
+    tareas.push(cargaImg(DEM_TESELA(z,tx,ty))
+      .then(im=>{ ctx.drawImage(im,(tx-txmin)*256,(ty-tymin)*256,256,256); ok++; })
+      .catch(()=>{ fallan++; }));
+  }
+  await Promise.all(tareas);
+  if(!ok) return {ok:false, porque:`no contestó ninguna de las ${fallan} teselas de relieve`};
+  let img=null;
+  /* Un canvas con una tesela de otro origen SIN cabeceras CORS queda «teñido» y
+     `getImageData` lanza. Eso es no tener DEM, no un error a medias. */
+  try{ img=ctx.getImageData(0,0,W,H); }
+  catch(e){ return {ok:false, porque:"las teselas no llegan con CORS: el lienzo queda teñido"}; }
+  const d=img.data;
+  const px=(lat,lon)=>({x:(lon2tx(lon,z)-txmin)*256, y:(lat2ty(lat,z)-tymin)*256});
+  /* BILINEAL, como en terreno.html: a píxel pegado el pie de un poste se
+     entierra en las cuestas. */
+  function cotaLL(lat,lon){
+    const p=px(lat,lon);
+    const fx=Math.max(0,Math.min(W-1,p.x)), fy=Math.max(0,Math.min(H-1,p.y));
+    const ax=Math.floor(fx), ay=Math.floor(fy);
+    const bx=Math.min(W-1,ax+1), by=Math.min(H-1,ay+1);
+    const tx=fx-ax, ty=fy-ay;
+    const g=(ix,iy)=>{ const i=(iy*W+ix)*4; return d[i]*256+d[i+1]+d[i+2]/256; };
+    return (g(ax,ay)*(1-tx)+g(bx,ay)*tx)*(1-ty)+(g(ax,by)*(1-tx)+g(bx,by)*tx)*ty-32768;
+  }
+  /* La escena trabaja alrededor de y=0, como con el levantamiento (que va
+     referido a su propia base). Se resta la cota MEDIA de los seguidores, no la
+     del centro: con la NCU fuera del campo el centro puede caer en un barranco
+     y toda la planta saldría desplazada. */
+  const base=T.reduce((a,t)=>a+cotaLL(ll.lat(t.n),ll.lon(t.x)),0)/T.length;
+  const cotas=T.map(t=>cotaLL(ll.lat(t.n),ll.lon(t.x)));
+  return { ok:true, z, teselas:ok, fallan, base,
+           desnivel:Math.max(...cotas)-Math.min(...cotas),
+           en:(x,n)=>cotaLL(ll.lat(n),ll.lon(x))-base };
+}
+
 function cargaCotas(nom){
   if(!CON_COTAS[nom]) return Promise.resolve(null);
   return fetch("plantas/"+nom+"_cotas.json",{cache:"no-store"})
@@ -787,7 +880,12 @@ function cargaPlanta(nom){
   return Promise.all([
       fetch("plantas/"+nom+"_layout.json",{cache:"no-store"}).then(r=>{ if(!r.ok) throw 0; return r.json(); }),
       cargaCotas(nom)])
-    .then(([j,cot])=>{
+    /* SOLO DONDE NO HAY LEVANTAMIENTO. Con cotas medidas el DEM no pinta nada
+       —30 m de paso contra una fila de 74— y encima costaría una descarga. */
+    .then(([j,cot])=> cot ? [j,cot,null]
+                          : cargaDEM(j).then(d=>[j,cot,d],
+                              e=>[j,cot,{ok:false,porque:"la descarga del relieve falló: "+(e&&e.message||e)}]))
+    .then(([j,cot,dem])=>{
       const mods=j.mods||MODS_PLANTA[nom]||28;
       const az=(j.trackers&&j.trackers.length)?(j.trackers[0].rot||0):0;   // GRADOS
       PLANTA={
@@ -1018,6 +1116,10 @@ function cargaPlanta(nom){
          (−16,6°) y con la latitud del deslizador el sol iría al revés y los
          seguidores con él. Se escribe en el mando, que sigue siendo editable. */
       if(typeof j.clat==="number"){ $("lat").value=j.clat.toFixed(1); }
+      /* El relieve bajado se guarda SIEMPRE, haya salido bien o mal: si salió
+         mal, la nota tiene que poder decir por qué está plana. */
+      PLANTA.dem=(dem&&dem.ok)?dem:null;
+      PLANTA.demFallo=(dem&&!dem.ok)?dem.porque:null;
       rehacer();
     })
     .catch(err=>{ PLANTA=null; PLNOM=""; rehacer();
@@ -1054,7 +1156,10 @@ function unproj(u,v){
    tomaron en los extremos de cada mesa), así que no se inventa un DEM que no
    existe. Fuera de la banda de la fila se prolonga con su pendiente. */
 function cotaEn(x,n){
-  const C=PLANTA&&PLANTA.cot; if(!C) return 0;
+  const C=PLANTA&&PLANTA.cot;
+  /* Sin levantamiento, el relieve lo pone el DEM — y si tampoco hay DEM, la
+     planta es plana de verdad (y la nota lo declara). */
+  if(!C) return (PLANTA&&PLANTA.dem)?PLANTA.dem.en(x,n):0;
   const xs=C.xs;
   let lo=0,hi=xs.length-1;
   while(lo<hi){ const m=(lo+hi)>>1; if(xs[m]<x) lo=m+1; else hi=m; }
@@ -1289,6 +1394,17 @@ function unidades(){
       out.push(Object.assign({x:t.x-dx, n:t.n-dn}, base));   // viga del MOTOR (oeste): lleva la TCU
       out.push(Object.assign({x:t.x+dx, n:t.n+dn}, base));   // viga gemela
     });
+    /* Y CADA FILA, A SU COTA. Con DEM el suelo ya no es y=0, asi que dejarlas
+       ahi las enterraria en las cuestas y las dejaria colgando en los valles —
+       exactamente lo que se veia en Ayora antes de tener su levantamiento.
+       Se pone la cota del terreno bajo el centro de la viga.
+
+       `tilt` se queda a CERO a proposito. El levantamiento da la pendiente de
+       cada fila porque midio sus dos extremos; el DEM tiene un paso de decenas
+       de metros y una fila mide 74, asi que inclinarla con eso seria inventarse
+       una pendiente con dos celdas y media. Una fila sobre su explanada es
+       plana, y esa es la suposicion honesta mientras no haya medida. */
+    if(PLANTA.dem) out.forEach(t=>{ t.y=cotaEn(t.x,t.n); });
     return out;
   }
   const u=PLANTA.cot.filas.map(f=>({
@@ -1354,7 +1470,9 @@ function pilotesDe(tp,mods){
 let terreno=null;
 function buildTerreno(){
   if(terreno){ scene.remove(terreno); terreno.geometry.dispose(); terreno=null; }
-  if(!PLANTA||!PLANTA.cot) { groundMesh.visible=true; return; }
+  /* Con levantamiento o con DEM hay relieve que mallar; sin ninguno de los dos
+     la planta es plana de verdad y vale el suelo liso de siempre. */
+  if(!PLANTA||(!PLANTA.cot&&!PLANTA.dem)) { groundMesh.visible=true; return; }
   groundMesh.visible=false;
   const e=extentPlanta(), mg=40;
   const w=e.w+2*mg, h=e.h+2*mg;
@@ -1373,7 +1491,10 @@ function buildTerreno(){
      uniforme: una columna EN cada línea de fila y las intermedias cada 6 m
      donde no hay líneas. La fila queda sobre un vértice con SU cota exacta, y
      el escalón se reparte en el pasillo, que es donde está. */
-  const lin=(PLANTA.cot.xs||[]).slice().sort((a,b)=>a-b);
+  /* Las columnas EN las líneas de fila solo existen con levantamiento: son las
+     x que se midieron. Con DEM no hay líneas medidas —ni falta, porque su paso
+     es de decenas de metros—, así que la rejilla queda uniforme. */
+  const lin=((PLANTA.cot&&PLANTA.cot.xs)||[]).slice().sort((a,b)=>a-b);
   let cols=[];
   for(let x=e.cx-w/2; x<=e.cx+w/2+1e-6; x+=CELDA) cols.push(x);
   cols=cols.filter(x=>!lin.some(k=>Math.abs(k-x)<1.5)).concat(lin).sort((a,b)=>a-b);
@@ -2416,6 +2537,20 @@ function updatePlanta(sl){
          ((PLANTA._raras||[]).length?` —${new Set(PLANTA._raras.map(r=>r.trk)).size} de ellos porque su cota medida está a más de 10 m de sus vecinas: un error del levantamiento, no un bancal—`:``):``)+`)`:``)+
     `, ${PLANTA.ncus.length} NCU y `+
     `${PLANTA.meteo.length} HSU en sus coordenadas del DWG, con ${PLANTA.mods} módulos por string. `+
+    /* DE DÓNDE SALE EL RELIEVE. Un mapa de cobertura con el suelo plano miente
+       hacia el lado optimista —un cerro entre TCU y NCU deja de existir—, así
+       que hay que poder saber, mirando la página, si lo que se ve es medido,
+       bajado, o no hay nada. */
+    (PLANTA.cot ? ``
+      : PLANTA.dem
+        ? `<b>Relieve del DEM global</b> (teselas Terrarium, ${PLANTA.dem.teselas} de zoom ${PLANTA.dem.z}): `+
+          `${PLANTA.dem.desnivel.toFixed(0)} m de desnivel entre seguidores. Esta planta NO tiene levantamiento, `+
+          `así que el suelo es el del mapa —unos 30 m de paso— y no la explanada de cada fila: vale para ver `+
+          `qué cerro se cruza, no para leer una mesa. Las filas van a la cota del terreno y SIN pendiente, que es `+
+          `lo único honesto con ese paso. `
+        : `<b>Suelo plano</b>, y no porque lo sea: esta planta no tiene levantamiento y el relieve no se pudo bajar`+
+          (PLANTA.demFallo?` (${PLANTA.demFallo})`:``)+`. `+
+          `Con el suelo plano los márgenes salen OPTIMISTAS: un cerro entre una TCU y su NCU no existe. `)+
     `Cada seguidor se colorea por el margen de su salto DIRECTO al mástil de <b>su</b> coordinador — el par (NCU, GW): `+
     `no todas las TCU hablan con todas las NCU, cada NCU lleva dos gateways y cada TCU cuelga de uno. `+
     `Verde = llega sola; rojo = depende de la malla, y de la malla de SU gateway, no de la de la planta. `+
