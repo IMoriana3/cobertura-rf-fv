@@ -1102,23 +1102,34 @@ function cotaEn(x,n){
 /* QUÉ COORDINADOR VE CADA TCU. No todas las TCU hablan con todas las NCU: cada
    NCU lleva DOS gateways y cada TCU cuelga de UNO — el ámbito real es el par
    (NCU, GW), que es el que lanza Cobertura Zigbee («cada uno es una IP:puerto»).
-   Y según la planta, los dos gateways de una NCU están en el mismo mástil o en
-   dos distintos: El Burgo tiene 2 mástiles y CUATRO grupos (1,1) (1,2) (2,1)
-   (2,2); Ayora los separa y los nombra «NCU 4.1» y «NCU 4.2».
-   Así que el mástil se busca por nombre: primero «NCU n.g», luego «NCU n» (los
-   dos gateways comparten mástil) y, si el nombre no se deja leer —San José usa
-   códigos de obra—, se cae al orden del listado y se dice. */
+
+   El `ncu` del layout es el ÍNDICE de su mástil en la lista `ncus` del PROPIO
+   layout, y cada entrada de esa lista es UNA NCU. No es un número que haya que
+   leer del nombre: el nombre es como se llama la NCU en obra y no tiene por
+   qué ser un número ni ir en orden. `gw` sigue haciendo falta fuera de aquí,
+   porque es lo que separa los ÁMBITOS de malla dentro de una misma NCU.
+
+   ESTO SE BUSCABA POR NOMBRE, leyendo «NCU n.g» como «NCU n, gateway g». Era
+   un invento mío: en Ayora ese punto es parte del NOMBRE de la NCU —son 16
+   NCU, y una se llama «NCU 4.1» y otra «NCU 4.2»—, no un gateway. Al leerlo
+   como gateway, las dos se colapsaban en una y el reparto se desplazaba de ahí
+   en adelante. San José lo rompe por otro lado: usa códigos de obra con DOS
+   nombres que empiezan por el mismo número («NCU MU-02_2-19» y
+   «NCU MU-02_1-18»), con el mismo desplazamiento arrastrado. Medido sobre los
+   layouts:
+
+     planta     por nombre (antes)      por índice        a otro mástil
+     Ayora      media 492 m  máx 1714   media 123  351    286 de   751
+     San José   media 501 m  máx 2110   media 165  447    964 de 2.289
+     las otras 6        idéntico          idéntico          0
+
+   1.250 seguidores midiendo su margen contra un mástil que no era el suyo, uno
+   a 1,7 km. Las seis plantas pequeñas coincidían por casualidad —el nombre y
+   el índice dan lo mismo cuando no hay NCU partidas ni códigos de obra—, que
+   es justo por lo que ningún banco lo cazaba. */
 function mastilDe(ncu,gw,masts){
   if(!masts.length) return null;
-  const num=s2=>{ const m=/(\d+)(?:\.(\d+))?/.exec(s2||""); return m?[+m[1],m[2]?+m[2]:null]:null; };
-  let laxo=null;
-  for(const m of masts){
-    const q=num(m.dato.name);
-    if(!q) continue;
-    if(q[0]===ncu && q[1]===gw) return m;          // «NCU n.g»: mástil de ESE gateway
-    if(q[0]===ncu && q[1]===null) laxo=laxo||m;    // «NCU n»: los dos gateways ahí
-  }
-  return laxo || masts[Math.min(Math.max(ncu,1)-1,masts.length-1)];
+  return masts[Math.min(Math.max(ncu|0,1),masts.length)-1];
 }
 
 /* ¿UNA UNIDAD DEL LAYOUT SON DOS FILAS? El seguidor de la casa es BÍFILO: dos

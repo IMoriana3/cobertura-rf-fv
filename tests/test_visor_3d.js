@@ -74,7 +74,22 @@ const CLIC = { noWaitAfter: true, timeout: 120000, force: true };
    cuelgue. `rehacer()` es sincrono dentro del `then`, asi que ver `PLANTA.nom`
    ya puesto significa que la escena esta construida. */
 async function abrePlanta(page, nom) {
-  await page.click(`#segpl [data-p="${nom}"]`, CLIC);
+  /* EL CLIC, DESDE DENTRO. `page.click` resuelve el selector SONDEANDO con un
+     script inyectado en la propia pagina, asi que necesita pillar un hueco del
+     hilo principal. Y esta pagina no para de pintar: en un runner lento se
+     paso los 120 s enteros sin resolver `#segpl [data-p=""]` —un boton
+     ESTATICO del HTML, que estaba ahi desde la carga— y el banco murio con un
+     timeout que parecia decir que el boton no existe. Ese mismo job tardo 4
+     minutos en un solo check que en la PR tardo segundos: la maquina iba
+     ahogada, no la pagina rota.
+     Un `evaluate` es UNA tarea encolada en vez de un sondeo que tiene que
+     acertar el hueco, y dispara el MISMO manejador. Se prueba lo mismo con
+     mucha menos maquinaria en medio. */
+  await page.evaluate(n => {
+    const b = document.querySelector(`#segpl [data-p="${n}"]`);
+    if (!b) throw new Error('no existe el boton de planta ' + JSON.stringify(n));
+    b.click();
+  }, nom);
   await page.waitForFunction(
     /* Sin `window.`: la pagina declara `PLANTA`/`PLEQ` con `let` en el script,
        y un `let` de primer nivel NO cuelga de `window`. Con `window.PLANTA` la
@@ -82,7 +97,17 @@ async function abrePlanta(page, nom) {
     n => { try { return n ? !!(PLANTA && PLANTA.nom === n && PLEQ && PLEQ.length > 0)
                           : (PLANTA === null && PLNOM === ''); }
            catch (e) { return false; } },
-    nom, { timeout: 120000 });
+    nom, { timeout: 120000 }).catch(async e => {
+    /* Que el rojo diga QUE pasó, no solo que se agoto el tiempo: si la pagina
+       responde, el problema es el estado; si no responde, es la maquina. */
+    const vivo = await page.evaluate(() => ({
+      botones: [...document.querySelectorAll('#segpl [data-p]')].map(b => b.dataset.p),
+      planta: (typeof PLANTA !== 'undefined' && PLANTA) ? PLANTA.nom : null,
+      nombre: typeof PLNOM !== 'undefined' ? PLNOM : '(sin PLNOM)',
+    })).catch(err => 'la pagina NO responde: ' + err.message);
+    throw new Error('abrePlanta(' + JSON.stringify(nom) + ') se agoto. Estado: '
+                    + JSON.stringify(vivo) + ' | ' + e.message);
+  });
   await page.waitForTimeout(150);   // un respiro para que el frame se pinte
 }
 const near = (a, b, tol) => Math.abs(a - b) <= tol;

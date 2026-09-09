@@ -503,6 +503,49 @@ const SONDA = `(() => {
   check('«NCU» y «HSU» apuntan a SU antena, y ninguna revienta',
         eqf.ncu < 0.05 && eqf.hsu < 0.05, eqf);
 
+  /* ── CADA TCU CONTRA EL MÁSTIL QUE ES EL SUYO ──────────────────────────────
+     El margen de un seguidor se mide contra el mástil de SU (NCU, GW). Si el
+     mástil se elige mal, todo el color de la planta es mentira y no se nota:
+     sale un mapa plausible, solo que de otra planta.
+
+     Aquí se pasó de largo un fallo real —el mástil se buscaba por NOMBRE— que
+     mandaba 286 seguidores de Ayora y 964 de San José a un mástil ajeno, uno a
+     1,7 km. Los bancos no lo veían porque las seis plantas pequeñas dan lo
+     mismo por las dos reglas.
+
+     Lo que se comprueba NO es «el mástil más cercano»: eso sería imponer el
+     reparto derivado que precisamente no nos fiamos (y hay tres grupos reales
+     —El Burgo 2.1, San José 4.1 y 12.1— que legítimamente NO cuelgan del más
+     cercano). Se comprueba algo más débil y suficiente: que el mástil de un
+     grupo cae DENTRO DEL ENTORNO de su grupo, midiendo su distancia al
+     centroide en unidades del radio del propio grupo. Medido sobre las ocho
+     plantas: por índice el peor cociente es 1,38; por nombre, 14,16. El listón
+     va en 3, al doble de uno y a la quinta parte del otro. */
+  console.log('\n· El mástil de cada (NCU, GW), en las ocho plantas');
+  for (const planta of ['fayon', 'tunez', 'bagnarelli', 'polvorin',
+                        'elburgo', 'paramo', 'ayora', 'sanjose']) {
+    await carga(planta);
+    const r = await page.evaluate(() => {
+      const masts = PLEQ.filter(e => e.tipo === 'ncu');
+      if (!masts.length) return { peor: 0, grupos: 0 };
+      const g = new Map();
+      PLANTA.trk.forEach(t => { const k = (t.ncu || 1) + '.' + (t.gw || 1);
+        if (!g.has(k)) g.set(k, []); g.get(k).push(t); });
+      let peor = 0, quien = null;
+      for (const [k, v] of g) {
+        const cx = v.reduce((a, t) => a + t.x, 0) / v.length;
+        const cn = v.reduce((a, t) => a + t.n, 0) / v.length;
+        const radio = Math.max(1, ...v.map(t => Math.hypot(t.x - cx, t.n - cn)));
+        const m = mastilDe(+k.split('.')[0], +k.split('.')[1], masts);
+        const q = Math.hypot(m.dato.x - cx, m.dato.n - cn) / radio;
+        if (q > peor) { peor = q; quien = { grupo: k, mastil: m.dato.name, cociente: +q.toFixed(2) }; }
+      }
+      return { peor: +peor.toFixed(2), grupos: g.size, quien: quien };
+    });
+    check(`${planta}: los ${r.grupos} mástiles caen en el entorno de su grupo`,
+          r.peor < 3, JSON.stringify(r.quien));
+  }
+
   check('sin errores de JS en ninguna planta', errs.length === 0, errs.slice(0, 3));
   await browser.close();
   console.log('');
