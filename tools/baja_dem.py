@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
-"""REGENERA tests/fixtures/dem_ayora.json DESDE EL CDN. Pide red; no corre en CI.
+"""REGENERA tests/fixtures/dem_<planta>.json DESDE EL CDN. Pide red; no corre en CI.
 
-    python3 tools/baja_dem_ayora.py
+    python3 tools/baja_dem.py ayora
+    python3 tools/baja_dem.py sanjose
 
 POR QUE UNA REJILLA Y NO LAS TESELAS. El encuadre de Ayora son 25 teselas a
 zoom 15: unos 2 MB. Versionar eso para leer 1.500 puntos no compensa (se acaba
 de cortar un .glb de 4,4 MB del banco por ese mismo motivo). Se guarda una
 rejilla de 30 m —el paso REAL del dato de origen, que es SRTM/ASTER; el raster
 de la tesela va mas fino pero no lleva mas informacion— con su procedencia.
+
+Vale para cualquier planta con levantamiento (`CON_COTAS` en index.html).
 
 El formato es el mismo que `<planta>_relieve.json` del visor: x0/n0/paso/nx/nn
 y `z` en fila mayor. Asi el careo interpola igual que la pagina.
@@ -51,7 +54,8 @@ def png_rgb(buf):
     return w, h, bytes(out)
 
 def main():
-    lay = json.load(open(os.path.join(RAIZ, "plantas", "ayora_layout.json")))
+    pl = sys.argv[1] if len(sys.argv) > 1 else "ayora"
+    lay = json.load(open(os.path.join(RAIZ, "plantas", pl + "_layout.json")))
     pts = lay["trackers"] + lay.get("ncus", []) + lay.get("meteo", [])
     x0 = min(q["x"] for q in pts) - MARGEN; x1 = max(q["x"] for q in pts) + MARGEN
     n0 = min(q["n"] for q in pts) - MARGEN; n1 = max(q["n"] for q in pts) + MARGEN
@@ -85,13 +89,13 @@ def main():
         return ((g(ax,ay)*(1-tx_)+g(bx,ay)*tx_)*(1-ty_) + (g(ax,by)*(1-tx_)+g(bx,by)*tx_)*ty_) - 32768
     nx = int((x1 - x0) / PASO) + 1; nn = int((n1 - n0) / PASO) + 1
     zs = [round(cota(lat(n0 + j*PASO), lon(x0 + i*PASO)), 2) for j in range(nn) for i in range(nx)]
-    out = {"planta": "ayora", "fuente": "Terrarium (elevation-tiles-prod), zoom %d" % z,
+    out = {"planta": pl, "fuente": "Terrarium (elevation-tiles-prod), zoom %d" % z,
            "url": TESELA, "teselas": bajadas, "paso": PASO,
            "x0": round(x0, 3), "n0": round(n0, 3), "nx": nx, "nn": nn,
-           "nota": ("cotas m.s.n.m. sobre la rejilla local de Ayora (x este, n norte), "
-                    "bilineal sobre el mosaico de teselas. Regenerar con tools/baja_dem_ayora.py."),
+           "nota": ("cotas m.s.n.m. sobre la rejilla local de la planta (x este, n norte), "
+                    "bilineal sobre el mosaico de teselas. Regenerar con tools/baja_dem.py."),
            "z": zs}
-    dst = os.path.join(RAIZ, "tests", "fixtures", "dem_ayora.json")
+    dst = os.path.join(RAIZ, "tests", "fixtures", "dem_%s.json" % pl)
     json.dump(out, open(dst, "w"), separators=(",", ":"))
     print(f"{nx}x{nn} = {len(zs)} cotas · {os.path.getsize(dst)/1024:.0f} KB -> {os.path.relpath(dst, RAIZ)}")
     print(f"rango {min(zs):.1f} .. {max(zs):.1f} m")

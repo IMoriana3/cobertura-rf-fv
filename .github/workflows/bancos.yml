@@ -58,7 +58,7 @@ jobs:
       - run: python3 tests/test_nucleo.py
       # No abre navegador ni pide red: es aritmetica sobre dos ficheros del
       # repo, asi que va aqui y tarda menos de un segundo.
-      - name: el DEM contra el levantamiento de Ayora
+      - name: el DEM contra los levantamientos (Ayora y San José)
         run: node tests/test_careo_dem.js
 
   # Los tres bancos de navegador. Cada uno tarda entre cinco y quince minutos
