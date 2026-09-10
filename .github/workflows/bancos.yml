@@ -56,6 +56,10 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: '3.11' }
       - run: python3 tests/test_nucleo.py
+      # No abre navegador ni pide red: es aritmetica sobre dos ficheros del
+      # repo, asi que va aqui y tarda menos de un segundo.
+      - name: el DEM contra el levantamiento de Ayora
+        run: node tests/test_careo_dem.js
 
   # Los tres bancos de navegador. Cada uno tarda entre cinco y quince minutos
   # dibujando por software, así que van en paralelo.
