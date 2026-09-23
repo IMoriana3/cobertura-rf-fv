@@ -1,0 +1,59 @@
+{
+  "_que_es": "De donde salen los layouts y los modulos comunes de este repo. Lo escribe tools/sincroniza_desde_zigbee.py y lo vigila tests/test_procedencia.js: si una copia se edita a mano, rojo.",
+  "_como_se_actualiza": "python3 tools/sincroniza_desde_zigbee.py",
+  "fuente": {
+    "repo": "IMoriana3/cobertura-zigbee",
+    "rama": "main",
+    "commit": "a33a1eeae9a4c95fc601ee2a7db3728fe534d08b"
+  },
+  "ficheros": {
+    "plantas/ayora_layout.json": {
+      "origen": "ayora_layout.json",
+      "sha256": "f9ae259e59579021c6d86a3f6e7b169a0993d4de73961473994dae6a2f6a1924"
+    },
+    "plantas/bagnarelli_layout.json": {
+      "origen": "bagnarelli_layout.json",
+      "sha256": "f75fce2a48a9a88cc978d89f80646ecfc1346306fcd5975a927e397aab3517e7"
+    },
+    "plantas/elburgo_layout.json": {
+      "origen": "elburgo_layout.json",
+      "sha256": "52131a1d455d95d16fa9da28f95d3d15d5217f899b29ea181376827504232f9e"
+    },
+    "plantas/fayon_layout.json": {
+      "origen": "fayon_layout.json",
+      "sha256": "f2f5ce98cf4b3de3d78f692155849295f902c7d751b2c691e35e89a4a4a6c1af"
+    },
+    "plantas/paramo_layout.json": {
+      "origen": "paramo_layout.json",
+      "sha256": "d97a1a13932b0dc833fb65db0f1b78a43da73170bf721b2915ab564f03b3888f"
+    },
+    "plantas/polvorin_layout.json": {
+      "origen": "polvorin_layout.json",
+      "sha256": "bc7e16eb6c3afc37c9c0e97e4a76cd87d6086f09639dce0c332c45138103c990"
+    },
+    "plantas/sanjose_layout.json": {
+      "origen": "sanjose_layout.json",
+      "sha256": "c17a1ced347d49561d836bfe67c5a947896dbcb90d4016d0bec5984f8cf39a86"
+    },
+    "plantas/tunez_layout.json": {
+      "origen": "tunez_layout.json",
+      "sha256": "30de9fb214678bd2745120fb1dcbab08fa612fb65dd100ba984f2f2bd5d3f218"
+    },
+    "seguidor.js": {
+      "origen": "seguidor.js",
+      "sha256": "a67a5addf27d7aa7344b3e231085d62acc3fe12ec42c16d74f8016ee02f86fb0"
+    },
+    "equipos.js": {
+      "origen": "equipos.js",
+      "sha256": "685300c1a3a3c7ef65739563b88e46c6d4efa0517c4c9f977d96f1c50869be3e"
+    },
+    "sol.js": {
+      "origen": "sol.js",
+      "sha256": "28b91f891211845b33a528fac3548c61251be7869d4c2fceb5dd662a87f89d7a"
+    },
+    "secc.json": {
+      "origen": "secc.json",
+      "sha256": "8f2c42483e3c5157a72d493fa4e319b4c54e9758210b87667923f8440df9f554"
+    }
+  }
+}
