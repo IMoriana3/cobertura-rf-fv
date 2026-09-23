@@ -99,6 +99,11 @@ jobs:
       matrix:
         include:
           - { banco: test_visor_3d.js,       nombre: 'visor 3D',                      tope: 30 }
+          # La hora es la variable que se toca todo el rato y estaba como un
+          # deslizador mas entre diez. Al subirla a su propia fila, el riesgo es
+          # dejar el ▶ mudo: su manejador vivia dentro del grupo del que se
+          # saca. Asi que el banco lo PULSA y mira si el reloj avanza.
+          - { banco: test_fila_tiempo.js,    nombre: 'la hora, en su fila',           tope: 20 }
           - { banco: test_imagen.js,         nombre: 'imagen (vistas de referencia)', tope: 45 }
           # `plantas reales` ya no es UN job: hacía el trabajo de tres y se comió
           # los 45 minutos. Ahora son cuatro grupos en paralelo, y un rojo dice

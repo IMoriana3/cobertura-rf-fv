@@ -38,6 +38,19 @@
   .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-top:8px}
   .seg button{background:transparent;color:var(--muted);border:0;padding:7px 13px;font-size:13px;cursor:pointer}
   .seg button.on{background:var(--cyan);color:#04222e;font-weight:600}
+  /* LA FILA DE TIEMPO, APARTE. La hora es la variable que se toca todo el rato
+     —mueve el sol, las mesas y con ellas los margenes— y estaba como un
+     deslizador mas entre diez, a saltos de 5 min y con su boton de reproducir
+     en otro sitio del panel. Sube a su propia fila, pegada a la escena, como en
+     `overcast.html`: alli se lee de un vistazo. */
+  .timerow{display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap;
+           background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 12px}
+  .timerow input[type=range]{flex:1;min-width:180px;accent-color:var(--cyan)}
+  .timerow .t{font-variant-numeric:tabular-nums;font-size:1.15rem;font-weight:600;color:var(--cyan);min-width:66px;text-align:right}
+  .timerow label{white-space:nowrap}
+  .timerow select,.timerow button{background:transparent;color:var(--muted);border:1px solid var(--line);
+           border-radius:8px;padding:6px 11px;font-size:13px;cursor:pointer}
+  .timerow button.on{background:var(--cyan);color:#04222e;font-weight:600;border-color:var(--cyan)}
   .row{display:flex;flex-wrap:wrap;gap:8px 26px;align-items:flex-end}
   .row>div{min-width:0}
   .chk{font-size:13px;color:var(--muted);display:inline-flex;align-items:center;gap:6px;margin-top:14px;cursor:pointer}
@@ -66,6 +79,23 @@
     <div id="labels"></div>
     <div id="fallback">Este visor necesita WebGL. Ábrelo en un navegador con aceleración gráfica activada.</div>
   </div>
+  <div class="timerow">
+    <button id="play" title="Recorre el día entero">▶</button>
+    <select id="speed" title="Velocidad: minutos simulados por segundo real">
+      <option value="30">×½</option>
+      <option value="60" selected>×1</option>
+      <option value="150">×2,5</option>
+      <option value="360">×6</option>
+    </select>
+    <label for="hora">Hora solar</label>
+    <input id="hora" type="range" min="0" max="1439" step="1" value="780">
+    <span class="t" id="vHora">13:00</span>
+    <div class="seg" id="segp" style="margin-top:0">
+      <button data-s="amanecer">Amanecer</button>
+      <button data-s="mediodia">Mediodía</button>
+      <button data-s="ocaso">Ocaso</button>
+    </div>
+  </div>
   <div class="lg">
     <span class="sw" style="background:#39d0ff"></span>antena / patrón
     <span class="bar"></span>margen del enlace (sin enlace → holgado)
@@ -90,8 +120,6 @@
         <input id="hncu" type="range" min="1" max="8" step="0.05" value="3.15"></div>
       <div><label>HSU: distancia a la NCU: <span class="val" id="vDhsu">8 m</span></label>
         <input id="dhsu" type="range" min="3" max="60" step="1" value="8"></div>
-      <div><label>Hora solar: <span class="val" id="vHora">13:00</span></label>
-        <input id="hora" type="range" min="0" max="1439" step="5" value="780"></div>
       <div><label>Día del año: <span class="val" id="vDia">21 jun</span></label>
         <input id="dia" type="range" min="1" max="365" step="1" value="172"></div>
       <div><label>Latitud: <span class="val" id="vLat">41.5°</span></label>
@@ -165,14 +193,6 @@
         <div class="seg" id="segd">
           <button data-d="sol" class="on">Sigue al sol</button>
           <button data-d="man">Manual</button>
-        </div>
-      </div>
-      <div><label>Reproducir el día:</label>
-        <div class="seg" id="segp">
-          <button id="play">▶ Reproducir</button>
-          <button data-s="amanecer">Amanecer</button>
-          <button data-s="mediodia">Mediodía</button>
-          <button data-s="ocaso">Ocaso</button>
         </div>
       </div>
       <div><label class="chk"><input type="checkbox" id="pat" checked> Patrón de la antena</label></div>
@@ -2541,16 +2561,22 @@ function drawLabels(){
   });
 }
 let _tPrev=0, _acc=0;
-const PASO_MIN=5;                 // 5 min por paso: el día entero en ~17 s
+/* EL PASO YA NO ES FIJO. Iba a 5 minutos por paso pasara lo que pasara, que es
+   lo mismo que decir que la velocidad la decidia la maquina: en un equipo lento
+   el dia tardaba el doble. Ahora se avanza por TIEMPO REAL —minutos simulados
+   por segundo, como en `overcast.html`— y el selector los elige. El deslizador
+   va a paso de 1 minuto, asi que la animacion no tiene que saltar de cinco en
+   cinco para caer en un valor valido. */
 function tick(t){
   requestAnimationFrame(tick);
   if(playing){
-    const dt=_tPrev?Math.min(0.2,(t-_tPrev)/1000):0; _tPrev=t; _acc+=dt;
-    if(_acc>=0.06){ _acc=0;
-      let m=+$("hora").value+PASO_MIN; if(m>1439)m=0;
+    const dt=_tPrev?Math.min(0.2,(t-_tPrev)/1000):0; _tPrev=t;
+    _acc+=dt*(+($("speed")||{}).value||60);
+    if(_acc>=1){ let m=+$("hora").value+Math.floor(_acc); _acc-=Math.floor(_acc);
+      while(m>1439)m-=1440;
       $("hora").value=m; update();
     }
-  }else _tPrev=t;
+  }else{ _tPrev=t; _acc=0; }
   resize(); controls.update(); if(PLANTA) cadCerca(false); renderer.render(scene,camera); drawLabels();
 }
 
@@ -2834,10 +2860,15 @@ if(webgl){
   /* Saltos a las tres horas que enseñan el día: al amanecer las palas están de
      canto y la banda de la mesa es un muro; a mediodía están planas y el campo
      casi no apantalla. */
+  /* EL ▶ TIENE SU PROPIO OYENTE. Vivia dentro del de `#segp` porque el boton
+     estaba dentro de ese grupo; al subirlo a la fila de tiempo se habria quedado
+     mudo, que es el fallo tipico de mover un control de sitio. */
+  $("play").addEventListener("click",()=>{
+    playing=!playing; const b=$("play");
+    b.textContent=playing?"⏸":"▶"; b.classList.toggle("on",playing);
+  });
   $("segp").addEventListener("click",e=>{
     const b=e.target.closest("button"); if(!b) return;
-    if(b.id==="play"){ playing=!playing; b.textContent=playing?"⏸ Pausa":"▶ Reproducir";
-                       b.classList.toggle("on",playing); return; }
     const lat=+$("lat").value, dia=+$("dia").value;
     if(b.dataset.s==="mediodia") $("hora").value=720;
     else{
