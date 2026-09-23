@@ -28,6 +28,16 @@
     modW: 1.134, modH: 2.382, gapMod: 0.012, gapDrive: 0.55, modsPerStr: 28,
     off: 0.14,            // cara del módulo sobre el eje del tubo
     tube: 0.12,           // viga de torsión cuadrada 120 mm
+    /* postH = del suelo al EJE DEL TUBO, no a la base de la horquilla: el marco
+       canónico de `apoyoGeoms` tiene su origen en el eje y el poste baja desde
+       `-postH`. La cara del módulo queda `off` (0,14) más arriba.
+
+       OJO, HAY DOS VALORES DE postH EN ESTE FICHERO. Este 2,00 es el de `D`, el
+       que usa la app; `apoyoGeoms` usa 1,747 («2 − 0,253 del gemelo») cuando
+       quien llama NO le pasa `postH`. No son la misma cota y ninguno de los dos
+       está citado de un plano de seguidor: el estándar Factiun es 1,20 m
+       (indicado por Iñaki). Mientras no se declare por planta, esto es un valor
+       heredado, no una medida. */
     postH: 2.0, filaZ: 3.0,
     purlY: 0.085,         // correas apoyadas sobre el tubo
     jbY: 0.09, jbZ: 0.71, // cajas de conexión bajo el módulo
@@ -48,6 +58,26 @@
   S.DIMS = D;
   // nº de módulos por ALA según la planta (El Burgo/Ayora = 28 → 64,7 m; San José = 32 → 74 m, su "medio" 2x32 ≈ 37 m). Recalcula los derivados.
   S.setModsPerStr = function (n) { D.modsPerStr = n; D.strLen = n * D.modW + (n - 1) * D.gapMod; D.span = 2 * D.strLen + D.gapDrive; D.mesaC = D.gapDrive / 2 + D.strLen / 2; };
+  /* EL MÓDULO DE LA PLANTA. Las cotas canónicas son las de la casa (1.134 ×
+     2.382), pero el módulo es de PROYECTO: Ayora monta 1,303 m —lo dicen su
+     DWG y su levantamiento— y El Burgo y San José 1,134. Con el ancho fijo,
+     quien dibujaba una mesa de Ayora tenía que elegir entre el LARGO correcto
+     (32 módulos de 1,134, que es lo que hacía: los 37,06 m medidos salían
+     bien y el conteo no) o el conteo correcto con la mesa corta. Con la ficha
+     del módulo de la planta salen las dos cosas: 28 × 1,303 + 27 × 0,021 =
+     37,05 m contra 37,06 medidos. Devuelve la ficha anterior para restaurarla:
+     el modelo es COMPARTIDO y quien lo cambia tiene que dejarlo como estaba. */
+  S.setModulo = function (o) {
+    var prev = { modW:D.modW, gapMod:D.gapMod, gapDrive:D.gapDrive, modsPerStr:D.modsPerStr };
+    if (o) {
+      if (o.modW > 0) D.modW = o.modW;
+      if (o.gapMod != null) D.gapMod = o.gapMod;
+      if (o.gapDrive != null) D.gapDrive = o.gapDrive;
+    }
+    D.pitch = D.modW + D.gapMod;
+    S.setModsPerStr(D.modsPerStr);
+    return prev;
+  };
 
   /* ---------- MATERIALES (cada app crea los suyos con su THREE) ---------- */
   /* Células FV para la cara del módulo. Vive AQUÍ, con el modelo, y no en cada página:
@@ -385,6 +415,33 @@
     return !!(p.spin || p.twin);                        // del slew, en la gemela solo las twin
   }
   S.SOLO_OESTE = SOLO_OESTE;
+
+  /* ====================================================================
+   * LA VIGA SON DOS MESAS: el LADO del morro al que pertenece cada pieza
+   * ====================================================================
+   * `parts()` ya coloca todo respecto del ACTUADOR (x=0) y parte el tubo en
+   * dos medias-vigas «que se unen en el actuador — permite el tracker quebrado
+   * (cada mitad drapea con su pendiente, rótula en el centro)». Lo que faltaba
+   * era poder PEDIR una de las dos mitades: sin eso, quien dibuja una planta
+   * levantada tenía que dar a la viga entera UNA pendiente —la media de sus
+   * 74 m— y las dos mesas salían siempre iguales aunque el levantamiento
+   * midiera un quiebro de grados entre ellas.
+   *
+   *   lado = -1  ->  mesa del SUR del morro  (x < 0)  +  las piezas del propio
+   *                  morro (x = 0: corona, reductora, motor, bracket, soporte),
+   *                  que se dibujan UNA vez y con esta mitad.
+   *   lado = +1  ->  mesa del NORTE del morro (x > 0), con la TCU y el
+   *                  seccionador, que van atornillados al tubo pasado el morro.
+   *   sin lado   ->  la viga entera, como siempre.
+   * ==================================================================== */
+  var EPS_LADO = 0.02;
+  S.ladoDe = function (m) { var x = m.elements[12]; return x > EPS_LADO ? 1 : (x < -EPS_LADO ? -1 : 0); };
+  function esDeEsteLado(p, lado) {
+    if (lado == null) return true;
+    var l = S.ladoDe(p.m);
+    return lado < 0 ? l <= 0 : l > 0;
+  }
+  S.esDeEsteLado = esDeEsteLado;
   /* Y la regla, no solo la lista. `instancePlan` describe UNA viga; quien dibuja
      un campo entero instancia ese plan por FILA, y ahí vuelve a hacer falta
      saber qué pieza va en la gemela y cuál no —si no, cada fila se lleva su TCU,
@@ -435,6 +492,7 @@
       if (p.damperLink) { dampers.push({ a:p.a, b:p.b }); return; }   // amortiguadores: en AMBAS vigas; render per-frame en la app
       if (skip[p.key]) return;
       if (!esDeEstaViga(p, west)) return;
+      if (!esDeEsteLado(p, opts.lado)) return;     // una sola MESA de la viga (v1.48)
       var mesh = new THREE.Mesh(p.geom(THREE), mats[p.mat]);
       mesh.applyMatrix4(p.m);
       mesh.castShadow = !!p.cast; mesh.receiveShadow = true;
@@ -464,6 +522,7 @@
     var west = !opts || opts.west !== false;
     S.parts(THREE, opts).forEach(function (p) {
       if (!esDeEstaViga(p, west)) return;
+      if (!esDeEsteLado(p, opts && opts.lado)) return;   // una sola MESA de la viga (v1.48)
       if (!byType[p.key]) { byType[p.key] = { key:p.key, mat:p.mat, geom:p.geom, spin:p.spin, cast:p.cast, terrainScaled:!!p.terrainScaled, twin:!!p.twin, antenna:!!p.antenna, tip:!!p.tip, motorLink:!!p.motorLink, damperLink:!!p.damperLink, a:p.a, b:p.b, as:[], bs:[], locals:[] }; order.push(p.key); }
       byType[p.key].locals.push(p.m);
       if (p.a) byType[p.key].as.push(p.a);

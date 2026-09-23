@@ -63,8 +63,8 @@ jobs:
       # La implantación es UNA y vive en `cobertura-zigbee`. Esto vigila que las
       # copias de `plantas/` sigan siendo las que trajo la sincronización: sin
       # red, sobre ficheros del repo, y con su mutación dentro.
-      - name: los layouts siguen siendo los de cobertura-zigbee
-        run: node tests/test_layouts_procedencia.js
+      - name: layouts y módulos siguen siendo los de cobertura-zigbee
+        run: node tests/test_procedencia.js
       # La zona de cada NCU es aritmetica sobre el layout, asi que se comprueba
       # aqui y en milisegundos: que contenga TODO el suelo de sus seguidores y
       # sus HSU. Lleva su mutacion dentro (`ZONAS_PUNTO=si`).

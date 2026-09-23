@@ -186,7 +186,24 @@
     return { x: Math.cos(el) * Math.sin(az), y: Math.sin(el), z: -Math.cos(el) * Math.cos(az) };
   };
 
-  S.VERSION = '0.2.0';
+  /* ── NUBE → IRRADIANCIA (v0.3.0) ─────────────────────────────────────────
+   * PROCEDENCIA: overcast.html, donde vivía desde su v0.2 y donde está
+   * contrastado — es el MISMO overcast canónico del escenario de
+   * test_diffuse_policies.py del core (ghi=0,30·claro, dhi=ghi, dni=0 a
+   * cc=1). Sube aquí porque backtracking.html también lo necesita (mando de
+   * nubosidad, v1.40) y dos copias de la misma física es como se pudren.
+   * cc ∈ [0,1]. GHI = claro·(1 − 0,70·cc); el haz muere mucho antes que el
+   * global: DNI = claro·(1−cc)³; DHI cierra el balance (≥ 0). */
+  S.cloudToIrr = function (clear, cc, zenDeg) {
+    var c = Math.max(0, Math.min(1, cc));
+    var ghi = clear.ghi * (1 - 0.70 * c);
+    var dni = clear.dni * Math.pow(1 - c, 3);
+    var cz = Math.max(0, Math.cos(zenDeg * Math.PI / 180));
+    var dhi = Math.max(0, ghi - dni * cz);
+    return { ghi: ghi, dni: dni, dhi: dhi };
+  };
+
+  S.VERSION = '0.3.0';
   root.Sol = S;
   if (typeof module !== 'undefined' && module.exports) module.exports = S;
 })(typeof window !== 'undefined' ? window : this);

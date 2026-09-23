@@ -12,16 +12,33 @@
  *
  *   HSU — la estación meteo. Torre de celosía triangular AUTOPORTANTE de 8 m
  *         (sin vientos), anemómetro ULTRASÓNICO en cabeza (sin cazoletas), dos
- *         látigos de antena a ~8,3 m, módulo FV estrecho y vertical paralelo a
- *         la cara, caja FACTIUN, garita y piranómetro. Plano FTR.24.00145_5_C,
- *         «Montaje HSU» (8000 con niveles 4500/1000) + fotos de campo.
+ *         látigos de antena a 6,50 m EN SU PROPIO BRAZO a media torre, módulo FV
+ *         estrecho y vertical paralelo a la cara, caja FACTIUN, garita y
+ *         piranómetro. Plano FTR.24.00145_5_C, «Montaje HSU» (8000 con niveles
+ *         4500/1000) + fotos de campo.
  *
- * PROCEDENCIA. Las cotas no se inventan aquí: son las que dibuja `terreno.html`
- * (Cobertura 3D) desde antes, con sus planos citados. Este fichero las saca a un
- * módulo para que el simulador de cobertura RF use LAS MISMAS y no una segunda
- * versión a ojo — el mismo motivo por el que el seguidor se pide a `seguidor.js`.
- * Mientras `terreno.html` siga con su copia embebida, este módulo y aquel bloque
- * hay que tocarlos a la vez; extraerlo allí también es la tarea pendiente.
+ *         AQUÍ PONÍA «~8,3 m», Y ERA LA COTA VIEJA. Es la altura a la que se
+ *         dibujaban los látigos cuando estaban en la CABEZA, junto al
+ *         ultrasónico. Se bajaron a 6,50 m al centro del elemento —cota de
+ *         montaje confirmada por Ignacio, ago-2026—, el código lo hizo
+ *         (`hsuAntY`, y el comentario que lo acompaña lo explica) y esta
+ *         cabecera se quedó atrás. 1,8 m de diferencia en la altura de antena
+ *         con la que se calcula el salto HSU→NCU.
+ *
+ * PROCEDENCIA, Y DÓNDE YA NO SE CUMPLE. Las cotas no se inventan aquí: son las
+ * que dibuja `terreno.html` (Cobertura 3D) desde antes, con sus planos citados.
+ * Este fichero las saca a un módulo para que el simulador de cobertura RF use
+ * LAS MISMAS y no una segunda versión a ojo — el mismo motivo por el que el
+ * seguidor se pide a `seguidor.js`. Mientras `terreno.html` siga con su copia
+ * embebida, este módulo y aquel bloque hay que tocarlos a la vez; extraerlo allí
+ * también es la tarea pendiente.
+ *
+ * Y AHORA MISMO NO SE CUMPLE, en la antena de la HSU. `terreno.html` se quedó
+ * con la cota vieja: en su línea del enlace de la meteo usa 8 m («antena a 8 m,
+ * mástil 8,5 m») mientras aquí `E.ANT_H.hsu` vale 6,50. No son dos rótulos: son
+ * dos alturas de antena distintas alimentando el mismo salto HSU→NCU, 1,50 m
+ * aparte. Este PR solo corrige los rótulos; cuadrar los dos números cambia el
+ * coloreado de enlaces del 3D y va aparte, con su careo.
  *
  * Marco local de los dos: origen en el PIE, sobre el suelo (y = 0), +Y arriba.
  * `buildNCU`/`buildHSU` devuelven un THREE.Group listo para posicionar.

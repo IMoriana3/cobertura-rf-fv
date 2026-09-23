@@ -71,21 +71,36 @@ const check = (n, c, extra) => { if (c) { ok++; console.log('OK   ' + n); }
           && sitio.trasVista && !sitio.enGrid, JSON.stringify(sitio));
   check('y va a paso de 1 minuto, no de 5', sitio.paso === 1, `step=${sitio.paso}`);
 
-  /* 2. EL ▶ MUEVE EL RELOJ DE VERDAD. Aquí es donde caería un botón huérfano. */
+  /* 2. EL ▶ MUEVE EL RELOJ DE VERDAD. Aquí es donde caería un botón huérfano.
+     SE ESPERA A LA EVIDENCIA, NO AL RELOJ DE PARED. La primera versión daba
+     1,5 s y miraba: se puso roja con el código bueno en cuanto `seguidor.js`
+     engordó, porque la escena va a unos 2,5 fps por software y el `update()`
+     del deslizador bloquea el hilo — en esa ventana podían no correr ni un
+     frame. Un banco que mide PACIENCIA en vez de comportamiento se pone rojo
+     por la máquina. Ahora se espera a que el reloj avance, con tope generoso:
+     un botón muerto sigue cayendo, por agotar el tope. */
   await pg.evaluate(() => { document.getElementById('hora').value = 600;
                             document.getElementById('hora').dispatchEvent(new Event('input')); });
   await pg.waitForTimeout(300);
   const antes = await pg.evaluate(() => +document.getElementById('hora').value);
   await pg.click('#play');
-  await pg.waitForTimeout(1500);
-  const corriendo = await pg.evaluate(() => +document.getElementById('hora').value);
-  await pg.click('#play');
-  await pg.waitForTimeout(400);
-  const parado = await pg.evaluate(() => +document.getElementById('hora').value);
-  await pg.waitForTimeout(900);
-  const sigueParado = await pg.evaluate(() => +document.getElementById('hora').value);
+  let corriendo = antes;
+  try {
+    await pg.waitForFunction(a => +document.getElementById('hora').value !== a, antes, { timeout: 30000 });
+    corriendo = await pg.evaluate(() => +document.getElementById('hora').value);
+  } catch (e) { /* se queda en `antes` y el cheque de abajo lo canta */ }
+  check('el ▶ hace avanzar el reloj', corriendo !== antes, `${antes} -> ${corriendo} (30 s de tope)`);
 
-  check('el ▶ hace avanzar el reloj', corriendo > antes, `${antes} -> ${corriendo}`);
+  /* Y LA ⏸ LO PARA. Aquí sí hay que dejar pasar tiempo —se comprueba una
+     AUSENCIA de cambio—, pero se mide en frames de la propia página y no en
+     milisegundos: se espera a que corran varios antes de volver a mirar. */
+  await pg.click('#play');
+  await pg.evaluate(() => new Promise(r => { let n = 0;
+    const f = () => (++n < 5 ? requestAnimationFrame(f) : r()); requestAnimationFrame(f); }));
+  const parado = await pg.evaluate(() => +document.getElementById('hora').value);
+  await pg.evaluate(() => new Promise(r => { let n = 0;
+    const f = () => (++n < 8 ? requestAnimationFrame(f) : r()); requestAnimationFrame(f); }));
+  const sigueParado = await pg.evaluate(() => +document.getElementById('hora').value);
   check('y la ⏸ lo para de verdad', sigueParado === parado, `${parado} -> ${sigueParado}`);
 
   /* 3. Y LA HORA SIGUE MANDANDO EN LA FÍSICA: mover el deslizador mueve el sol.

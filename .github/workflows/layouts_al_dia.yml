@@ -1,7 +1,7 @@
 # EL VIGIA DE LOS LAYOUTS, y por que va SOLO y no en `bancos.yml`.
 #
 # La implantación de una planta se procesa UNA vez, en `cobertura-zigbee`, y
-# aquí se trae. `tests/test_layouts_procedencia.js` —que sí corre en cada PR—
+# aquí se trae. `tests/test_procedencia.js` —que sí corre en cada PR—
 # vigila que nadie edite una copia a mano, pero no puede ver lo otro: que el
 # repo de origen AVANCE y aquí nos quedemos atrás. Para eso hay que salir a la
 # red, y un banco que depende de que GitHub conteste no puede estar en la puerta
@@ -9,7 +9,7 @@
 # cambio. Así que va aparte, semanal, y avisa sin bloquear a nadie.
 #
 # Cuando se ponga rojo, el arreglo es una línea:
-#     python3 tools/sincroniza_layouts.py
+#     python3 tools/sincroniza_desde_zigbee.py
 # y commitear lo que traiga (incluido `plantas/PROCEDENCIA.json`).
 name: layouts al día
 
@@ -30,4 +30,4 @@ jobs:
         with: { python-version: '3.11' }
       # `--ver` no escribe nada y sale en rojo si hay algo que traer.
       - name: comparar con el origen
-        run: python3 tools/sincroniza_layouts.py --ver
+        run: python3 tools/sincroniza_desde_zigbee.py --ver
