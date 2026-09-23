@@ -2168,8 +2168,9 @@ function buildPlanta(){
   /* LOS ENLACES, EN PLANTA. `drawLink` monta dos cilindros por salto: vale
      para los tres del corte de estudio y no para 2.289. Aquí van como un solo
      `LineSegments` con color por vértice —el mismo `colorFor` de la leyenda—,
-     que son dos vértices por enlace y una llamada de dibujo. Los que no llegan
-     (bajo 8 dB) van a trazos, como en el corte.
+     que son dos vértices por enlace y una llamada de dibujo. TODOS van a
+     trazos: antes era la marca de los que no llegan (bajo 8 dB), y ahora el
+     color carga esa distinción él solo.
      Hasta ahora este grupo se creaba VACÍO: la casilla «Enlaces a la NCU»
      estaba marcada y no dibujaba nada con una planta puesta. */
   const TRAZOS=5;                                    // celdas de un enlace a trazos
@@ -2182,11 +2183,32 @@ function buildPlanta(){
      una mesa. Instanciados y compartiendo geometría: dos llamadas de dibujo
      para los 2.289 saltos de San José. */
   const geoL=new THREE.CylinderGeometry(1,1,1,6,1,true);
-  /* El grosor, a escala de la planta: 0,6 m en El Burgo (600 m de diagonal) y
-     2 m en Ayora (3,8 km). Fijo no vale: lo que en una planta pequeña es un
-     tubo fino, en una grande es medio píxel y vuelve a no verse. */
+  /* EL GROSOR DEL HAZ: MEDIO METRO, IGUAL EN TODAS LAS PLANTAS.
+     Escalaba con la diagonal (`diag/1000`, tope 2 m de RADIO) y ese tope se
+     alcanzaba en las dos grandes: en Ayora y San José el enlace salía de CUATRO
+     METROS de ancho, cuando la cuerda de un módulo son 2,382. Un haz más ancho
+     que la mesa por debajo de la que pasa no es un enlace dibujado grueso: es
+     una viga de color tapando la planta, y se pierde justo lo que el color
+     venía a contar. En Páramo y El Burgo salía a 1,55 m, del mismo orden que la
+     mesa; en Túnez a 0,50.
+
+     Medio metro, pedido así, y FIJO — que además es lo honesto: un enlace no es
+     más gordo por estar en una planta grande. Queda en la quinta parte de la
+     cuerda, o sea un hilo al lado de la mesa, y en todas las plantas igual:
+
+         Ayora / San José   0,50 m de ancho   (antes 4,00)
+         Páramo / El Burgo  0,50               (antes 1,55)
+         Polvorín           0,50               (antes 1,11)
+         Túnez / Fayón      0,50               (antes 0,50, la única que ya cuadraba)
+
+     Lo que se pierde al fijarlo es el MÍNIMO que traía la regla vieja para que
+     en una planta pequeña el tubo no fuera invisible; pero 0,50 m no es
+     proporcional a nada, así que ese peligro no existe: es el mismo medio metro
+     en Túnez y en San José. */
   const _e0=extentPlanta();
-  PLANT_LNK={ trazos:TRAZOS, n:0, r:Math.min(2,Math.max(0.25,_e0.diag/1000)),
+  const ANCHO_HAZ=0.50;                              // metros, de lado a lado
+  const _rHaz=ANCHO_HAZ/2;
+  PLANT_LNK={ trazos:TRAZOS, n:0, r:_rHaz,
               solid:new THREE.InstancedMesh(geoL,new THREE.MeshBasicMaterial({
                 toneMapped:false}),maxSeg),
               ghost:new THREE.InstancedMesh(geoL,new THREE.MeshBasicMaterial({
@@ -2375,8 +2397,14 @@ function pintaPlanta(beta,hA){
       if(!SOLO&&mg>=8) return;
       _col.set(colorFor(mg));
       const bx=c.x, by=c.y+c.h, bz=-c.n;
-      // bajo 8 dB, a trazos: el 55 % de cada celda, como en el corte de estudio
-      const cel=(mg<8)?PLANT_LNK.trazos:1, fill=(mg<8)?0.55:1;
+      /* SIEMPRE A TRAZOS, pedido así. Antes el trazo discontinuo lo llevaban
+         SOLO los enlaces por debajo de 8 dB, o sea que el trazo SIGNIFICABA
+         «este no llega»; ahora esa distinción la carga entera el color, que ya
+         la decía (`colorFor` vira a ámbar por debajo de 8 y a rojo en 0).
+         Si se quiere recuperar la señal sin volver al continuo, lo que toca es
+         darles RITMO distinto —más celdas y menos relleno a los flojos— y no
+         apagarle el trazo a los buenos. */
+      const cel=PLANT_LNK.trazos, fill=0.55;
       const r=PLANT_LNK.r;
       for(let k2=0;k2<cel;k2++){
         const u0=k2/cel, u1=(k2+fill)/cel;

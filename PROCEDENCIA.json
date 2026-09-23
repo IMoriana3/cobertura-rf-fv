@@ -4,40 +4,40 @@
   "fuente": {
     "repo": "IMoriana3/cobertura-zigbee",
     "rama": "main",
-    "commit": "a33a1eeae9a4c95fc601ee2a7db3728fe534d08b"
+    "commit": "8ef77baa40b29cf1d2b6b0bceae47bc2eb23adf3"
   },
   "ficheros": {
     "plantas/ayora_layout.json": {
       "origen": "ayora_layout.json",
-      "sha256": "f9ae259e59579021c6d86a3f6e7b169a0993d4de73961473994dae6a2f6a1924"
+      "sha256": "04cda4259455a43611c0fb3806304cbb51560ac5dfaffb42bc793a15fc554c60"
     },
     "plantas/bagnarelli_layout.json": {
       "origen": "bagnarelli_layout.json",
-      "sha256": "f75fce2a48a9a88cc978d89f80646ecfc1346306fcd5975a927e397aab3517e7"
+      "sha256": "b01a33d3bfcd485d63970a1e1455890b2fb8b5b6e1fbc5db60df18234747d127"
     },
     "plantas/elburgo_layout.json": {
       "origen": "elburgo_layout.json",
-      "sha256": "52131a1d455d95d16fa9da28f95d3d15d5217f899b29ea181376827504232f9e"
+      "sha256": "9eac4f5fbfa858321e63eb5328f8caf1276a3fd12368662da41e9377590859af"
     },
     "plantas/fayon_layout.json": {
       "origen": "fayon_layout.json",
-      "sha256": "f2f5ce98cf4b3de3d78f692155849295f902c7d751b2c691e35e89a4a4a6c1af"
+      "sha256": "6bffee786adac174cb3c2f4363210e90c630011c25239e63e9b7d47c939f2636"
     },
     "plantas/paramo_layout.json": {
       "origen": "paramo_layout.json",
-      "sha256": "d97a1a13932b0dc833fb65db0f1b78a43da73170bf721b2915ab564f03b3888f"
+      "sha256": "71411d589a18b60828307d529d49a9f1de02c8c666b1ba09568a1547213fc429"
     },
     "plantas/polvorin_layout.json": {
       "origen": "polvorin_layout.json",
-      "sha256": "bc7e16eb6c3afc37c9c0e97e4a76cd87d6086f09639dce0c332c45138103c990"
+      "sha256": "dea87a83f886e0a944c968bd6b8bcb1d9a51d02086f6fea5a35870324fe7bf39"
     },
     "plantas/sanjose_layout.json": {
       "origen": "sanjose_layout.json",
-      "sha256": "c17a1ced347d49561d836bfe67c5a947896dbcb90d4016d0bec5984f8cf39a86"
+      "sha256": "0d77c4b86ba3f1f80de5ac5321d1e2a296676b7bf7855bbd657e8e97e9b7af62"
     },
     "plantas/tunez_layout.json": {
       "origen": "tunez_layout.json",
-      "sha256": "30de9fb214678bd2745120fb1dcbab08fa612fb65dd100ba984f2f2bd5d3f218"
+      "sha256": "3d08890f4c49174e31b711c31b55f003e679ed75a1324b338b666825723a2e1f"
     },
     "seguidor.js": {
       "origen": "seguidor.js",
@@ -45,7 +45,7 @@
     },
     "equipos.js": {
       "origen": "equipos.js",
-      "sha256": "685300c1a3a3c7ef65739563b88e46c6d4efa0517c4c9f977d96f1c50869be3e"
+      "sha256": "c7e4554bb584838ed9b16d2b09a2a43cbd374b8a7f298f72e7678188d5b32b6a"
     },
     "sol.js": {
       "origen": "sol.js",
