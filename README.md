@@ -424,3 +424,15 @@ apantallados, y los fallos de malla aparecen en los saltos largos que cruzan
 muchas filas. Los valores absolutos dependen de la calibración: hasta tener el
 dataset completo de El Burgo I, el driver ajusta un sesgo global contra el RSSI
 medido.
+
+---
+
+## Cómo se comprueba una comprobación
+
+El estándar de puertas —piso por banco, alcance publicado, los tres estados
+MIDE / NO COMPROBADO / ROJO— vive en un solo sitio:
+**[`proyectos/docs/puertas-y-alcance.md`](https://github.com/IMoriana3/proyectos/blob/main/docs/puertas-y-alcance.md)**.
+
+Un original y enlaces; dos copias divergen. `docs/enlace_guia.sh` comprueba en
+CI que este enlace apunta a algo que existe — un enlace roto a la guía de
+puertas sería el chiste final.
