@@ -29,6 +29,13 @@ const BASE = process.env.URL || 'http://127.0.0.1:8099/index.html';
 const PW_DEV = '/opt/pw-browsers/chromium';
 const EXEC = process.env.PW_CHROMIUM || (require('fs').existsSync(PW_DEV) ? PW_DEV : undefined);
 let ok = 0, ko = 0;
+/* EL ANCHO DEL HAZ, MEDIO METRO Y EL MISMO EN TODAS. Se comprueba contra este
+   valor y no carean­do una planta con otra: los grupos de este banco corren por
+   SEPARADO en CI, asi que un careo entre secciones se quedaria sin la mitad de
+   los datos y el cheque pasaria vacio — que es el defecto que nos comimos hoy
+   en el otro repo. Exigirlo en cada planta capta lo que importa: que el grosor
+   dejo de escalar con el tamano de la planta. */
+const ANCHO_HAZ = 0.50;
 /* ─── EL BANCO SE PARTE EN GRUPOS ───────────────────────────────────────────
    Este banco crecio hasta hacer el trabajo de tres: 105 comprobaciones, 19
    construcciones de planta, y un dia se comio los 45 minutos de tope del CI.
@@ -83,7 +90,37 @@ const SONDA = `(() => {
      aqui dentro: esta sonda es una plantilla literal y sus comillas la
      cierran.) */
   const haz = (typeof PLANT_LNK !== 'undefined' && PLANT_LNK)
-    ? { ancho: 2*PLANT_LNK.r, cuerda: CHORD } : null;
+    ? { ancho: 2*PLANT_LNK.r, cuerda: CHORD,
+        /* Y QUE SEA DISCONTINUO — medido en la GEOMETRIA, que es lo unico que
+           no depende de cuantos enlaces se dibujen. Contar segmentos contra
+           saltos NO vale: por defecto la pagina dibuja solo los enlaces que NO
+           llegan (los accionables), asi que en Fayon salen 8 de 24 y en Ayora
+           109 de 751 — el cheque caia con el codigo bueno.
+           Lo que SI se cumple siempre: un enlace discontinuo se parte en N
+           trozos IGUALES, asi que cada longitud aparece repetida N veces (N es
+           PLANT_LNK.trazos). Continuo, cada enlace deja UNA longitud suya. Se
+           mide esa repeticion.
+           (Sin comillas invertidas en este comentario: vive dentro de una
+           plantilla literal y la cerrarian. Ya van tres veces hoy.) */
+        repe: (() => {
+          const m = new THREE.Matrix4(), cuenta = {};
+          for (let i = 0; i < PLANT_LNK.n; i++) {
+            PLANT_LNK.solid.getMatrixAt(i, m);
+            const L = Math.round(m.elements[5] * 1000);   // escala Y = largo del trozo
+            cuenta[L] = (cuenta[L] || 0) + 1;
+          }
+          /* NO «cada largo se repite N veces»: en Fayon los 8 enlaces que se
+             dibujan miden TODOS lo mismo, asi que sus 40 trozos caen en un solo
+             grupo de 40 y el cheque caia con el codigo bueno. Lo que si se
+             cumple siempre es que CADA grupo sea multiplo de N — un enlace
+             aporta N trozos iguales, y varios enlaces del mismo largo aportan
+             multiplos de N. Continuo, cada enlace aporta UNO, y los grupos
+             valen 1, 2, 3... casi nunca multiplos de N. */
+          const v = Object.values(cuenta);
+          return v.length && v.every(k => k % PLANT_LNK.trazos === 0);
+        })(),
+        trazos: PLANT_LNK.trazos, segs: PLANT_LNK.n }
+    : null;
   const T  = PLANTA._tcus || tcusDe(UN);
   const u  = f => f.x*Math.cos(f.rot||0) + f.n*Math.sin(f.rot||0);
   const us = [...new Set(UN.map(f => Math.round(u(f)*100)/100))].sort((a,b)=>a-b);
@@ -257,8 +294,15 @@ const SONDA = `(() => {
      invisible, asi que hay suelo. Lo que se exige es que siga siendo un hilo
      comparado con la cuerda. */
   check('el haz del enlace es un hilo al lado de la mesa, no una viga',
-        f.haz && f.haz.ancho > 0 && f.haz.ancho <= f.haz.cuerda / 6 + 1e-6,
+        f.haz && f.haz.ancho > 0 && f.haz.ancho <= f.haz.cuerda / 4 + 1e-6,
         JSON.stringify(f.haz));
+  /* Y A TRAZOS. Antes lo estaban solo los enlaces por debajo de 8 dB; ahora
+     todos, asi que hay varios segmentos por salto en cualquier planta. */
+  check('y va a trazos, no continuo',
+        f.haz && f.haz.segs > 0 && f.haz.repe === true,
+        `${f.haz && f.haz.segs} segmentos, agrupados por largo en múltiplos de ${f.haz && f.haz.trazos}: ${f.haz && f.haz.repe}`);
+  check('y mide medio metro, como en todas',
+        f.haz && Math.abs(f.haz.ancho - ANCHO_HAZ) < 1e-9, f.haz && f.haz.ancho);
   check('el CAD de la TCU y del seccionador está, como nivel de detalle: 3 copias, no 24',
         f.cad && f.cad.cadListo && f.cad.copias === 3 && f.cad.secc === 3 && f.cad.visibles === 3, f.cad);
   check('y la TCU que encuadra la cámara lleva el CAD ENCIMA DE SU VIGA, con su caja escondida',
@@ -325,8 +369,15 @@ const SONDA = `(() => {
   /* Y AQUI MANDA EL TOPE, que es donde estaba el defecto: Ayora tiene 3,8 km de
      diagonal y con la regla vieja el haz se iba a 4 m. */
   check('y en la planta grande el haz TAMPOCO se come la mesa',
-        a.haz && a.haz.ancho > 0 && a.haz.ancho <= a.haz.cuerda / 6 + 1e-6,
+        a.haz && a.haz.ancho > 0 && a.haz.ancho <= a.haz.cuerda / 4 + 1e-6,
         JSON.stringify(a.haz));
+  check('y tambien va a trazos',
+        a.haz && a.haz.segs > 0 && a.haz.repe === true,
+        `${a.haz && a.haz.segs} segmentos, agrupados por largo en múltiplos de ${a.haz && a.haz.trazos}: ${a.haz && a.haz.repe}`);
+  /* Y EL MISMO MEDIO METRO QUE EN LA CHICA: el grosor dejo de escalar con la
+     planta — un enlace no es mas gordo por estar en Ayora que en Fayon. */
+  check('y mide medio metro, igual que en la planta chica',
+        a.haz && Math.abs(a.haz.ancho - ANCHO_HAZ) < 1e-9, a.haz && a.haz.ancho);
   /* Y no se confunden las dos cosas: con levantamiento las filas están MEDIDAS,
      así que la guarda de solapes —que es sobre el recurso de partir— no aplica. */
   check('y lo dice bien: las filas vienen medidas, no deducidas',
