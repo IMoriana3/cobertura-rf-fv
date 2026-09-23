@@ -50,7 +50,7 @@ const check = (n, c, extra) => { if (c) { ok++; console.log('OK   ' + n); }
   const pg = await ctx.newPage();
   const errs = []; pg.on('pageerror', e => errs.push(e.message));
   await pg.goto(BASE, { waitUntil: 'networkidle' });
-  await pg.waitForFunction(() => typeof update === 'function', { timeout: 60000 });
+  await pg.waitForFunction(() => typeof update === 'function', null, { timeout: 60000 });
   await pg.waitForTimeout(800);
 
   /* 1. LA FILA ESTÁ, Y LOS CONTROLES DENTRO. Es la parte barata; sola no bastaría. */

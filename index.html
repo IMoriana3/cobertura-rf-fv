@@ -198,6 +198,7 @@
       <div><label class="chk"><input type="checkbox" id="pat" checked> Patrón de la antena</label></div>
       <div><label class="chk"><input type="checkbox" id="lnk" checked> Enlaces a la NCU</label></div>
       <div><label class="chk"><input type="checkbox" id="zon"> Zona de cada NCU</label></div>
+      <div><label class="chk"><input type="checkbox" id="orto"> Ortofoto del terreno <span class="val" id="ortoEst"></span></label></div>
       <div><label class="chk"><input type="checkbox" id="bt" checked> Backtracking</label></div>
     </div>
     <p class="note" id="sunl"></p>
@@ -814,6 +815,81 @@ const MODS_PLANTA={sanjose:32};
 
    Terrarium mete la cota en el color: (R·256 + G + B/256) − 32768 metros. */
 const DEM_TESELA=(z,x,y)=>`https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`;
+/* ── LA ORTOFOTO, OPCIONAL ──────────────────────────────────────────────────
+   «¿Por qué el suelo es diferente a cobertura 3d?» Porque son dos vestidos
+   distintos para el mismo terreno, y los dos a propósito: `terreno.html` pone
+   ORTOFOTO real (se mira una planta que existe) y esta página pinta un PLANO
+   TOPOGRÁFICO —curvas cada metro y cada cinco, tinte por cota— porque con un
+   3 % de pendiente el sombreado no distingue nada y lo que aquí importa es el
+   relieve que CORTA los enlaces.
+
+   Así que la foto se añade SIN quitar las curvas: van encima de ella. No es un
+   apaño por no elegir — sobre una ortofoto las curvas siguen siendo lo único
+   que dice dónde hay un cerro, y quitarlas para que se vea bonito sería perder
+   justo la lectura que esta página aporta.
+
+   Va APAGADA por defecto: encenderla saca a esta página a pedir teselas de
+   imagen a un CDN, que hasta ahora no hacía. Y si no se pueden bajar, se dice y
+   se sigue con las curvas — nunca se finge una foto que no llegó, que es la
+   misma regla que ya sigue el DEM. */
+const ORTO_ESRI=(z,x,y)=>`https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`;
+ORTO_ESRI.fuente="ESRI";
+const ORTO_PNOA=(z,x,y)=>`https://www.ign.es/wmts/pnoa-ma?service=WMTS&request=GetTile&version=1.0.0&layer=OI.OrthoimageCoverage&style=default&tilematrixset=GoogleMapsCompatible&format=image/jpeg&tilematrix=${z}&tilerow=${y}&tilecol=${x}`;
+ORTO_PNOA.fuente="PNOA";
+/* España (península + islas): PNOA primero —25 cm/px— y ESRI de respaldo TESELA
+   A TESELA, no en bloque: donde el IGN no sirve ese zoom, cae la de al lado y no
+   el mosaico entero. Es el mismo criterio de `terreno.html`. */
+const ortoFuentes=(lat,lon)=>(lat>27&&lat<44.2&&lon>-18.5&&lon<4.7)?[ORTO_PNOA,ORTO_ESRI]:[ORTO_ESRI];
+function cargaImg(u){ return new Promise((res,rej)=>{ const im=new Image();
+  im.crossOrigin="anonymous"; im.onload=()=>res(im); im.onerror=()=>rej(new Error(u)); im.src=u; }); }
+
+async function mosaicoOrto(lay){
+  const T=lay.trackers||[];
+  if(!T.length||typeof lay.clat!=="number") return {ok:false,porque:"el layout no se puede georreferenciar"};
+  let x0=1e9,x1=-1e9,n0=1e9,n1=-1e9;
+  const mete=q=>{ x0=Math.min(x0,q.x);x1=Math.max(x1,q.x);n0=Math.min(n0,q.n);n1=Math.max(n1,q.n); };
+  T.forEach(mete); (lay.ncus||[]).forEach(mete); (lay.meteo||[]).forEach(mete);
+  const MG=60; x0-=MG; x1+=MG; n0-=MG; n1+=MG;   // menos margen que el DEM: la foto viste el campo, no el valle
+  const ll=llDe(lay);
+  const latN=ll.lat(n1), latS=ll.lat(n0), lonW=ll.lon(x0), lonE=ll.lon(x1);
+  /* ZOOM ADAPTATIVO, ~10 teselas por lado y tope 19. Una planta de 125 m con
+     zoom fijo bajo sale de cuatro píxeles; San José con zoom 19 pediría miles de
+     teselas. El mismo cálculo que hace `terreno.html`. */
+  const z=Math.max(15,Math.min(19,Math.round(Math.log2(
+        10*40075016*Math.cos(lay.clat*Math.PI/180)/Math.max(x1-x0,n1-n0)))));
+  const txmin=Math.floor(lon2tx(lonW,z)), txmax=Math.floor(lon2tx(lonE,z));
+  const tymin=Math.floor(lat2ty(latN,z)), tymax=Math.floor(lat2ty(latS,z));
+  const nT=(txmax-txmin+1)*(tymax-tymin+1);
+  if(nT>400) return {ok:false,porque:`harían falta ${nT} teselas de foto: demasiadas`};
+  const W=(txmax-txmin+1)*256, H=(tymax-tymin+1)*256;
+  const cv=document.createElement("canvas"); cv.width=W; cv.height=H;
+  const ctx=cv.getContext("2d");
+  ctx.fillStyle="#8e8a76"; ctx.fillRect(0,0,W,H);   // tono tierra: una tesela caída en TODAS las fuentes no deja agujero
+  const fns=ortoFuentes(lay.clat,lay.clon);
+  let ok=0, fallan=0; const porFuente={};
+  const tareas=[];
+  for(let tx=txmin;tx<=txmax;tx++) for(let ty=tymin;ty<=tymax;ty++){
+    let p=Promise.reject();
+    fns.forEach(fn=>{ p=p.catch(()=>cargaImg(fn(z,tx,ty)).then(im=>{ im._f=fn.fuente; return im; })); });
+    tareas.push(p.then(im=>{ ctx.drawImage(im,(tx-txmin)*256,(ty-tymin)*256,256,256); ok++;
+                             porFuente[im._f]=(porFuente[im._f]||0)+1; })
+                 .catch(()=>{ fallan++; }));
+  }
+  await Promise.all(tareas);
+  if(!ok) return {ok:false,porque:`no contestó ninguna de las ${fallan} teselas de foto`};
+  /* Un lienzo con una tesela de otro origen SIN cabeceras CORS queda «teñido» y
+     la textura sale negra en algunos navegadores. Se comprueba leyendo un píxel:
+     eso es no tener foto, no un error a medias. */
+  try{ ctx.getImageData(0,0,1,1); }
+  catch(e){ return {ok:false,porque:"las teselas de foto no llegan con CORS"}; }
+  const usadas=Object.keys(porFuente).filter(k=>porFuente[k]>0);
+  return { ok:true, canvas:cv, z, teselas:ok, fallan,
+           fuentes:usadas, mixto:usadas.length>1,
+           resumen:usadas.map(k=>porFuente[k]+" "+k).join(" + ")||"—",
+           uv:(x,n)=>[ (lon2tx(ll.lon(x),z)-txmin)*256/W,
+                       1-(lat2ty(ll.lat(n),z)-tymin)*256/H ] };
+}
+let ORTO=null;   // el mosaico de la planta cargada, o null
 const lon2tx=(lon,z)=>(lon+180)/360*Math.pow(2,z);
 const lat2ty=(lat,z)=>{ const r=lat*Math.PI/180;
   return (1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*Math.pow(2,z); };
@@ -1683,6 +1759,20 @@ function buildTerreno(){
     pos.setY(i,cotaEn(X,-Zc));
   }
   g.computeVertexNormals();
+  /* UV POR LAT/LON CUANDO HAY FOTO. La rejilla del terreno NO es uniforme en X
+     —hay una columna en cada línea de fila medida—, así que la UV que trae el
+     `PlaneGeometry` no cuadra con el mosaico. Se recalcula punto a punto desde
+     la georreferencia, que es la única que sabe dónde cae cada vértice en la
+     foto. Sin foto se deja la de fábrica, que es la que usa la textura de
+     suelo repetida. */
+  if(ORTO&&ORTO.ok){
+    const uv=g.attributes.uv;
+    for(let i=0;i<pos.count;i++){
+      const q=ORTO.uv(pos.getX(i)+e.cx, -(pos.getZ(i)+e.cz));
+      uv.setXY(i,q[0],q[1]);
+    }
+    uv.needsUpdate=true;
+  }
   /* QUE EL RELIEVE SE LEA. Con 70 m de desnivel en 2,5 km la pendiente es del
      3 %: el sombreado no la distingue y el suelo se ve como una lámina lisa
      con las filas pegadas. Como en un plano: curvas de nivel cada metro
@@ -1690,19 +1780,32 @@ function buildTerreno(){
      escrito sobre el material estándar sin perder textura ni sombras. */
   let ymin=1e9, ymax=-1e9;
   for(let i=0;i<pos.count;i++){ const y=pos.getY(i); if(y<ymin)ymin=y; if(y>ymax)ymax=y; }
+  /* CON FOTO, LA FOTO MANDA EN EL COLOR. La textura de suelo repetida y el tono
+     oliva existen para que el terreno no sea una lámina gris; con ortofoto
+     sobran, y el tinte por cota se baja a un tercio — sobre una foto real un
+     tinte fuerte la vuelve un mapa de colores y se pierde justo lo que se venía
+     a ver. Las CURVAS se quedan igual: son la lectura que aporta esta página. */
+  const conFoto=!!(ORTO&&ORTO.ok);
+  let texO=null;
+  if(conFoto){ texO=new THREE.CanvasTexture(ORTO.canvas);
+    if(THREE.sRGBEncoding)texO.encoding=THREE.sRGBEncoding;
+    texO.anisotropy=(renderer&&renderer.capabilities)?renderer.capabilities.getMaxAnisotropy():8; }
   const matT=new THREE.MeshStandardMaterial({
-    map:groundMesh.material.map, roughness:0.98, metalness:0, color:0x6f6a58});
+    map:conFoto?texO:groundMesh.material.map, roughness:0.98, metalness:0,
+    color:conFoto?0xffffff:0x6f6a58});
   matT.onBeforeCompile=sh=>{
     sh.uniforms.uYmin={value:ymin}; sh.uniforms.uYmax={value:Math.max(ymin+1,ymax)};
+    sh.uniforms.uTinte={value:conFoto?0.33:1.0};
     sh.vertexShader=sh.vertexShader
       .replace("#include <common>","#include <common>\nvarying float vCota;")
       .replace("#include <begin_vertex>","#include <begin_vertex>\nvCota=(modelMatrix*vec4(position,1.0)).y;");
     sh.fragmentShader=sh.fragmentShader
-      .replace("#include <common>","#include <common>\nvarying float vCota; uniform float uYmin; uniform float uYmax;")
+      .replace("#include <common>","#include <common>\nvarying float vCota; uniform float uYmin; uniform float uYmax; uniform float uTinte;")
       .replace("#include <map_fragment>",
         "#include <map_fragment>\n"+
         "{ float t=clamp((vCota-uYmin)/(uYmax-uYmin),0.0,1.0);\n"+
-        "  diffuseColor.rgb*=mix(vec3(0.80,0.84,0.72),vec3(1.18,1.14,1.02),t);\n"+   // bajo: más oscuro y verdoso; alto: claro
+        "  diffuseColor.rgb*=mix(vec3(1.0),mix(vec3(0.80,0.84,0.72),vec3(1.18,1.14,1.02),t),uTinte);\n"+   // bajo: más oscuro y verdoso; alto: claro. Con foto, uTinte lo baja a un tercio
+
         "  float w1=fwidth(vCota), c1=abs(fract(vCota+0.5)-0.5)/max(w1,1e-4), c5=abs(fract(vCota/5.0+0.5)-0.5)*5.0/max(w1,1e-4);\n"+
         "  float l1=1.0-smoothstep(0.6,1.4,c1), l5=1.0-smoothstep(0.9,2.0,c5);\n"+
         "  diffuseColor.rgb*=1.0-0.18*l1*step(w1,0.35)-0.30*l5*step(w1,1.5); }");
@@ -2007,6 +2110,10 @@ function buildPlanta(){
     PLEQ.push({tipo:"hsu",i:i,g:b.group,dato:c,ant:b.antPos.clone()});
   });
   buildZonas();   // qué cuelga de cada NCU, delimitado sobre el terreno
+  /* La ortofoto es de LA PLANTA que estaba puesta: al cambiar de planta hay que
+     soltarla, o el terreno nuevo saldría vestido con la foto del anterior. */
+  if(ORTO&&ORTO.nom!==PLANTA.nom){ ORTO=null;
+    if($("orto")){ $("orto").checked=false; $("ortoEst").textContent=""; } }
   /* LA ANTENA, QUE ES DE LO QUE VA ESTA PÁGINA. En planta no se dibujaba: el
      plan de instancias trae sus piezas y el bucle las saltaba («las gestiona la
      app por frame»), pero la app nunca las ponía. Así que el campo salía con
@@ -2888,6 +2995,28 @@ if(webgl){
   /* La zona no entra en ningún cálculo: es un contorno. Así que se enciende y se
      apaga sin reconstruir nada ni volver a pedir la física. */
   $("zon").addEventListener("change",()=>{ if(zonasG)zonasG.visible=$("zon").checked; });
+  /* LA ORTOFOTO SE BAJA AL ENCENDERLA, no al cargar la planta: es la única cosa
+     de esta página que sale a pedir imágenes, y quien no la quiera no debe
+     pagarla. Se rehace SOLO el terreno —no la planta entera— porque la foto no
+     entra en ningún cálculo: es el vestido del suelo.
+     Si no llega, se dice en el propio rótulo y se vuelve a las curvas. Nunca se
+     finge una foto que no se ha podido leer, igual que con el relieve. */
+  $("orto").addEventListener("change",async()=>{
+    const est=$("ortoEst");
+    if(!$("orto").checked){ ORTO=null; est.textContent=""; if(PLANTA)buildTerreno(); return; }
+    if(!PLANTA){ est.textContent="(sólo en planta)"; $("orto").checked=false; return; }
+    est.textContent="bajando…"; $("orto").disabled=true;
+    try{ ORTO=await mosaicoOrto(PLANTA.lay); if(ORTO)ORTO.nom=PLANTA.nom; }
+    catch(e){ ORTO={ok:false,porque:String(e&&e.message||e)}; }
+    $("orto").disabled=false;
+    if(ORTO&&ORTO.ok){
+      est.textContent=`${ORTO.teselas} teselas z${ORTO.z} · ${ORTO.resumen}`+(ORTO.fallan?` · ${ORTO.fallan} sin foto`:"");
+      buildTerreno();
+    }else{
+      est.textContent="no se pudo: "+((ORTO&&ORTO.porque)||"?");
+      ORTO=null; $("orto").checked=false;
+    }
+  });
   ["tilt","drop","pitch","chord","dncu","hncu","dhsu","hora","dia","lat"]
     .forEach(id=>$(id).addEventListener("input",update));
   /* La altura de la viga cambia el largo del poste y la cota del pie del

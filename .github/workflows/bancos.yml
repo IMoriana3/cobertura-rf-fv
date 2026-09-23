@@ -104,6 +104,11 @@ jobs:
           # dejar el ▶ mudo: su manejador vivia dentro del grupo del que se
           # saca. Asi que el banco lo PULSA y mira si el reloj avanza.
           - { banco: test_fila_tiempo.js,    nombre: 'la hora, en su fila',           tope: 20 }
+          # La ortofoto es lo unico de esta pagina que sale a pedir imagenes, asi
+          # que el banco las SIRVE el (un damero conocido) y comprueba lo que
+          # importa: que la foto llegue AL SUELO —textura, UV y pixeles— y que
+          # cuando no se puede bajar, la pagina lo DIGA y vuelva a las curvas.
+          - { banco: test_ortofoto.js,       nombre: 'ortofoto del terreno',          tope: 20 }
           - { banco: test_imagen.js,         nombre: 'imagen (vistas de referencia)', tope: 45 }
           # `plantas reales` ya no es UN job: hacía el trabajo de tres y se comió
           # los 45 minutos. Ahora son cuatro grupos en paralelo, y un rojo dice
