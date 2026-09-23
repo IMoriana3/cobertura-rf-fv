@@ -38,6 +38,19 @@
   .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-top:8px}
   .seg button{background:transparent;color:var(--muted);border:0;padding:7px 13px;font-size:13px;cursor:pointer}
   .seg button.on{background:var(--cyan);color:#04222e;font-weight:600}
+  /* LA FILA DE TIEMPO, APARTE. La hora es la variable que se toca todo el rato
+     —mueve el sol, las mesas y con ellas los margenes— y estaba como un
+     deslizador mas entre diez, a saltos de 5 min y con su boton de reproducir
+     en otro sitio del panel. Sube a su propia fila, pegada a la escena, como en
+     `overcast.html`: alli se lee de un vistazo. */
+  .timerow{display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap;
+           background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 12px}
+  .timerow input[type=range]{flex:1;min-width:180px;accent-color:var(--cyan)}
+  .timerow .t{font-variant-numeric:tabular-nums;font-size:1.15rem;font-weight:600;color:var(--cyan);min-width:66px;text-align:right}
+  .timerow label{white-space:nowrap}
+  .timerow select,.timerow button{background:transparent;color:var(--muted);border:1px solid var(--line);
+           border-radius:8px;padding:6px 11px;font-size:13px;cursor:pointer}
+  .timerow button.on{background:var(--cyan);color:#04222e;font-weight:600;border-color:var(--cyan)}
   .row{display:flex;flex-wrap:wrap;gap:8px 26px;align-items:flex-end}
   .row>div{min-width:0}
   .chk{font-size:13px;color:var(--muted);display:inline-flex;align-items:center;gap:6px;margin-top:14px;cursor:pointer}
@@ -66,6 +79,23 @@
     <div id="labels"></div>
     <div id="fallback">Este visor necesita WebGL. Ábrelo en un navegador con aceleración gráfica activada.</div>
   </div>
+  <div class="timerow">
+    <button id="play" title="Recorre el día entero">▶</button>
+    <select id="speed" title="Velocidad: minutos simulados por segundo real">
+      <option value="30">×½</option>
+      <option value="60" selected>×1</option>
+      <option value="150">×2,5</option>
+      <option value="360">×6</option>
+    </select>
+    <label for="hora">Hora solar</label>
+    <input id="hora" type="range" min="0" max="1439" step="1" value="780">
+    <span class="t" id="vHora">13:00</span>
+    <div class="seg" id="segp" style="margin-top:0">
+      <button data-s="amanecer">Amanecer</button>
+      <button data-s="mediodia">Mediodía</button>
+      <button data-s="ocaso">Ocaso</button>
+    </div>
+  </div>
   <div class="lg">
     <span class="sw" style="background:#39d0ff"></span>antena / patrón
     <span class="bar"></span>margen del enlace (sin enlace → holgado)
@@ -90,8 +120,6 @@
         <input id="hncu" type="range" min="1" max="8" step="0.05" value="3.15"></div>
       <div><label>HSU: distancia a la NCU: <span class="val" id="vDhsu">8 m</span></label>
         <input id="dhsu" type="range" min="3" max="60" step="1" value="8"></div>
-      <div><label>Hora solar: <span class="val" id="vHora">13:00</span></label>
-        <input id="hora" type="range" min="0" max="1439" step="5" value="780"></div>
       <div><label>Día del año: <span class="val" id="vDia">21 jun</span></label>
         <input id="dia" type="range" min="1" max="365" step="1" value="172"></div>
       <div><label>Latitud: <span class="val" id="vLat">41.5°</span></label>
@@ -167,16 +195,9 @@
           <button data-d="man">Manual</button>
         </div>
       </div>
-      <div><label>Reproducir el día:</label>
-        <div class="seg" id="segp">
-          <button id="play">▶ Reproducir</button>
-          <button data-s="amanecer">Amanecer</button>
-          <button data-s="mediodia">Mediodía</button>
-          <button data-s="ocaso">Ocaso</button>
-        </div>
-      </div>
       <div><label class="chk"><input type="checkbox" id="pat" checked> Patrón de la antena</label></div>
       <div><label class="chk"><input type="checkbox" id="lnk" checked> Enlaces a la NCU</label></div>
+      <div><label class="chk"><input type="checkbox" id="zon"> Zona de cada NCU</label></div>
       <div><label class="chk"><input type="checkbox" id="bt" checked> Backtracking</label></div>
     </div>
     <p class="note" id="sunl"></p>
@@ -906,8 +927,13 @@ function cargaPlanta(nom){
                   derivado:!!t.ncuCerca};
         }),
         ncus:(j.ncus||[]).map(c=>({x:c.x,n:c.n,name:c.name})),
-        meteo:(j.meteo||[]).map(c=>({x:c.x,n:c.n,name:c.name})),
-        reps:(j.reps||[]).map(c=>({x:c.x,n:c.n,name:c.name})),
+        /* `ncu` SE VENÍA TIRANDO. La proyección se quedaba con {x, n, name} y el
+           ámbito de cada HSU y de cada repetidor se perdía al cargar, aunque el
+           layout lo trajera. Sin él no se puede decir QUÉ equipos cuelgan de
+           cada NCU, que es lo que dibujan las zonas. (Llegó a este repo con la
+           sincronización de layouts: la copia vieja ni lo tenía.) */
+        meteo:(j.meteo||[]).map(c=>({x:c.x,n:c.n,name:c.name,ncu:c.ncu||null})),
+        reps:(j.reps||[]).map(c=>({x:c.x,n:c.n,name:c.name,ncu:c.ncu||null})),
         /* Retícula de apoyos MEDIDA, si la planta la trae: El Burgo la tiene por
            tipo de seguidor, de los círculos del Tierras.dwg. Sin ella se usa la
            genérica de `seguidor.js`, proporcional al largo. */
@@ -1523,6 +1549,85 @@ function pilotesDe(tp,mods){
 /* El terreno, de las cotas medidas: una malla muestreada sobre la extensión de
    la planta. Sin cotas se queda el plano de siempre. */
 let terreno=null;
+/* ============================================================================
+ * QUÉ CUELGA DE CADA NCU: la zona que sirve, delimitada sobre el terreno.
+ *
+ * Pedido tal cual: «delimitar, al igual que en siting, las TCUs y HSUs que
+ * comunican con cada NCU». En `siting` una zona es la ENVOLVENTE CONVEXA de los
+ * equipos de ese ámbito, y se lee de un vistazo: aquí se hace igual para que las
+ * dos herramientas digan lo mismo con la misma forma.
+ *
+ * QUÉ ENTRA EN LA ENVOLVENTE. Las cuatro esquinas de cada mesa, no su punto
+ * central: el punto está en mitad de una fila de 33 a 74 m y el polígono
+ * cortaría los seguidores por la mitad en vez de contenerlos (el mismo tropiezo
+ * que ya documenta `siting`). Y entran las HSU y los repetidores de ese ámbito,
+ * que son equipos a cubrir.
+ *
+ * POR QUÉ SOLO EL BORDE Y NO EL RELLENO DE `siting`. Allí el lienzo es plano y
+ * un relleno al 14 % no miente. Aquí el suelo tiene relieve: un polígono relleno
+ * tendría que triangularse, y sus triángulos cortarían las lomas — un plano
+ * falso metido en un terreno que hemos peleado justo para que fuera real. El
+ * borde se DRAPEA: se sigue el terreno muestreando a lo largo de cada tramo.  */
+const ZONA_PASO=4;        // metros entre muestras del borde: con celdas de terreno de 6 m sobra para que el cordón no levante el vuelo
+const ZONA_ALTO=0.60;     // se levanta un poco del suelo o el cordón parpadea contra la malla (z-fighting)
+let zonasG=null;
+
+/* Envolvente convexa (monotone chain). Devuelve los vértices en orden. */
+function envolvente(P){
+  if(P.length<3) return P.slice();
+  const p=P.slice().sort((a,b)=>a.x-b.x||a.n-b.n);
+  const cruz=(o,a,b)=>(a.x-o.x)*(b.n-o.n)-(a.n-o.n)*(b.x-o.x);
+  const mitad=(pts)=>{ const h=[]; for(const q of pts){
+      while(h.length>=2&&cruz(h[h.length-2],h[h.length-1],q)<=0) h.pop(); h.push(q); } return h; };
+  const lo=mitad(p), hi=mitad(p.slice().reverse());
+  lo.pop(); hi.pop(); return lo.concat(hi);
+}
+
+/* Las CUATRO esquinas de una fila, giradas con su azimut. El tubo avanza en
+   (sin rot, cos rot) —el mismo eje que usa el apoyo en el DEM— y el ancho de la
+   mesa va en su perpendicular. */
+function esquinasFila(t){
+  const L=SPANP*t.mr/2, W=CHORD/2, rot=t.rot||0;
+  const ux=Math.sin(rot), un=Math.cos(rot), vx=Math.cos(rot), vn=-Math.sin(rot);
+  const out=[];
+  for(const q of [[-W,-L],[W,-L],[W,L],[-W,L]])
+    out.push({x:t.x+q[0]*vx+q[1]*ux, n:t.n+q[0]*vn+q[1]*un});
+  return out;
+}
+
+function buildZonas(){
+  if(zonasG){ plantaG.remove(zonasG); zonasG.traverse(o=>{ if(o.geometry)o.geometry.dispose(); }); }
+  zonasG=new THREE.Group(); zonasG.visible=$("zon")?$("zon").checked:true; plantaG.add(zonasG);
+  if(!PLANTA) return;
+  const UN=PLANTA._un||unidades(), por={};
+  const mete=(k,q)=>{ if(k==null) return; (por[k]||(por[k]=[])).push(q); };
+  UN.forEach(t=>{ esquinasFila(t).forEach(q=>mete(t.ncu,q)); });
+  /* Las HSU y los repetidores, con su ámbito. Una HSU puede caer FUERA del
+     campo de su NCU —está donde el plano la puso— y entonces la zona se estira
+     hasta ella: eso es un dato, no un defecto del dibujo. */
+  (PLANTA.meteo||[]).forEach(c=>mete(c.ncu,{x:c.x,n:c.n}));
+  (PLANTA.reps||[]).forEach(c=>mete(c.ncu,{x:c.x,n:c.n}));
+  /* GROSOR A ESCALA DE LA PLANTA. Un cordón de 0,5 m se ve en Túnez (125 m de
+     campo) y desaparece en San José (2,5 km). `linewidth` no vale: WebGL lo
+     ignora y pinta 1 píxel siempre, así que el borde es un TUBO de verdad. */
+  let _dg=600; try{ _dg=extentPlanta().diag||600; }catch(e){}
+  const R=Math.max(0.5,Math.min(3,_dg/900));
+  Object.keys(por).sort((a,b)=>a-b).forEach(k=>{
+    const H=envolvente(por[k]); if(H.length<3) return;
+    const pts=[];
+    for(let i=0;i<H.length;i++){
+      const a=H[i], b=H[(i+1)%H.length], d=Math.hypot(b.x-a.x,b.n-a.n);
+      const pasos=Math.max(1,Math.ceil(d/ZONA_PASO));
+      for(let j=0;j<pasos;j++){ const u=j/pasos, x=a.x+(b.x-a.x)*u, n=a.n+(b.n-a.n)*u;
+        pts.push(new THREE.Vector3(x,cotaEn(x,n)+ZONA_ALTO,-n)); }
+    }
+    const cur=new THREE.CatmullRomCurve3(pts,true,"catmullrom",0.0);
+    const m=new THREE.MeshBasicMaterial({color:new THREE.Color(colorAmbito("NCU "+k)),
+                                         transparent:true,opacity:0.75,depthWrite:false});
+    zonasG.add(new THREE.Mesh(new THREE.TubeGeometry(cur,pts.length,R,6,true),m));
+  });
+}
+
 function buildTerreno(){
   if(terreno){ scene.remove(terreno); terreno.geometry.dispose(); terreno=null; }
   /* Con levantamiento o con DEM hay relieve que mallar; sin ninguno de los dos
@@ -1901,6 +2006,7 @@ function buildPlanta(){
     const d=new THREE.Mesh(new THREE.SphereGeometry(0.055,12,8),mats.antena); d.position.copy(b.antPos); b.group.add(d);
     PLEQ.push({tipo:"hsu",i:i,g:b.group,dato:c,ant:b.antPos.clone()});
   });
+  buildZonas();   // qué cuelga de cada NCU, delimitado sobre el terreno
   /* LA ANTENA, QUE ES DE LO QUE VA ESTA PÁGINA. En planta no se dibujaba: el
      plan de instancias trae sus piezas y el bucle las saltaba («las gestiona la
      app por frame»), pero la app nunca las ponía. Así que el campo salía con
@@ -2455,16 +2561,22 @@ function drawLabels(){
   });
 }
 let _tPrev=0, _acc=0;
-const PASO_MIN=5;                 // 5 min por paso: el día entero en ~17 s
+/* EL PASO YA NO ES FIJO. Iba a 5 minutos por paso pasara lo que pasara, que es
+   lo mismo que decir que la velocidad la decidia la maquina: en un equipo lento
+   el dia tardaba el doble. Ahora se avanza por TIEMPO REAL —minutos simulados
+   por segundo, como en `overcast.html`— y el selector los elige. El deslizador
+   va a paso de 1 minuto, asi que la animacion no tiene que saltar de cinco en
+   cinco para caer en un valor valido. */
 function tick(t){
   requestAnimationFrame(tick);
   if(playing){
-    const dt=_tPrev?Math.min(0.2,(t-_tPrev)/1000):0; _tPrev=t; _acc+=dt;
-    if(_acc>=0.06){ _acc=0;
-      let m=+$("hora").value+PASO_MIN; if(m>1439)m=0;
+    const dt=_tPrev?Math.min(0.2,(t-_tPrev)/1000):0; _tPrev=t;
+    _acc+=dt*(+($("speed")||{}).value||60);
+    if(_acc>=1){ let m=+$("hora").value+Math.floor(_acc); _acc-=Math.floor(_acc);
+      while(m>1439)m-=1440;
       $("hora").value=m; update();
     }
-  }else _tPrev=t;
+  }else{ _tPrev=t; _acc=0; }
   resize(); controls.update(); if(PLANTA) cadCerca(false); renderer.render(scene,camera); drawLabels();
 }
 
@@ -2748,10 +2860,15 @@ if(webgl){
   /* Saltos a las tres horas que enseñan el día: al amanecer las palas están de
      canto y la banda de la mesa es un muro; a mediodía están planas y el campo
      casi no apantalla. */
+  /* EL ▶ TIENE SU PROPIO OYENTE. Vivia dentro del de `#segp` porque el boton
+     estaba dentro de ese grupo; al subirlo a la fila de tiempo se habria quedado
+     mudo, que es el fallo tipico de mover un control de sitio. */
+  $("play").addEventListener("click",()=>{
+    playing=!playing; const b=$("play");
+    b.textContent=playing?"⏸":"▶"; b.classList.toggle("on",playing);
+  });
   $("segp").addEventListener("click",e=>{
     const b=e.target.closest("button"); if(!b) return;
-    if(b.id==="play"){ playing=!playing; b.textContent=playing?"⏸ Pausa":"▶ Reproducir";
-                       b.classList.toggle("on",playing); return; }
     const lat=+$("lat").value, dia=+$("dia").value;
     if(b.dataset.s==="mediodia") $("hora").value=720;
     else{
@@ -2768,6 +2885,9 @@ if(webgl){
   });
   $("pat").addEventListener("change",()=>{ showPat=$("pat").checked; update(); });
   $("lnk").addEventListener("change",()=>{ showNcuLinks=$("lnk").checked; update(); });
+  /* La zona no entra en ningún cálculo: es un contorno. Así que se enciende y se
+     apaga sin reconstruir nada ni volver a pedir la física. */
+  $("zon").addEventListener("change",()=>{ if(zonasG)zonasG.visible=$("zon").checked; });
   ["tilt","drop","pitch","chord","dncu","hncu","dhsu","hora","dia","lat"]
     .forEach(id=>$(id).addEventListener("input",update));
   /* La altura de la viga cambia el largo del poste y la cota del pie del

@@ -65,6 +65,11 @@ jobs:
       # red, sobre ficheros del repo, y con su mutación dentro.
       - name: los layouts siguen siendo los de cobertura-zigbee
         run: node tests/test_layouts_procedencia.js
+      # La zona de cada NCU es aritmetica sobre el layout, asi que se comprueba
+      # aqui y en milisegundos: que contenga TODO el suelo de sus seguidores y
+      # sus HSU. Lleva su mutacion dentro (`ZONAS_PUNTO=si`).
+      - name: la zona de cada NCU contiene a los suyos
+        run: node tests/test_zonas_ncu.js
 
   # Los tres bancos de navegador. Cada uno tarda entre cinco y quince minutos
   # dibujando por software, así que van en paralelo.
@@ -94,6 +99,11 @@ jobs:
       matrix:
         include:
           - { banco: test_visor_3d.js,       nombre: 'visor 3D',                      tope: 30 }
+          # La hora es la variable que se toca todo el rato y estaba como un
+          # deslizador mas entre diez. Al subirla a su propia fila, el riesgo es
+          # dejar el ▶ mudo: su manejador vivia dentro del grupo del que se
+          # saca. Asi que el banco lo PULSA y mira si el reloj avanza.
+          - { banco: test_fila_tiempo.js,    nombre: 'la hora, en su fila',           tope: 20 }
           - { banco: test_imagen.js,         nombre: 'imagen (vistas de referencia)', tope: 45 }
           # `plantas reales` ya no es UN job: hacía el trabajo de tres y se comió
           # los 45 minutos. Ahora son cuatro grupos en paralelo, y un rojo dice
@@ -183,12 +193,33 @@ jobs:
   # pasar. Asi corre siempre y falla diciendo quien cayo.
   #
   # `result` de un job de matriz es success solo si TODAS sus entradas pasaron.
+  #
+  # ...PERO `always()` A SECAS PINTA ROJOS QUE NO SON. `cancel-in-progress` deja
+  # los bancos de la corrida anterior en `cancelled` en cuanto se empuja encima;
+  # con `always()` la puerta corre igual, exige `success` y el PR ensena un ROJO
+  # donde no ha fallado nada. Paso DOS VECES en la misma PR: el banco de imagen
+  # tarda ~19 min y cualquier push dentro de esa ventana se lo lleva por delante.
+  # Un rojo que no significa nada ensena a no mirar los rojos, que es el coste
+  # de verdad.
+  #
+  # `!cancelled()` lo arregla, y NO abre el agujero contrario. Es la misma
+  # condicion que ya usa `cobertura-zigbee`, donde esta medida: sobre sus 40
+  # corridas mas recientes, 30 success, 10 cancelled y CERO failure — una de
+  # cada cuatro en rojo sin un solo banco caido. Y la objecion obvia (un banco
+  # que se CUELGA y lo corta su `timeout-minutes`, ¿se salta la puerta?) esta
+  # comprobada alli con un experimento en el runner: `cancelled()` es funcion
+  # del WORKFLOW, y un job muerto por su propio tope no la pone cierta — la
+  # puerta corre, lee `cancelled` y se queda en ROJO. Lo que se salta es solo la
+  # corrida que alguien cancelo de verdad empujando encima.
+  #
+  # Un `cancelled` por fail-fast de la matriz tambien sigue cayendo: ahi la
+  # corrida NO esta cancelada y el job que fallo aparece como `failure`.
   puerta:
     name: bancos en verde
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs: [nucleo, navegador]
-    if: always()
+    if: always() && !cancelled()
     steps:
       - name: ninguno ha fallado
         run: |
