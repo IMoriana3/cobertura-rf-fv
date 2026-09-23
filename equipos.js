@@ -25,20 +25,32 @@
  *         cabecera se quedó atrás. 1,8 m de diferencia en la altura de antena
  *         con la que se calcula el salto HSU→NCU.
  *
- * PROCEDENCIA, Y DÓNDE YA NO SE CUMPLE. Las cotas no se inventan aquí: son las
+ * PROCEDENCIA. Las cotas no se inventan aquí: son las
  * que dibuja `terreno.html` (Cobertura 3D) desde antes, con sus planos citados.
  * Este fichero las saca a un módulo para que el simulador de cobertura RF use
  * LAS MISMAS y no una segunda versión a ojo — el mismo motivo por el que el
- * seguidor se pide a `seguidor.js`. Mientras `terreno.html` siga con su copia
- * embebida, este módulo y aquel bloque hay que tocarlos a la vez; extraerlo allí
- * también es la tarea pendiente.
+ * seguidor se pide a `seguidor.js`.
  *
- * Y AHORA MISMO NO SE CUMPLE, en la antena de la HSU. `terreno.html` se quedó
- * con la cota vieja: en su línea del enlace de la meteo usa 8 m («antena a 8 m,
- * mástil 8,5 m») mientras aquí `E.ANT_H.hsu` vale 6,50. No son dos rótulos: son
- * dos alturas de antena distintas alimentando el mismo salto HSU→NCU, 1,50 m
- * aparte. Este PR solo corrige los rótulos; cuadrar los dos números cambia el
- * coloreado de enlaces del 3D y va aparte, con su careo.
+ * Y YA SE CUMPLE. Aquí ponía dos avisos, y los dos han quedado atrás:
+ *
+ *   · «mientras `terreno.html` siga con su copia embebida…» — ya no la tiene:
+ *     pide `Equipos.buildNCU` y `Equipos.buildHSU` desde el 11-sep-2026 (#648).
+ *   · «y ahora mismo NO se cumple, en la antena de la HSU» — cuadrado el
+ *     23-sep-2026 (#721): su línea del enlace de la meteo usaba un 8 literal
+ *     —la altura de la TORRE tomada por altura de ANTENA— y ahora lee
+ *     `Equipos.ANT_H.hsu`. No era un rótulo: ese número entra en
+ *     `linkClearance()` y decide el color del enlace. Medido sobre los 40
+ *     saltos HSU→NCU reales de las diez plantas con meteo, bajar la antena de
+ *     8,00 a 6,50 movió la mediana −1,37 dB, con extremos de −15,18 (Panbianco,
+ *     333 m) a +11,57: no es monótono porque el directo y el reflejado en el
+ *     suelo entran y salen de fase.
+ *
+ * SE DEJAN ESCRITOS, EN PASADO Y CON SU FECHA, en vez de borrarlos. Un aviso
+ * caducado no es inofensivo: éste sobrevivió doce días al arreglo del primer
+ * punto y mandó a buscar un defecto que ya no existía. Si alguno vuelve a
+ * romperse, lo que hay que hacer es cambiar el tiempo del verbo aquí — y si se
+ * rompe otra cosa, añadirla. Lo que no vale es dejar el fichero diciendo algo
+ * que dejó de ser verdad.
  *
  * Marco local de los dos: origen en el PIE, sobre el suelo (y = 0), +Y arriba.
  * `buildNCU`/`buildHSU` devuelven un THREE.Group listo para posicionar.
