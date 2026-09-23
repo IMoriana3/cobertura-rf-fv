@@ -65,6 +65,11 @@ jobs:
       # red, sobre ficheros del repo, y con su mutación dentro.
       - name: los layouts siguen siendo los de cobertura-zigbee
         run: node tests/test_layouts_procedencia.js
+      # La zona de cada NCU es aritmetica sobre el layout, asi que se comprueba
+      # aqui y en milisegundos: que contenga TODO el suelo de sus seguidores y
+      # sus HSU. Lleva su mutacion dentro (`ZONAS_PUNTO=si`).
+      - name: la zona de cada NCU contiene a los suyos
+        run: node tests/test_zonas_ncu.js
 
   # Los tres bancos de navegador. Cada uno tarda entre cinco y quince minutos
   # dibujando por software, así que van en paralelo.

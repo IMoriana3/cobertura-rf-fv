@@ -177,6 +177,7 @@
       </div>
       <div><label class="chk"><input type="checkbox" id="pat" checked> Patrón de la antena</label></div>
       <div><label class="chk"><input type="checkbox" id="lnk" checked> Enlaces a la NCU</label></div>
+      <div><label class="chk"><input type="checkbox" id="zon"> Zona de cada NCU</label></div>
       <div><label class="chk"><input type="checkbox" id="bt" checked> Backtracking</label></div>
     </div>
     <p class="note" id="sunl"></p>
@@ -906,8 +907,13 @@ function cargaPlanta(nom){
                   derivado:!!t.ncuCerca};
         }),
         ncus:(j.ncus||[]).map(c=>({x:c.x,n:c.n,name:c.name})),
-        meteo:(j.meteo||[]).map(c=>({x:c.x,n:c.n,name:c.name})),
-        reps:(j.reps||[]).map(c=>({x:c.x,n:c.n,name:c.name})),
+        /* `ncu` SE VENÍA TIRANDO. La proyección se quedaba con {x, n, name} y el
+           ámbito de cada HSU y de cada repetidor se perdía al cargar, aunque el
+           layout lo trajera. Sin él no se puede decir QUÉ equipos cuelgan de
+           cada NCU, que es lo que dibujan las zonas. (Llegó a este repo con la
+           sincronización de layouts: la copia vieja ni lo tenía.) */
+        meteo:(j.meteo||[]).map(c=>({x:c.x,n:c.n,name:c.name,ncu:c.ncu||null})),
+        reps:(j.reps||[]).map(c=>({x:c.x,n:c.n,name:c.name,ncu:c.ncu||null})),
         /* Retícula de apoyos MEDIDA, si la planta la trae: El Burgo la tiene por
            tipo de seguidor, de los círculos del Tierras.dwg. Sin ella se usa la
            genérica de `seguidor.js`, proporcional al largo. */
@@ -1523,6 +1529,85 @@ function pilotesDe(tp,mods){
 /* El terreno, de las cotas medidas: una malla muestreada sobre la extensión de
    la planta. Sin cotas se queda el plano de siempre. */
 let terreno=null;
+/* ============================================================================
+ * QUÉ CUELGA DE CADA NCU: la zona que sirve, delimitada sobre el terreno.
+ *
+ * Pedido tal cual: «delimitar, al igual que en siting, las TCUs y HSUs que
+ * comunican con cada NCU». En `siting` una zona es la ENVOLVENTE CONVEXA de los
+ * equipos de ese ámbito, y se lee de un vistazo: aquí se hace igual para que las
+ * dos herramientas digan lo mismo con la misma forma.
+ *
+ * QUÉ ENTRA EN LA ENVOLVENTE. Las cuatro esquinas de cada mesa, no su punto
+ * central: el punto está en mitad de una fila de 33 a 74 m y el polígono
+ * cortaría los seguidores por la mitad en vez de contenerlos (el mismo tropiezo
+ * que ya documenta `siting`). Y entran las HSU y los repetidores de ese ámbito,
+ * que son equipos a cubrir.
+ *
+ * POR QUÉ SOLO EL BORDE Y NO EL RELLENO DE `siting`. Allí el lienzo es plano y
+ * un relleno al 14 % no miente. Aquí el suelo tiene relieve: un polígono relleno
+ * tendría que triangularse, y sus triángulos cortarían las lomas — un plano
+ * falso metido en un terreno que hemos peleado justo para que fuera real. El
+ * borde se DRAPEA: se sigue el terreno muestreando a lo largo de cada tramo.  */
+const ZONA_PASO=4;        // metros entre muestras del borde: con celdas de terreno de 6 m sobra para que el cordón no levante el vuelo
+const ZONA_ALTO=0.60;     // se levanta un poco del suelo o el cordón parpadea contra la malla (z-fighting)
+let zonasG=null;
+
+/* Envolvente convexa (monotone chain). Devuelve los vértices en orden. */
+function envolvente(P){
+  if(P.length<3) return P.slice();
+  const p=P.slice().sort((a,b)=>a.x-b.x||a.n-b.n);
+  const cruz=(o,a,b)=>(a.x-o.x)*(b.n-o.n)-(a.n-o.n)*(b.x-o.x);
+  const mitad=(pts)=>{ const h=[]; for(const q of pts){
+      while(h.length>=2&&cruz(h[h.length-2],h[h.length-1],q)<=0) h.pop(); h.push(q); } return h; };
+  const lo=mitad(p), hi=mitad(p.slice().reverse());
+  lo.pop(); hi.pop(); return lo.concat(hi);
+}
+
+/* Las CUATRO esquinas de una fila, giradas con su azimut. El tubo avanza en
+   (sin rot, cos rot) —el mismo eje que usa el apoyo en el DEM— y el ancho de la
+   mesa va en su perpendicular. */
+function esquinasFila(t){
+  const L=SPANP*t.mr/2, W=CHORD/2, rot=t.rot||0;
+  const ux=Math.sin(rot), un=Math.cos(rot), vx=Math.cos(rot), vn=-Math.sin(rot);
+  const out=[];
+  for(const q of [[-W,-L],[W,-L],[W,L],[-W,L]])
+    out.push({x:t.x+q[0]*vx+q[1]*ux, n:t.n+q[0]*vn+q[1]*un});
+  return out;
+}
+
+function buildZonas(){
+  if(zonasG){ plantaG.remove(zonasG); zonasG.traverse(o=>{ if(o.geometry)o.geometry.dispose(); }); }
+  zonasG=new THREE.Group(); zonasG.visible=$("zon")?$("zon").checked:true; plantaG.add(zonasG);
+  if(!PLANTA) return;
+  const UN=PLANTA._un||unidades(), por={};
+  const mete=(k,q)=>{ if(k==null) return; (por[k]||(por[k]=[])).push(q); };
+  UN.forEach(t=>{ esquinasFila(t).forEach(q=>mete(t.ncu,q)); });
+  /* Las HSU y los repetidores, con su ámbito. Una HSU puede caer FUERA del
+     campo de su NCU —está donde el plano la puso— y entonces la zona se estira
+     hasta ella: eso es un dato, no un defecto del dibujo. */
+  (PLANTA.meteo||[]).forEach(c=>mete(c.ncu,{x:c.x,n:c.n}));
+  (PLANTA.reps||[]).forEach(c=>mete(c.ncu,{x:c.x,n:c.n}));
+  /* GROSOR A ESCALA DE LA PLANTA. Un cordón de 0,5 m se ve en Túnez (125 m de
+     campo) y desaparece en San José (2,5 km). `linewidth` no vale: WebGL lo
+     ignora y pinta 1 píxel siempre, así que el borde es un TUBO de verdad. */
+  let _dg=600; try{ _dg=extentPlanta().diag||600; }catch(e){}
+  const R=Math.max(0.5,Math.min(3,_dg/900));
+  Object.keys(por).sort((a,b)=>a-b).forEach(k=>{
+    const H=envolvente(por[k]); if(H.length<3) return;
+    const pts=[];
+    for(let i=0;i<H.length;i++){
+      const a=H[i], b=H[(i+1)%H.length], d=Math.hypot(b.x-a.x,b.n-a.n);
+      const pasos=Math.max(1,Math.ceil(d/ZONA_PASO));
+      for(let j=0;j<pasos;j++){ const u=j/pasos, x=a.x+(b.x-a.x)*u, n=a.n+(b.n-a.n)*u;
+        pts.push(new THREE.Vector3(x,cotaEn(x,n)+ZONA_ALTO,-n)); }
+    }
+    const cur=new THREE.CatmullRomCurve3(pts,true,"catmullrom",0.0);
+    const m=new THREE.MeshBasicMaterial({color:new THREE.Color(colorAmbito("NCU "+k)),
+                                         transparent:true,opacity:0.75,depthWrite:false});
+    zonasG.add(new THREE.Mesh(new THREE.TubeGeometry(cur,pts.length,R,6,true),m));
+  });
+}
+
 function buildTerreno(){
   if(terreno){ scene.remove(terreno); terreno.geometry.dispose(); terreno=null; }
   /* Con levantamiento o con DEM hay relieve que mallar; sin ninguno de los dos
@@ -1901,6 +1986,7 @@ function buildPlanta(){
     const d=new THREE.Mesh(new THREE.SphereGeometry(0.055,12,8),mats.antena); d.position.copy(b.antPos); b.group.add(d);
     PLEQ.push({tipo:"hsu",i:i,g:b.group,dato:c,ant:b.antPos.clone()});
   });
+  buildZonas();   // qué cuelga de cada NCU, delimitado sobre el terreno
   /* LA ANTENA, QUE ES DE LO QUE VA ESTA PÁGINA. En planta no se dibujaba: el
      plan de instancias trae sus piezas y el bucle las saltaba («las gestiona la
      app por frame»), pero la app nunca las ponía. Así que el campo salía con
@@ -2768,6 +2854,9 @@ if(webgl){
   });
   $("pat").addEventListener("change",()=>{ showPat=$("pat").checked; update(); });
   $("lnk").addEventListener("change",()=>{ showNcuLinks=$("lnk").checked; update(); });
+  /* La zona no entra en ningún cálculo: es un contorno. Así que se enciende y se
+     apaga sin reconstruir nada ni volver a pedir la física. */
+  $("zon").addEventListener("change",()=>{ if(zonasG)zonasG.visible=$("zon").checked; });
   ["tilt","drop","pitch","chord","dncu","hncu","dhsu","hora","dia","lat"]
     .forEach(id=>$(id).addEventListener("input",update));
   /* La altura de la viga cambia el largo del poste y la cota del pie del
