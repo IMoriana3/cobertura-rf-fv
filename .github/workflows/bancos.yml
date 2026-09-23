@@ -60,6 +60,11 @@ jobs:
       # repo, asi que va aqui y tarda menos de un segundo.
       - name: el DEM contra los levantamientos (Ayora y San José)
         run: node tests/test_careo_dem.js
+      # La implantación es UNA y vive en `cobertura-zigbee`. Esto vigila que las
+      # copias de `plantas/` sigan siendo las que trajo la sincronización: sin
+      # red, sobre ficheros del repo, y con su mutación dentro.
+      - name: los layouts siguen siendo los de cobertura-zigbee
+        run: node tests/test_layouts_procedencia.js
 
   # Los tres bancos de navegador. Cada uno tarda entre cinco y quince minutos
   # dibujando por software, así que van en paralelo.
