@@ -1,0 +1,43 @@
+{
+  "_que_es": "De donde salen los layouts de esta carpeta. Lo escribe tools/sincroniza_layouts.py y lo vigila tests/test_layouts_procedencia.js: si una copia se edita a mano, rojo.",
+  "_como_se_actualiza": "python3 tools/sincroniza_layouts.py",
+  "fuente": {
+    "repo": "IMoriana3/cobertura-zigbee",
+    "rama": "main",
+    "commit": "080cee58670f732aae2b24ffb7c0e058e122938d"
+  },
+  "ficheros": {
+    "ayora_layout.json": {
+      "origen": "ayora_layout.json",
+      "sha256": "f9ae259e59579021c6d86a3f6e7b169a0993d4de73961473994dae6a2f6a1924"
+    },
+    "bagnarelli_layout.json": {
+      "origen": "bagnarelli_layout.json",
+      "sha256": "f75fce2a48a9a88cc978d89f80646ecfc1346306fcd5975a927e397aab3517e7"
+    },
+    "elburgo_layout.json": {
+      "origen": "elburgo_layout.json",
+      "sha256": "52131a1d455d95d16fa9da28f95d3d15d5217f899b29ea181376827504232f9e"
+    },
+    "fayon_layout.json": {
+      "origen": "fayon_layout.json",
+      "sha256": "f2f5ce98cf4b3de3d78f692155849295f902c7d751b2c691e35e89a4a4a6c1af"
+    },
+    "paramo_layout.json": {
+      "origen": "paramo_layout.json",
+      "sha256": "d97a1a13932b0dc833fb65db0f1b78a43da73170bf721b2915ab564f03b3888f"
+    },
+    "polvorin_layout.json": {
+      "origen": "polvorin_layout.json",
+      "sha256": "bc7e16eb6c3afc37c9c0e97e4a76cd87d6086f09639dce0c332c45138103c990"
+    },
+    "sanjose_layout.json": {
+      "origen": "sanjose_layout.json",
+      "sha256": "c17a1ced347d49561d836bfe67c5a947896dbcb90d4016d0bec5984f8cf39a86"
+    },
+    "tunez_layout.json": {
+      "origen": "tunez_layout.json",
+      "sha256": "30de9fb214678bd2745120fb1dcbab08fa612fb65dd100ba984f2f2bd5d3f218"
+    }
+  }
+}

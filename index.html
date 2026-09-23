@@ -1368,6 +1368,36 @@ function esBifila(L,conCotas){
                             "las posiciones de este layout no son finas" : "")};
 }
 
+/* APOYAR UNA VIGA EN EL DEM: su cota y su pendiente, ajustando una recta a lo
+   largo del tubo. Devuelve el par (`y`, `tilt`) con el MISMO significado que el
+   levantamiento — cota del centro y giro en Z— para que aguas abajo no haya que
+   distinguir de donde vino el relieve.
+
+   EL EJE DEL TUBO EN (x, n). El tubo del modelo va en +X y la escena lo gira
+   pi/2 − rot, con lo que +X acaba apuntando a (sin rot, cos rot): norte puro
+   cuando rot es 0. Se muestrea a lo largo de ESE eje y no del norte, o en
+   Bagnarelli —eje a 23,7°— se leeria la cuesta equivocada. */
+const NDRAPE=21;              // muestras por viga: con celdas de ~7 m sobran para 33-74 m de fila, y son 21 lecturas bilineales, no un coste
+function apoyaEnDEM(x,n,rot,L){
+  const ux=Math.sin(rot||0), un=Math.cos(rot||0), half=L/2;
+  const s=new Array(NDRAPE), z=new Array(NDRAPE);
+  let ms=0, mz=0;
+  for(let k=0;k<NDRAPE;k++){
+    s[k]=-half+2*half*k/(NDRAPE-1);
+    z[k]=cotaEn(x+ux*s[k], n+un*s[k]);
+    ms+=s[k]; mz+=z[k];
+  }
+  ms/=NDRAPE; mz/=NDRAPE;
+  let sxz=0, sxx=0;
+  for(let k=0;k<NDRAPE;k++){ sxz+=(s[k]-ms)*(z[k]-mz); sxx+=(s[k]-ms)*(s[k]-ms); }
+  const p=sxx?sxz/sxx:0;
+  /* EL SIGNO. `p` es d(cota)/d(avance por el tubo), y el tubo avanza al norte
+     con rot 0; `tilt` se define igual en el levantamiento (`atan2(y1−y0,
+     n1−n0)`, positivo si la fila SUBE hacia el norte), asi que es el mismo
+     numero sin cambiarlo de signo. */
+  return { y: mz+p*(0-ms), tilt: Math.atan(p) };
+}
+
 /* Lo que se dibuja y lo que APANTALLA: con cotas, la FILA medida; sin ellas, el
    seguidor del layout, partido en sus dos filas cuando la planta es bífila.
    Cada fila recuerda su seguidor en `trk`: las dos filas apantallan, pero la
@@ -1394,17 +1424,42 @@ function unidades(){
       out.push(Object.assign({x:t.x-dx, n:t.n-dn}, base));   // viga del MOTOR (oeste): lleva la TCU
       out.push(Object.assign({x:t.x+dx, n:t.n+dn}, base));   // viga gemela
     });
-    /* Y CADA FILA, A SU COTA. Con DEM el suelo ya no es y=0, asi que dejarlas
-       ahi las enterraria en las cuestas y las dejaria colgando en los valles —
-       exactamente lo que se veia en Ayora antes de tener su levantamiento.
-       Se pone la cota del terreno bajo el centro de la viga.
+    /* Y CADA FILA, APOYADA EN SU TERRENO. Con DEM el suelo ya no es y=0, asi
+       que dejarlas ahi las enterraria en las cuestas y las dejaria colgando en
+       los valles — exactamente lo que se veia en Ayora antes de tener su
+       levantamiento.
 
-       `tilt` se queda a CERO a proposito. El levantamiento da la pendiente de
-       cada fila porque midio sus dos extremos; el DEM tiene un paso de decenas
-       de metros y una fila mide 74, asi que inclinarla con eso seria inventarse
-       una pendiente con dos celdas y media. Una fila sobre su explanada es
-       plana, y esa es la suposicion honesta mientras no haya medida. */
-    if(PLANTA.dem) out.forEach(t=>{ t.y=cotaEn(t.x,t.n); });
+       SE MUESTREABA UN SOLO PUNTO, el centro de la viga, y la fila se dejaba
+       PLANA (`tilt` a cero). Una fila de 65 m puesta plana sobre una cuesta se
+       hunde por el extremo de abajo, y el hundimiento no es la pendiente: es la
+       pendiente por la SEMIFILA. Medido contra las teselas de verdad, con la
+       misma cuenta que hace la pagina:
+
+              planta      desnivel   se enterraba   con el apoyo
+              Fayon         20,4 m      6,67 m         0,52 m
+              Polvorin      19,1 m      2,54 m         0,41 m
+              Tunez          4,2 m      1,77 m         0,37 m
+              El Burgo       8,0 m      1,63 m         0,39 m
+              Paramo         6,0 m      0,81 m         0,15 m
+              Bagnarelli     1,3 m      0,36 m         0,03 m
+
+       El tubo va a 1,50 m, asi que Fayon, Polvorin y Tunez enterraban la mesa
+       ENTERA. Las seis plantas sin levantamiento, no solo la que se vio.
+
+       AHORA SE APOYA EN TODA LA VIGA. Se muestrea a lo largo del tubo y se le
+       ajusta una RECTA por minimos cuadrados: la misma pareja (cota, pendiente)
+       que da el levantamiento, sacada del terreno que si tenemos. No es
+       «inventarse una pendiente con dos celdas y media», que era el reparo
+       razonable para no inclinarla: son NDRAPE puntos repartidos sobre 5-9
+       celdas independientes del DEM, y un ajuste PROMEDIA su ruido en vez de
+       amplificarlo — que es justo lo que haria tomar solo los dos extremos.
+       Donde hay levantamiento no cambia nada: esto solo entra sin medida.
+
+       Y el calculo de RF ya lo suponia: `tableBand` apantalla con `cotaEn` del
+       punto de CRUCE, no con la cota del centro de la fila. Esto acerca el
+       dibujo a lo que la fisica ya daba por hecho. */
+    if(PLANTA.dem) out.forEach(t=>{ const d=apoyaEnDEM(t.x,t.n,t.rot,SPANP*t.mr);
+                                    t.y=d.y; t.tilt=d.tilt; });
     return out;
   }
   const u=PLANTA.cot.filas.map(f=>({
