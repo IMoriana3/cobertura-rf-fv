@@ -43,6 +43,18 @@ let ok = 0, ko = 0;
    OJO AL VERDE VACIO: un grupo mal escrito no puede pasar en verde sin
    comprobar nada —el fallo mas caro de un banco es el que no mira—. Un nombre
    desconocido aborta, y al final se exige que haya corrido alguna. */
+/* CUANTO PUEDE SUBIR EL TERRENO POR ENCIMA DE UNA FILA, en metros.
+   El tope sale de medir, no de elegir. Con el cerro gaussiano de 120 m del
+   repo —mucho mas bravo que cualquier planta real— El Burgo da:
+
+       la fila se apoya en toda la viga (ahora) ....... 1,28 m
+       la fila plana a la cota de su centro (antes) ... 5,86 m
+
+   Son 4,6 veces, y 2,5 cae en medio con holgura por los dos lados. Contra las
+   teselas de verdad, la cartera entera se queda en 0,52 m (Fayon, el peor de
+   las seis plantas sin levantamiento). `TOPE_HUND` en el entorno sirve para
+   VER el numero: ponerlo a 0.001 hace que el fallo lo imprima. */
+const TOPE_HUND = +process.env.TOPE_HUND || 2.5;
 const GRUPOS = ['plantas-chicas', 'plantas-grandes', 'reparto', 'relieve'];
 const GRUPO = process.env.GRUPO || process.argv[2] || 'todo';
 if (GRUPO !== 'todo' && !GRUPOS.includes(GRUPO)) {
@@ -690,6 +702,25 @@ const SONDA = `(() => {
       terreno: !!(typeof terreno !== 'undefined' && terreno),
       ys: (() => { const u = PLANTA._un || unidades(), y = u.map(t => t.y);
                    return { min: +Math.min(...y).toFixed(1), max: +Math.max(...y).toFixed(1) }; })(),
+      /* ¿SE ENTIERRA ALGUNA FILA? La pregunta que faltaba. Mirar solo `ys` dice
+         que las filas SUBEN Y BAJAN con el terreno, y eso ya pasaba cuando cada
+         una se ponía plana a la cota de su centro: una fila de 65 m plana sobre
+         una cuesta sigue el relieve de lejos y se entierra de cerca. Así que se
+         recorre el tubo y se mide cuánto sube el terreno POR ENCIMA de la recta
+         de la fila. Es la medida del defecto, no de su síntoma. */
+      hund: (() => {
+        const u = PLANTA._un || unidades(); if (!u.length) return null;
+        const N = 21; let peor = 0;
+        u.forEach(t => {
+          const ux = Math.sin(t.rot || 0), un = Math.cos(t.rot || 0), half = SPANP * t.mr / 2;
+          for (let k = 0; k < N; k++) {
+            const s = -half + 2 * half * k / (N - 1);
+            const d = cotaEn(t.x + ux * s, t.n + un * s) - (t.y + s * Math.tan(t.tilt || 0));
+            if (d > peor) peor = d;
+          }
+        });
+        return +peor.toFixed(2);
+      })(),
       margenes: [...document.querySelectorAll('#lect .m')].map(e => parseFloat(e.textContent)),
       nota: document.getElementById('note').textContent || '',
     }));
@@ -699,6 +730,22 @@ const SONDA = `(() => {
        deja el mismo control sin volver a arrancar nada. */
     const ctx = await browser.newContext({ viewport: { width: 1100, height: 800 } });
     const pg = await ctx.newPage();
+    /* LA MUTACION, y por que se hace asi. `APOYO_FILAS=viejo` devuelve la regla
+       vieja —un punto en el centro y la fila PLANA— reescribiendo esa linea de
+       la pagina al vuelo. Se cambia el CODIGO, no el banco: una mutacion que
+       apagase la comprobacion no probaria nada.
+
+           node tests/test_bifila_plantas.js relieve                 -> verde
+           APOYO_FILAS=viejo node tests/test_bifila_plantas.js relieve -> rojo  */
+    const VIEJO = process.env.APOYO_FILAS === 'viejo';
+    if (VIEJO) await ctx.route(BASE, async r => {
+      const res = await r.fetch(); let html = await res.text();
+      const antes = html;
+      html = html.replace(/if\(PLANTA\.dem\) out\.forEach\(t=>\{ const d=apoyaEnDEM[\s\S]*?t\.tilt=d\.tilt; \}\);/,
+                          'if(PLANTA.dem) out.forEach(t=>{ t.y=cotaEn(t.x,t.n); });');
+      if (html === antes) { console.log('FAIL la mutación no encontró la línea que debía romper'); process.exit(2); }
+      r.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: html });
+    });
     const sirve = async (sirveDem) => {
       await ctx.unroute('**/elevation-tiles-prod/**');
       await ctx.route('**/elevation-tiles-prod/**', r => sirveDem
@@ -736,6 +783,14 @@ const SONDA = `(() => {
     check('y los seguidores SIGUEN al terreno, no se quedan en el cero',
           conDem.ys.max - conDem.ys.min > 5,
           JSON.stringify(conDem.ys));
+    /* Y APOYADAS, no hundidas. El tubo va a HTUBE (1,50 m) sobre la cota de su
+       fila: si el terreno le sube más que eso por encima, la mesa entera queda
+       bajo tierra — que es lo que se veía en Túnez y, peor, en Fayón. El tope
+       sale de la medida con ESTE cerro, no de un número bonito. */
+    check('y ninguna fila se entierra en el terreno',
+          conDem.hund !== null && conDem.hund < TOPE_HUND,
+          `peor hundimiento ${conDem.hund} m (tope ${TOPE_HUND})`);
+
     check('y la nota declara que el relieve es del DEM, no medido',
           /DEM global/.test(conDem.nota) && /no para leer una mesa/.test(conDem.nota),
           conDem.nota.slice(0, 160));
