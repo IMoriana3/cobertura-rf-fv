@@ -69,6 +69,21 @@ const check = (n, cond, extra) => { if (cond) { ok++; console.log('OK   ' + n); 
 // lo que se pregunta a la página una vez cargada la planta
 const SONDA = `(() => {
   const UN = PLANTA._un || unidades();
+  /* EL GROSOR DEL HAZ, para que no vuelva a comerse la planta. Escalaba con la
+     diagonal y el tope se alcanzaba en las dos grandes: en Ayora y San Jose el
+     enlace salia de CUATRO METROS de ancho, mas que la cuerda de un modulo
+     (2,382), o sea mas ancho que la mesa por debajo de la que pasa. Se mide el
+     numero que USA la pagina, no la formula: comparar una formula consigo
+     misma no comprueba nada.
+
+     SIN REDONDEAR: el tope es CHORD/6 y el ancho vale EXACTAMENTE eso en las
+     plantas grandes, asi que redondear a tres decimales lo sube de 0,39667 a
+     0,397 y el cheque cae con el codigo bueno. Un banco no puede perder por su
+     propia aritmetica. (Y el redondeo no se puede ni nombrar con su funcion
+     aqui dentro: esta sonda es una plantilla literal y sus comillas la
+     cierran.) */
+  const haz = (typeof PLANT_LNK !== 'undefined' && PLANT_LNK)
+    ? { ancho: 2*PLANT_LNK.r, cuerda: CHORD } : null;
   const T  = PLANTA._tcus || tcusDe(UN);
   const u  = f => f.x*Math.cos(f.rot||0) + f.n*Math.sin(f.rot||0);
   const us = [...new Set(UN.map(f => Math.round(u(f)*100)/100))].sort((a,b)=>a-b);
@@ -81,7 +96,7 @@ const SONDA = `(() => {
   const porTrk = {};
   UN.forEach((f,i) => { const k = f.trk!=null?f.trk:i; (porTrk[k]=porTrk[k]||[]).push(mgf[i]); });
   const mismo = Object.values(porTrk).every(v => v.every(x => Math.abs(x - v[0]) < 1e-6));
-  return { trk: PLANTA.trk.length, filas: UN.length, tcus: T.length,
+  return { haz, trk: PLANTA.trk.length, filas: UN.length, tcus: T.length,
            nRender: res.n, mismoMargen: mismo, texto: (document.getElementById("lect")||{}).textContent||"",
            bif: PLANTA.bif, paso: hue.length ? hue[hue.length>>1] : null,
            // con levantamiento las filas traen cota y pendiente; sin él, todo a 0
@@ -237,6 +252,13 @@ const SONDA = `(() => {
   check('las dos filas de un seguidor se pintan con el MISMO margen',
         f.mismoMargen === true);
   check('y el RENDER dibuja 24 TCU, no una por fila', f.inst.tcuDib === 24, f.inst);
+  /* EL HAZ NO PUEDE SER MAS ANCHO QUE LA MESA. Aqui manda el MINIMO de la
+     regla: en una planta de 254 m de diagonal el haz proporcional seria
+     invisible, asi que hay suelo. Lo que se exige es que siga siendo un hilo
+     comparado con la cuerda. */
+  check('el haz del enlace es un hilo al lado de la mesa, no una viga',
+        f.haz && f.haz.ancho > 0 && f.haz.ancho <= f.haz.cuerda / 6 + 1e-6,
+        JSON.stringify(f.haz));
   check('el CAD de la TCU y del seccionador está, como nivel de detalle: 3 copias, no 24',
         f.cad && f.cad.cadListo && f.cad.copias === 3 && f.cad.secc === 3 && f.cad.visibles === 3, f.cad);
   check('y la TCU que encuadra la cámara lleva el CAD ENCIMA DE SU VIGA, con su caja escondida',
@@ -300,6 +322,11 @@ const SONDA = `(() => {
      fuentes independientes diciendo lo mismo. */
   check('el layout dice bífila y el levantamiento lo confirma: 2 filas por seguidor',
         a.bif && a.bif.si === true && a.filas === 2 * a.trk, [a.bif, a.filas, a.trk]);
+  /* Y AQUI MANDA EL TOPE, que es donde estaba el defecto: Ayora tiene 3,8 km de
+     diagonal y con la regla vieja el haz se iba a 4 m. */
+  check('y en la planta grande el haz TAMPOCO se come la mesa',
+        a.haz && a.haz.ancho > 0 && a.haz.ancho <= a.haz.cuerda / 6 + 1e-6,
+        JSON.stringify(a.haz));
   /* Y no se confunden las dos cosas: con levantamiento las filas están MEDIDAS,
      así que la guarda de solapes —que es sobre el recurso de partir— no aplica. */
   check('y lo dice bien: las filas vienen medidas, no deducidas',

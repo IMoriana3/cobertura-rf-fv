@@ -2182,11 +2182,29 @@ function buildPlanta(){
      una mesa. Instanciados y compartiendo geometría: dos llamadas de dibujo
      para los 2.289 saltos de San José. */
   const geoL=new THREE.CylinderGeometry(1,1,1,6,1,true);
-  /* El grosor, a escala de la planta: 0,6 m en El Burgo (600 m de diagonal) y
-     2 m en Ayora (3,8 km). Fijo no vale: lo que en una planta pequeña es un
-     tubo fino, en una grande es medio píxel y vuelve a no verse. */
+  /* EL GROSOR DEL HAZ, ATADO A ALGO FÍSICO Y NO A LA PLANTA A SECAS.
+     Escalaba con la diagonal (`diag/1000`, tope 2 m de radio) y el tope se
+     alcanzaba en las dos plantas grandes: en Ayora y San José el enlace salía
+     de CUATRO METROS de ancho, cuando la cuerda de un módulo son 2,382. Un haz
+     más ancho que la mesa por debajo de la que pasa no es un enlace dibujado
+     grueso: es una viga de color tapando la planta, y se pierde justo lo que
+     el color venía a contar. En Páramo y El Burgo salía a 1,55 m, del mismo
+     orden que la mesa.
+
+     Ahora el tope es una fracción de la CUERDA (un sexto: 0,40 m de ancho),
+     que es la referencia que hay en la escena, y la escala sigue creciendo con
+     la planta para que en una grande no se quede en medio píxel. Queda:
+
+         Ayora / San José   0,40 m de ancho   (antes 4,00)
+         Páramo / El Burgo  0,20               (antes 1,55)
+         Polvorín           0,14               (antes 1,11)
+         Túnez / Fayón      0,12               (antes 0,50)
+
+     El mínimo sigue existiendo por lo de siempre: en una planta pequeña un
+     tubo proporcional sería invisible. */
   const _e0=extentPlanta();
-  PLANT_LNK={ trazos:TRAZOS, n:0, r:Math.min(2,Math.max(0.25,_e0.diag/1000)),
+  const _rHaz=Math.min(CHORD/12,Math.max(0.06,_e0.diag/8000));   // radio; el ancho es el doble
+  PLANT_LNK={ trazos:TRAZOS, n:0, r:_rHaz,
               solid:new THREE.InstancedMesh(geoL,new THREE.MeshBasicMaterial({
                 toneMapped:false}),maxSeg),
               ghost:new THREE.InstancedMesh(geoL,new THREE.MeshBasicMaterial({
