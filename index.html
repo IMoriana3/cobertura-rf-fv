@@ -213,6 +213,12 @@
 <script src="seguidor.js"></script>
 <script src="equipos.js"></script>
 <script src="sol.js"></script>
+<!-- EL CANON DE RADIO, ANTES QUE EL NÚCLEO QUE LO USA. `lib/radio_pv_model.js`
+     es la copia fijada del motor que vive en `siting` (candado y careo byte a
+     byte en `lib/canon.lock.json` + `tests/test_canon_pin.py`). Si este
+     <script> se cae o se pone DESPUÉS, `web/zigbee_pv_model.js` se para con un
+     error claro en vez de calcular con medio motor. -->
+<script src="lib/radio_pv_model.js"></script>
 <script src="web/zigbee_pv_model.js"></script>
 <script>
 const $=id=>document.getElementById(id);

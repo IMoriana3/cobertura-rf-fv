@@ -55,7 +55,16 @@ cobertura-rf-fv/
 │   └── test_nucleo.py          # núcleo + PARIDAD .py <-> .js (38 comprobaciones)
 ├── README.md
 ├── INSTRUCCIONES.md            # cómo usarlo paso a paso
+├── lib/
+│   ├── radio_pv_model.js       # COPIA FIJADA del canon de radio, que vive en
+│   │                           #   `siting`. Aquí porque el visor es un HTML de
+│   │                           #   Pages y no puede leer un repo hermano.
+│   └── canon.lock.json         # el candado: sha256 de cada copia + de qué commit
+│                               #   salió. Lo carea `tests/test_canon_pin.py`
+│                               #   BYTE A BYTE contra el original, y sin original
+│                               #   sale rc = 2, no verde.
 ├── python/
+│   ├── radio_pv_model.py       # la otra mitad de esa copia fijada (mismo candado)
 │   ├── zigbee_pv_model.py      # núcleo físico (FSPL + dos rayos + difracción + balance)
 │   ├── diagnostico_elburgo.py  # coords + RSSI → grafo → SPOF → GeoJSON
 │   ├── requirements.txt

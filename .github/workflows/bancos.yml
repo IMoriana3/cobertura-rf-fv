@@ -80,6 +80,17 @@ jobs:
       - name: la zona de cada NCU contiene a los suyos
         run: node tests/test_zonas_ncu.js
 
+      # LAS COPIAS DEL CANON DE RADIO, CAREADAS CONTRA SU ORIGINAL. `radio_pv_model`
+      # vive en `siting`; aquí hay copia porque el visor es un HTML de Pages y no
+      # puede leer un repo hermano en tiempo de ejecución. Una copia sin quien la
+      # caree se queda vieja EN SILENCIO: le pasó a SolarGPTfull, dos meses por
+      # detrás y 4,8 dB de diferencia sin que nadie lo supiera. El candado por
+      # sha256 SOLO no arregla eso —cuadra consigo mismo— así que el banco trae el
+      # original: clon al lado si lo hay, y si no `--depth 1` (siting es PÚBLICO).
+      # Sin red y sin clon sale con rc = 2, no con 0.
+      - name: las copias del canon de radio siguen siendo el canon
+        run: python3 tests/test_canon_pin.py
+
       # La vista en planta: QUÉ obstáculos ve cada enlace. Sin navegador —extrae
       # el bloque CAMPO del HTML real a un `vm`— así que cuesta un segundo y va
       # aquí. LLEVABA EN EL REPO SIN CORRER EN NINGÚN SITIO: daba 33 de 33, pero

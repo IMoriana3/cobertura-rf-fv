@@ -1,0 +1,43 @@
+{
+  "_que_es_esto": [
+    "EL CANDADO DEL CANON DE RADIO. Este repo lleva una COPIA de `radio_pv_model`",
+    "de `siting` porque su visor es un HTML servido desde Pages y no puede leer un",
+    "repo hermano en tiempo de ejecucion. Una copia sin quien la caree se queda",
+    "vieja EN SILENCIO: le paso a SolarGPTfull con `zigbee_pv_model.js`, que entro",
+    "dentro de un commit sobre otra cosa, se quedo dos meses por detras del canon y",
+    "sus parametros daban 4,8 dB de diferencia sin que nadie lo supiera.",
+    "",
+    "Lo que ata este fichero es el SHA256 del contenido, no el commit: el commit es",
+    "procedencia (de donde salio) y el sha es la comprobacion (que sigue siendo eso).",
+    "`tests/test_canon_pin.py` carea las copias byte a byte contra el hermano, y si",
+    "no hay hermano ni se puede clonar sale con rc = 2 — NO CON VERDE."
+  ],
+  "canon": {
+    "repo": "imoriana3/siting",
+    "rama": "main",
+    "commit": "331ed7a57e8cbd3fa3301ced12c0a253bdd618fe",
+    "_commit_nota": "el commit de `main` donde viven ESTOS bytes. Es procedencia, no la comprobacion: lo que se carea es el sha256 del contenido contra el canon de verdad."
+  },
+  "copias": [
+    {
+      "aqui": "lib/radio_pv_model.js",
+      "alli": "radio_pv_model.js",
+      "sha256": "8a68a48c537d7185c1041758d3ddcc4c87ac816ae1ab5a90564bbd906452ba8d",
+      "lo_carga": "index.html y web/demo-cobertura.html con <script>, y los bancos con require()"
+    },
+    {
+      "aqui": "python/radio_pv_model.py",
+      "alli": "radio_pv_model.py",
+      "sha256": "fdbefe86f4f17e468ff3d8555e061646ea3df87ced11c4207d2bc68223c5ae0e",
+      "lo_carga": "python/zigbee_pv_model.py, que esta a su lado en el sys.path"
+    }
+  ],
+  "lo_que_NO_cubre": [
+    "La geometria del obstaculo. rf-fv modela la mesa con `TableBand`/`band_clearance`",
+    "y el canon corta contra el plano inclinado (`corta_panel`). Son ideas DISTINTAS",
+    "a proposito: la del canon es la que se midio (RF-01, las filas como rectas",
+    "verticales infinitas se equivocaban en 27 dB) y la de rf-fv es la idea detras de",
+    "A4, que el inventario CERRO como «no se implementa, seria doble conteo».",
+    "Carearlas daria una diferencia que no es un defecto de ninguno de los dos."
+  ]
+}
