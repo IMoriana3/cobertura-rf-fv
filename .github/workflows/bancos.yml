@@ -65,6 +65,15 @@ jobs:
       # red, sobre ficheros del repo, y con su mutación dentro.
       - name: layouts y módulos siguen siendo los de cobertura-zigbee
         run: node tests/test_procedencia.js
+      # Y que la sincronización no pueda GRABAR UNA MENTIRA. PROCEDENCIA dice
+      # «rama: main» sin preguntar, así que sincronizar desde una rama de trabajo
+      # anota un commit que no está publicado: correcto el día que se escribe, y
+      # apuntando al vacío en cuanto la rama se rebasa. Pasó de verdad (se anotó
+      # 8ef77ba, de una rama; el contenido coincidía con main hash a hash, la
+      # referencia no llevaba a ningún sitio). El banco monta repositorios de usar
+      # y tirar, no toca la red, y lleva su mutación dentro.
+      - name: el sincronizador se niega a anotar un commit sin publicar
+        run: python3 tests/test_sincronizador.py
       # La zona de cada NCU es aritmetica sobre el layout, asi que se comprueba
       # aqui y en milisegundos: que contenga TODO el suelo de sus seguidores y
       # sus HSU. Lleva su mutacion dentro (`ZONAS_PUNTO=si`).
