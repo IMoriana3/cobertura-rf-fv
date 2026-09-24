@@ -267,9 +267,44 @@
               : dipoleGainDb(Math.atan2((rx.ground + rx.h) - (tx.ground + tx.h), d));
     const prx = p.ptxDbm + (p.gtxDbi + gEl) + (p.grxDbi + gEl) - plTotal;
     const margin = prx - p.rxSensDbm;
+    /* ══ LA PROBABILIDAD DE ENLACE YA NO SE PUBLICA ═══════════════════════
+     *
+     * Devolvía `Φ(margen / sigmaDb)`. Se quita, y no por prudencia genérica:
+     * está MEDIDO que el número no informaba de nada.
+     *
+     * DÓNDE DISCRIMINABA Y DÓNDE NO:
+     *
+     *     margen      p(σ=6,0)    p(σ=10,99)
+     *      -10 dB        4,8 %        18,1 %
+     *        0 dB       50,0 %        50,0 %
+     *       10 dB       95,2 %        81,9 %
+     *       47 dB      100,0 %       100,0 %
+     *       64 dB      100,0 %       100,0 %
+     *
+     * Y los 52 enlaces medidos de El Burgo caen entre 47,4 dB de margen p50
+     * (preset calibrado) y 64,0 (por defecto). Ahí valía 100 % SIEMPRE: 52 de
+     * 52 con el sigma por defecto, 39 de 52 con el del preset, mínimo 96,2 %.
+     * No distinguía nada. Donde sí distinguiría —de −10 a +20 dB— NO HAY
+     * MEDIDAS, porque los 52 son el árbol de encaminamiento: los enlaces que
+     * la malla eligió por funcionar.
+     *
+     * Y EL SIGMA QUE LA ESCALABA LO DESAUTORIZA ESTE MISMO FICHERO unas líneas
+     * más arriba: «ni ese es una calibración de propagación: sobre 49 enlaces
+     * el RSSI correlaciona r = +0,16 con log(distancia)». Un sigma que no
+     * depende de la distancia no es un sigma de propagación.
+     *
+     * O sea: inútil donde hay datos, no validado donde serviría. Quitarlo no
+     * pierde información — pierde una cifra que parecía tenerla.
+     *
+     * NO SE DEVUELVE EN SILENCIO: `pLink` sigue en la salida, en `null`, con el
+     * motivo al lado. Quien la consuma se entera de que desapareció y de por
+     * qué, en vez de encontrarse un campo que ya no está. Vuelve el día que
+     * haya un sigma MEDIDO, con su campaña. */
     return {
       distanceM: +d.toFixed(2), prxDbm: +prx.toFixed(2), marginDb: +margin.toFixed(2),
-      pLink: +_phi(margin / p.sigmaDb).toFixed(4),
+      pLink: null,
+      pLinkMotivo: "el_sigma_no_es_una_calibracion_de_propagacion",
+      pLinkSigmaUsado: p.sigmaDb,
       pl2rayDb: +pl2.toFixed(2), plDiffDb: +plDiff.toFixed(2),
     };
   }

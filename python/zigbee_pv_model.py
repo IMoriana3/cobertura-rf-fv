@@ -366,7 +366,29 @@ def predict_link(tx: dict, rx: dict, p: LinkParams = LinkParams(),
         "distance_m": round(d, 2),
         "prx_dbm": round(prx, 2),
         "margin_db": round(margin, 2),
-        "p_link": round(_phi(margin / p.sigma_db), 4),
+        # ══ LA PROBABILIDAD DE ENLACE YA NO SE PUBLICA ══════════════════════
+        #
+        # Devolvia Phi(margen / sigma_db). Se quita, y no por prudencia
+        # generica: esta MEDIDO que el numero no informaba de nada.
+        #
+        #     margen      p(s=6,0)    p(s=10,99)
+        #      -10 dB        4,8 %        18,1 %
+        #        0 dB       50,0 %        50,0 %
+        #       10 dB       95,2 %        81,9 %
+        #       47 dB      100,0 %       100,0 %
+        #
+        # Y los 52 enlaces medidos de El Burgo caen entre 47,4 y 64,0 dB de
+        # margen: ahi valia 100 % SIEMPRE (52 de 52 con el sigma por defecto,
+        # 39 de 52 con el del preset). Donde si distinguiria —de -10 a +20 dB—
+        # NO HAY MEDIDAS, porque los 52 son el arbol de encaminamiento.
+        #
+        # Y el sigma que la escalaba lo desautoriza este mismo fichero: «ni ese
+        # es una calibracion de propagacion: r = +0,16 con log(distancia)».
+        #
+        # NO SE VA EN SILENCIO: sigue en la salida, en None, con el motivo.
+        "p_link": None,
+        "p_link_motivo": "el_sigma_no_es_una_calibracion_de_propagacion",
+        "p_link_sigma_usado": p.sigma_db,
         "pl_2ray_db": round(pl_2ray, 2),
         "pl_diff_db": round(pl_diff, 2),
     }
