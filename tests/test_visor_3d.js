@@ -1011,10 +1011,23 @@ const SONDA = `(() => {
       return { m: parseFloat(l.querySelector('.m').textContent), x: l.querySelector('.x').textContent }; });
     await pulsa(page, '[data-g="real"]'); await page.waitForTimeout(300);
     const real = await page.evaluate(() => { const l = [...document.querySelectorAll('#lect .l')].pop();
-      return { m: parseFloat(l.querySelector('.m').textContent), x: l.querySelector('.x').textContent }; });
+      const p = [...l.querySelectorAll('.x span')].find(s => /^p\b/.test(s.textContent.trim()));
+      return { m: parseFloat(l.querySelector('.m').textContent), x: l.querySelector('.x').textContent,
+               pTexto: p ? p.textContent.trim() : null, pMotivo: p ? (p.getAttribute('title') || '') : null }; });
     check('con suelo perfecto el rizado se avisa', /± *\d+ dB en 3 m/.test(pec.x), pec.x);
     check('con tierra real el rizado casi desaparece y no se avisa', !/± *\d+ dB en 3 m/.test(real.x), real.x);
-    check('la lectura da la probabilidad de enlace, no solo el dB', /p=\d+ %/.test(real.x), real.x);
+    /* LA PROBABILIDAD SE RETIRÓ EL 2026-09-24, Y ESTO VIGILA QUE SE VEA QUE SE FUE.
+       Antes esta línea exigía `p=NN %`. Publicar una probabilidad escalada por un
+       sigma que nadie midió es peor que no publicarla —sobre los márgenes reales de
+       esta planta valía 100 % siempre, y el propio fichero desautoriza ese sigma: r
+       = +0,16 del RSSI con log(distancia) sobre 49 enlaces, o sea que no depende de
+       la distancia—. Pero RETIRAR NO ES DESAPARECER: si la lectura se quedara sin la
+       casilla, quien la conocía pensaría que se le olvidó mirarla. Así que se exigen
+       las tres cosas: que la casilla siga, que NO lleve número, y que diga por qué. */
+    check('la lectura ya NO da una probabilidad de enlace', !/p *= *\d+ *%/.test(real.x), real.x);
+    check('pero la casilla sigue, con el hueco a la vista', real.pTexto === 'p —', real.pTexto);
+    check('y dice por qué se fue, sin tener que ir a buscarlo',
+          /retir/i.test(real.pMotivo || '') && /sigma/i.test(real.pMotivo || ''), real.pMotivo);
     await pulsa(page, '[data-g="pec"]'); await page.waitForTimeout(250);
   }
 
