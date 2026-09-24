@@ -5,83 +5,67 @@
  * Paridad con zigbee_pv_model.py: FSPL + dos rayos (coef. de Fresnel) +
  * difracción multiobstáculo (Deygout) + balance de enlace.
  *
- * Sin dependencias. Uso en demo-siting.html:
+ * Uso en demo-siting.html:
  *   const r = ZigbeePV.predictLink(tx, rx, ZigbeePV.defaultParams());
- *   // r.marginDb, r.prxDbm, r.pLink
+ *   // r.marginDb, r.prxDbm  (r.pLink se retiró: ver abajo)
+ *
+ * ┌─ LAS PRIMITIVAS YA NO SE ESCRIBEN AQUÍ ────────────────────────────────────┐
+ * │ λ, espacio libre, radio de Fresnel, distancia de ruptura, coeficiente de   │
+ * │ reflexión, dos rayos, filo de cuchillo, ν y el patrón de dipolo salen de   │
+ * │ `lib/radio_pv_model.js`, el CANON, que vive en `siting`. Este fichero      │
+ * │ conserva lo suyo: la GEOMETRÍA de la mesa (`tableBand`/`bandClearance`),   │
+ * │ el Deygout sobre ella y el balance.                                        │
+ * │                                                                            │
+ * │ POR QUÉ. Las dos implementaciones eran la MISMA física —careadas en 2.408  │
+ * │ casos a 0,000e+00 (`siting/tools/careo_rffv.py`)— y tenerlas dos veces     │
+ * │ sólo servía para que una se quedara vieja sin que nadie lo notara. Es lo   │
+ * │ que le pasó a SolarGPTfull: dos meses por detrás y 4,8 dB de diferencia.   │
+ * │                                                                            │
+ * │ LO QUE CAMBIA DE COMPORTAMIENTO, Y ES A MEJOR. El canon EXIGE la           │
+ * │ frecuencia (`exigeF`) y LANZA con un `epsR` que no sea un número o         │
+ * │ Infinity; la versión de aquí devolvía conductor perfecto para cualquier    │
+ * │ `epsR` no finito —NaN incluido— y se lo tragaba. Los valores por defecto   │
+ * │ de esta página (2,45 GHz, epsR 15, Infinity para suelo perfecto) se        │
+ * │ mantienen en las envolturas de abajo, así que sus llamadas no cambian.     │
+ * └────────────────────────────────────────────────────────────────────────────┘
  */
 (function (global) {
   "use strict";
-  const C = 299792458.0;
 
-  // --- aritmética compleja mínima (para el coef. de reflexión) ---
-  const cx = (re, im) => ({ re, im: im || 0 });
-  const cAdd = (a, b) => cx(a.re + b.re, a.im + b.im);
-  const cSub = (a, b) => cx(a.re - b.re, a.im - b.im);
-  const cMul = (a, b) => cx(a.re * b.re - a.im * b.im, a.re * b.im + a.im * b.re);
-  const cScale = (a, s) => cx(a.re * s, a.im * s);
-  const cAbs = (a) => Math.hypot(a.re, a.im);
-  function cDiv(a, b) {
-    const d = b.re * b.re + b.im * b.im;
-    return cx((a.re * b.re + a.im * b.im) / d, (a.im * b.re - a.re * b.im) / d);
-  }
-  function cSqrt(z) {
-    const r = Math.hypot(z.re, z.im);
-    const re = Math.sqrt((r + z.re) / 2);
-    let im = Math.sqrt((r - z.re) / 2);
-    if (z.im < 0) im = -im;
-    return cx(re, im);
-  }
-  function cExp(z) {
-    const e = Math.exp(z.re);
-    return cx(e * Math.cos(z.im), e * Math.sin(z.im));
+  /* El canon, por donde se pueda: `window.RadioPV` en la página (lo carga el
+     <script> de antes) y `require` en los bancos. Si no está, SE PARA: una
+     copia de repuesto aquí sería exactamente la avería que esto viene a cerrar. */
+  const RPV = (global && global.RadioPV) ? global.RadioPV
+            : (typeof require === "function" ? require("../lib/radio_pv_model.js") : null);
+  if (!RPV) {
+    throw new Error("zigbee_pv_model: falta `lib/radio_pv_model.js` (el canon de radio). " +
+                    "La página tiene que cargarlo ANTES que este fichero.");
   }
 
-  const wavelength = (fHz = 2.45e9) => C / fHz;
-  const fsplDb = (dM, fHz = 2.45e9) =>
-    20 * Math.log10(Math.max(dM, 1e-3)) + 20 * Math.log10(fHz) - 147.55;
-  const breakpointDistance = (ht, hr, fHz = 2.45e9) => (4 * ht * hr) / wavelength(fHz);
-  const fresnelRadius = (d1, d2, fHz = 2.45e9, n = 1) =>
-    Math.sqrt((n * wavelength(fHz) * d1 * d2) / (d1 + d2));
+  /* Las frecuencias y el suelo por defecto de ESTA página. El canon no tiene
+     valores por defecto a propósito —olvidarse de la frecuencia tiene que hacer
+     ruido— así que el defecto vive aquí, donde se sabe de qué planta se habla. */
+  const F_DEF = 2.45e9, EPS_DEF = 15.0, SIG_DEF = 5e-3, POL_DEF = "v";
+
+  const wavelength = (fHz = F_DEF) => RPV.longitudOnda(fHz);
+  const fsplDb = (dM, fHz = F_DEF) => RPV.fsplDb(dM, fHz);
+  const breakpointDistance = (ht, hr, fHz = F_DEF) => RPV.distanciaRuptura(ht, hr, fHz);
+  const fresnelRadius = (d1, d2, fHz = F_DEF, n = 1) => RPV.radioFresnel(d1, d2, fHz, n);
 
   /* epsR = Infinity -> CONDUCTOR PERFECTO: Gamma = +1, sin dependencia del
      ángulo. Es el caso de referencia (cota superior del rebote) que ofrece el
-     visor junto a la tierra real; tenerlo aquí evita que cada página se escriba
-     su propio "dos rayos con suelo perfecto". */
-  function reflectionCoefficient(theta, epsR, sigma, fHz, pol = "v") {
-    if (!isFinite(epsR)) return cx(1, 0);
-    const lam = wavelength(fHz);
-    const eps = cx(epsR, -60.0 * lam * sigma);
-    const s = Math.sin(theta);
-    const cos2 = Math.cos(theta) ** 2;
-    const root = cSqrt(cSub(eps, cx(cos2, 0)));
-    if (pol.toLowerCase().startsWith("v")) {
-      const es = cScale(eps, s);
-      return cDiv(cSub(es, root), cAdd(es, root));
-    }
-    return cDiv(cSub(cx(s, 0), root), cAdd(cx(s, 0), root));
-  }
+     visor junto a la tierra real. El canon lo trae absorbido de aquí, con la
+     cita puesta, y además LANZA con un epsR que no valga — esta versión
+     devolvía conductor perfecto para cualquier cosa no finita, NaN incluido. */
+  const reflectionCoefficient = (theta, epsR, sigma, fHz, pol = POL_DEF) =>
+    RPV.coefReflexion(theta, epsR, sigma, fHz, pol);
 
-  function twoRayPlDb(dM, ht, hr, fHz = 2.45e9, epsR = 15.0, sigma = 5e-3, pol = "v") {
-    dM = Math.max(dM, 1e-3);
-    const lam = wavelength(fHz);
-    const dLos = Math.hypot(dM, ht - hr);
-    const dRef = Math.hypot(dM, ht + hr);
-    const theta = Math.atan2(ht + hr, dM);
-    const gamma = reflectionCoefficient(theta, epsR, sigma, fHz, pol);
-    const dphi = (2 * Math.PI * (dRef - dLos)) / lam;
-    const refl = cScale(cMul(gamma, cExp(cx(0, -dphi))), 1 / dRef);
-    const field = cAdd(cx(1 / dLos, 0), refl);
-    return -20 * Math.log10((lam / (4 * Math.PI)) * cAbs(field));
-  }
+  const twoRayPlDb = (dM, ht, hr, fHz = F_DEF, epsR = EPS_DEF, sigma = SIG_DEF, pol = POL_DEF) =>
+    RPV.dosRayosDb(dM, ht, hr, fHz, epsR, sigma, pol);
 
-  function knifeEdgeLossDb(v) {
-    if (v <= -0.78) return 0.0;
-    return 6.9 + 20 * Math.log10(Math.sqrt((v - 0.1) ** 2 + 1) + v - 0.1);
-  }
+  const knifeEdgeLossDb = (v) => RPV.perdidaFiloDb(v);
 
-  function vParam(hClear, d1, d2, fHz) {
-    return hClear * Math.sqrt((2 * (d1 + d2)) / (wavelength(fHz) * d1 * d2));
-  }
+  const vParam = (hClear, d1, d2, fHz) => RPV.nu(hClear, d1, d2, fHz);
 
   // Deygout sobre obstacles = [[xHorizontal, cotaSuperior], ...]
   function diffractionLossDb(D, txElev, rxElev, obstacles, fHz = 2.45e9, depth = 0, maxDepth = 3) {
@@ -200,15 +184,12 @@
    * catálogo siguen siendo los 3 dBi de catálogo y esto SOLO RESTA. Nunca suma,
    * que es lo que tiene que hacer una corrección de patrón sobre la ganancia de
    * pico. En el eje del látigo (e = ±90°) hay un nulo.
+   * La fórmula la pone el canon (`gananciaPatronDb`); aquí se fija el patrón,
+   * que es lo propio de esta planta.
    * Lo que NO modela: el látigo cuelga de la viga y bascula con la mesa, así que
    * su eje no es exactamente la vertical. Se toma vertical, que es la hipótesis
    * conservadora para saltos horizontales y la de siempre. */
-  function dipoleGainDb(elevRad) {
-    const c = Math.cos(elevRad);
-    if (Math.abs(c) < 1e-9) return -60;                 // el nulo del eje, acotado
-    const f = Math.cos((Math.PI / 2) * Math.sin(elevRad)) / c;
-    return 20 * Math.log10(Math.max(Math.abs(f), 1e-3));
-  }
+  const dipoleGainDb = (elevRad) => RPV.gananciaPatronDb(elevRad, "dipolo");
 
   const defaultParams = () => ({
     fHz: 2.45e9, ptxDbm: 19.0, gtxDbi: 3.0, grxDbi: 3.0, rxSensDbm: -103.0,
@@ -235,12 +216,10 @@
     return p;
   };
 
-  const _phi = (x) => 0.5 * (1 + erf(x / Math.SQRT2));
-  function erf(x) { // Abramowitz-Stegun 7.1.26
-    const t = 1 / (1 + 0.3275911 * Math.abs(x));
-    const y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x);
-    return x >= 0 ? y : -y;
-  }
+  /* Aquí vivían `_phi` y `erf`, la normal acumulada que escalaba `pLink`. Se van
+     con ella: sin probabilidad que calcular no tenían ni un solo llamante, y
+     código muerto en un núcleo es una invitación a resucitar el número sin
+     resucitar la calibración que le falta. */
 
   // tx/rx = {x, y, ground, h};  obstacles/terrain = [[x, cota], ...]
   // tables = [{x, bot, top, ground}] -> mesas (placas), ver diffractionLossTablesDb
@@ -267,9 +246,44 @@
               : dipoleGainDb(Math.atan2((rx.ground + rx.h) - (tx.ground + tx.h), d));
     const prx = p.ptxDbm + (p.gtxDbi + gEl) + (p.grxDbi + gEl) - plTotal;
     const margin = prx - p.rxSensDbm;
+    /* ══ LA PROBABILIDAD DE ENLACE YA NO SE PUBLICA ═══════════════════════
+     *
+     * Devolvía `Φ(margen / sigmaDb)`. Se quita, y no por prudencia genérica:
+     * está MEDIDO que el número no informaba de nada.
+     *
+     * DÓNDE DISCRIMINABA Y DÓNDE NO:
+     *
+     *     margen      p(σ=6,0)    p(σ=10,99)
+     *      -10 dB        4,8 %        18,1 %
+     *        0 dB       50,0 %        50,0 %
+     *       10 dB       95,2 %        81,9 %
+     *       47 dB      100,0 %       100,0 %
+     *       64 dB      100,0 %       100,0 %
+     *
+     * Y los 52 enlaces medidos de El Burgo caen entre 47,4 dB de margen p50
+     * (preset calibrado) y 64,0 (por defecto). Ahí valía 100 % SIEMPRE: 52 de
+     * 52 con el sigma por defecto, 39 de 52 con el del preset, mínimo 96,2 %.
+     * No distinguía nada. Donde sí distinguiría —de −10 a +20 dB— NO HAY
+     * MEDIDAS, porque los 52 son el árbol de encaminamiento: los enlaces que
+     * la malla eligió por funcionar.
+     *
+     * Y EL SIGMA QUE LA ESCALABA LO DESAUTORIZA ESTE MISMO FICHERO unas líneas
+     * más arriba: «ni ese es una calibración de propagación: sobre 49 enlaces
+     * el RSSI correlaciona r = +0,16 con log(distancia)». Un sigma que no
+     * depende de la distancia no es un sigma de propagación.
+     *
+     * O sea: inútil donde hay datos, no validado donde serviría. Quitarlo no
+     * pierde información — pierde una cifra que parecía tenerla.
+     *
+     * NO SE DEVUELVE EN SILENCIO: `pLink` sigue en la salida, en `null`, con el
+     * motivo al lado. Quien la consuma se entera de que desapareció y de por
+     * qué, en vez de encontrarse un campo que ya no está. Vuelve el día que
+     * haya un sigma MEDIDO, con su campaña. */
     return {
       distanceM: +d.toFixed(2), prxDbm: +prx.toFixed(2), marginDb: +margin.toFixed(2),
-      pLink: +_phi(margin / p.sigmaDb).toFixed(4),
+      pLink: null,
+      pLinkMotivo: "el_sigma_no_es_una_calibracion_de_propagacion",
+      pLinkSigmaUsado: p.sigmaDb,
       pl2rayDb: +pl2.toFixed(2), plDiffDb: +plDiff.toFixed(2),
     };
   }

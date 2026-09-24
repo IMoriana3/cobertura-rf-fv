@@ -235,9 +235,20 @@ else:
               and j2[2] == m.EL_BURGO_BIAS_DB,
               "py %s vs js %s" % ([_cal.ptx_dbm, _cal.sigma_db, m.EL_BURGO_BIAS_DB], j2[:3]))
         check("paridad .py/.js — y el mismo margen con ella puesta",
-              cerca(_b["margin_db"], round(j2[3], 2), 0.011) and
-              cerca(_b["p_link"], round(j2[4], 4), 0.0011),
-              "py %s vs js %s" % ([_b["margin_db"], _b["p_link"]], j2[3:]))
+              cerca(_b["margin_db"], round(j2[3], 2), 0.011),
+              "py %s vs js %s" % (_b["margin_db"], j2[3]))
+        # ══ LA PROBABILIDAD SE RETIRÓ, Y ESO TAMBIÉN SE CAREA ═══════════════
+        # Antes esta línea comparaba `p_link` número a número. Se retiró del
+        # modelo —medido: sobre los 52 enlaces de El Burgo valía 100 % siempre,
+        # y el sigma que la escalaba no es una calibración de propagación— y
+        # ahora lo que se exige es que los DOS puertos la hayan retirado IGUAL.
+        # Un `None` en uno y un número en el otro sería peor que el número.
+        check("paridad .py/.js — los dos han RETIRADO la probabilidad",
+              _b["p_link"] is None and (j2[4] is None),
+              "py %s vs js %s" % (_b["p_link"], j2[4]))
+        check("y los dos dicen por qué, no se va en silencio",
+              _b.get("p_link_motivo") == "el_sigma_no_es_una_calibracion_de_propagacion",
+              _b.get("p_link_motivo"))
 
 # ── EL DIAGRAMA DE LA ANTENA ────────────────────────────────────────────────
 # La Jinchang JCW435700RA es un dipolo de ~lambda/2 -lo dice su propia ficha- y

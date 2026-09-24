@@ -213,6 +213,12 @@
 <script src="seguidor.js"></script>
 <script src="equipos.js"></script>
 <script src="sol.js"></script>
+<!-- EL CANON DE RADIO, ANTES QUE EL NÚCLEO QUE LO USA. `lib/radio_pv_model.js`
+     es la copia fijada del motor que vive en `siting` (candado y careo byte a
+     byte en `lib/canon.lock.json` + `tests/test_canon_pin.py`). Si este
+     <script> se cae o se pone DESPUÉS, `web/zigbee_pv_model.js` se para con un
+     error claro en vez de calcular con medio motor. -->
+<script src="lib/radio_pv_model.js"></script>
 <script src="web/zigbee_pv_model.js"></script>
 <script>
 const $=id=>document.getElementById(id);
@@ -2752,7 +2758,11 @@ function update(){
     return `<div class="l"><span class="d" style="background:${c}"></span>`+
            `<span class="n">${e.n}</span>`+
            `<span class="m" style="color:${c}">${m.toFixed(1)} dB</span>`+
-           `<span class="x">${estadoDe(m)} · p=${(100*e.r.pLink).toFixed(0)} % · ${e.r.distanceM.toFixed(1)} m · `+
+           /* LA PROBABILIDAD YA NO VA AQUÍ, Y NO SE ESFUMA: se dice que
+              desapareció y por qué. Ver la nota de abajo y el comentario de
+              `predictLink`. Un campo que se quita sin más deja a quien lo leía
+              buscando su número en otro sitio. */
+           `<span class="x">${estadoDe(m)} · <span title="La probabilidad de enlace se retiró: el sigma que la escalaba (${e.r.pLinkSigmaUsado} dB) no es una calibración de propagación, y sobre los márgenes reales de esta planta valía 100 % siempre. Ver la nota." style="opacity:.55">p —</span> · ${e.r.distanceM.toFixed(1)} m · `+
            `${e.r.mesas} mesa${e.r.mesas===1?"":"s"} · dos rayos ${e.r.pl2rayDb.toFixed(1)} + difr. ${e.r.plDiffDb.toFixed(1)} dB`+
            (e.r.rizado>5?` · <b style="color:#e0a72c">±${e.r.rizado.toFixed(0)} dB en 3 m</b>`:``)+
            `</span></div>`;
@@ -2761,7 +2771,8 @@ function update(){
   const riz=st.lect.some(e=>e.r.rizado>5);
   $("note").innerHTML=(riz?`<b style="color:#e0a72c">Ojo al rizado.</b> El rayo directo y el rebotado en el suelo se suman o se cancelan segun la distancia, `+
       `asi que el margen ONDULA: hay nulos cada pocos metros y entre ellos crestas. Por eso alejar un equipo puede MEJORARLO. `+
-      `Es fisica del modelo, pero un dB suelto cerca de un nulo no es una promesa — mira la probabilidad p, que ya lleva dentro el desvanecimiento. `+
+      `Es fisica del modelo, pero un dB suelto cerca de un nulo no es una promesa. `+
+      `<b>Antes aqui se remitia a una probabilidad p</b>, y se ha retirado: mira la nota de abajo. `+
       `Con <b>conductor perfecto</b> el suelo es un espejo y el rizado se dispara; con <b>tierra real</b> se queda en pocos dB, y es el caso con el que se decide un emplazamiento.<br>`:``)+
     (CAL
       ? `<b style="color:#e0a72c">Recentrado con El Burgo I</b>: −${dec(-Z.defaultParamsElBurgo().biasDb,1)} dB sobre la potencia y σ ${dec(Z.defaultParamsElBurgo().sigmaDb,1)} dB. `+
@@ -2772,6 +2783,15 @@ function update(){
       : `<b>Modelo físico</b>: dos rayos y difracción, sin recentrar. Los dB son <i>relativos</i> —sirven para comparar emplazamientos, `+
         `no como promesa de nivel—: la única medida que hay (El Burgo I, 49 enlaces) es una muestra censurada por el enrutado y no fija el nivel absoluto. `+
         `Con «Recentrado» se ve el modelo pegado a esa muestra, y la diferencia es exactamente el sesgo.<br>`)+
+    /* LA PROBABILIDAD RETIRADA, DICHA SIEMPRE Y NO SÓLO CUANDO ALGUIEN LA
+       ECHE DE MENOS. Estaba en cada lectura y su ayuda mandaba a mirarla; un
+       número así no puede desaparecer en silencio. */
+    `<b style="color:#e0a72c">La probabilidad «p» se ha retirado.</b> Estaba en cada lectura y esta misma ayuda mandaba a mirarla. `+
+    `Medido antes de quitarla: sobre los <b>52 enlaces medidos de El Burgo</b>, con márgenes de 47 a 64 dB, valía <b>100 % siempre</b> `+
+    `—52 de 52 con σ 6,0 y 39 de 52 con σ ${dec(Z.EL_BURGO_SIGMA_DB,2)}—, o sea que <b>no distinguía nada</b>. `+
+    `Donde sí distinguiría, entre −10 y +20 dB de margen, <b>no hay medidas</b>: los 52 son el árbol de encaminamiento, los enlaces que la malla eligió por funcionar. `+
+    `Y el σ que la escalaba no es una calibración de propagación —su RSSI correlaciona r = +0,16 con log(d)—, así que tampoco estaba validado donde habría servido. `+
+    `<b>Vuelve el día que haya un σ medido con su campaña.</b> Mientras tanto, el <b>margen en dB</b> es lo que hay, y el color de cada lectura sigue diciendo lo mismo que decía.<br>`+
     `Tx ${PTX} dBm · Rx ${SENS} dBm · antena ${GANT} dBi en los dos extremos; dos rayos + difracción multiobstáculo (Deygout) sobre `+
     `${ground==="pec"?"suelo perfecto":"tierra real"}, con el núcleo del repo (<code>web/zigbee_pv_model.js</code>). `+
     `Seguidor <code>seguidor.js</code> v${Seguidor.VERSION}, ${MODS} módulos por ala (tramo de ${SPAN().toFixed(1)} m); `+

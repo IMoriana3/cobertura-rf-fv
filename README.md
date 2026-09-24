@@ -55,7 +55,16 @@ cobertura-rf-fv/
 │   └── test_nucleo.py          # núcleo + PARIDAD .py <-> .js (38 comprobaciones)
 ├── README.md
 ├── INSTRUCCIONES.md            # cómo usarlo paso a paso
+├── lib/
+│   ├── radio_pv_model.js       # COPIA FIJADA del canon de radio, que vive en
+│   │                           #   `siting`. Aquí porque el visor es un HTML de
+│   │                           #   Pages y no puede leer un repo hermano.
+│   └── canon.lock.json         # el candado: sha256 de cada copia + de qué commit
+│                               #   salió. Lo carea `tests/test_canon_pin.py`
+│                               #   BYTE A BYTE contra el original, y sin original
+│                               #   sale rc = 2, no verde.
 ├── python/
+│   ├── radio_pv_model.py       # la otra mitad de esa copia fijada (mismo candado)
 │   ├── zigbee_pv_model.py      # núcleo físico (FSPL + dos rayos + difracción + balance)
 │   ├── diagnostico_elburgo.py  # coords + RSSI → grafo → SPOF → GeoJSON
 │   ├── requirements.txt
@@ -424,3 +433,15 @@ apantallados, y los fallos de malla aparecen en los saltos largos que cruzan
 muchas filas. Los valores absolutos dependen de la calibración: hasta tener el
 dataset completo de El Burgo I, el driver ajusta un sesgo global contra el RSSI
 medido.
+
+---
+
+## Cómo se comprueba una comprobación
+
+El estándar de puertas —piso por banco, alcance publicado, los tres estados
+MIDE / NO COMPROBADO / ROJO— vive en un solo sitio:
+**[`proyectos/docs/puertas-y-alcance.md`](https://github.com/IMoriana3/proyectos/blob/main/docs/puertas-y-alcance.md)**.
+
+Un original y enlaces; dos copias divergen. `docs/enlace_guia.sh` comprueba en
+CI que este enlace apunta a algo que existe — un enlace roto a la guía de
+puertas sería el chiste final.

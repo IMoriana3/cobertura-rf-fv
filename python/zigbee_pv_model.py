@@ -20,88 +20,109 @@ Mecanismos modelados:
 
 No incluye: curvatura terrestre (despreciable < 1 km) ni dispersión por
 vegetación (ITU-R P.833, opcional a futuro).
+
+LAS PRIMITIVAS YA NO SE ESCRIBEN AQUÍ
+-------------------------------------
+Longitud de onda, espacio libre, radio de Fresnel, distancia de ruptura,
+coeficiente de reflexión, dos rayos, filo de cuchillo y ν salen de
+`radio_pv_model`, el CANON, que vive en `siting` y aquí está como copia fijada
+(candado `lib/canon.lock.json`, careo byte a byte en `tests/test_canon_pin.py`).
+Este fichero conserva lo suyo: la GEOMETRÍA de la mesa (`table_band`,
+`band_clearance`), el Deygout sobre ella, el balance y la malla.
+
+POR QUÉ. Las dos implementaciones eran la MISMA física —careadas en 2.408 casos
+a 0,000e+00 por `siting/tools/careo_rffv.py`— y tenerlas dos veces sólo servía
+para que una se quedara vieja sin que nadie lo notara. Le pasó a SolarGPTfull:
+dos meses por detrás y 4,8 dB de diferencia sin que nadie lo supiera.
+
+LO QUE CAMBIA DE COMPORTAMIENTO, Y ES A MEJOR. El canon EXIGE la frecuencia y
+LANZA con un `eps_r` que no sea positivo o `inf`; esta versión devolvía conductor
+perfecto para cualquier `eps_r` no finito, NaN incluido, y se lo tragaba. Los
+valores por defecto de este repo (2,45 GHz, eps_r 15, inf para suelo perfecto)
+siguen aquí, en las envolturas, así que ninguna llamada de fuera cambia.
 """
 
 from __future__ import annotations
 import math
-import cmath
+import os
+import sys
 from dataclasses import dataclass, field, replace
 
-C = 299_792_458.0  # m/s
+# EL CANON, y si no está SE PARA. Una copia de repuesto aquí sería exactamente la
+# avería que esta consolidación viene a cerrar. Vive al lado de este fichero, así
+# que basta con su carpeta en el `sys.path` — se añade para el caso de que se
+# importe desde otro sitio.
+try:
+    import radio_pv_model as _RPV
+except ImportError:                                            # pragma: no cover
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import radio_pv_model as _RPV                              # noqa: E402
+
+C = _RPV.C_LUZ  # m/s — del canon, para que no haya dos constantes de la luz
+
+# Los defectos de ESTA planta. El canon no tiene valores por defecto a propósito
+# (olvidarse de la frecuencia tiene que hacer ruido); el defecto vive aquí, donde
+# se sabe de qué radio se habla.
+_F_DEF, _EPS_DEF, _SIG_DEF, _POL_DEF = 2.45e9, 15.0, 5e-3, "v"
 
 
 # --------------------------------------------------------------------------
-# Constantes y geometría básica
+# Constantes y geometría básica  (envolturas sobre el canon)
 # --------------------------------------------------------------------------
-def wavelength(f_hz: float = 2.45e9) -> float:
+def wavelength(f_hz: float = _F_DEF) -> float:
     """Longitud de onda. A 2.45 GHz ~ 0.1224 m."""
-    return C / f_hz
+    return _RPV.longitud_onda(f_hz)
 
 
-def fspl_db(d_m: float, f_hz: float = 2.45e9) -> float:
+def fspl_db(d_m: float, f_hz: float = _F_DEF) -> float:
     """Pérdida en espacio libre [dB]. ~80.2 dB a 100 m / 2.45 GHz."""
-    d_m = max(d_m, 1e-3)
-    return 20 * math.log10(d_m) + 20 * math.log10(f_hz) - 147.55
+    return _RPV.fspl_db(d_m, f_hz)
 
 
-def breakpoint_distance(h_t: float, h_r: float, f_hz: float = 2.45e9) -> float:
+def breakpoint_distance(h_t: float, h_r: float, f_hz: float = _F_DEF) -> float:
     """
     Distancia de transición del modelo de dos rayos [m].
     Por debajo: ~20 dB/dec; por encima: ~40 dB/dec.
     Con h=1.5 m a 2.45 GHz da ~73 m -> el orden donde caen los saltos largos.
     """
-    return 4 * h_t * h_r / wavelength(f_hz)
+    return _RPV.distancia_ruptura(h_t, h_r, f_hz)
 
 
-def fresnel_radius(d1_m: float, d2_m: float, f_hz: float = 2.45e9, n: int = 1) -> float:
+def fresnel_radius(d1_m: float, d2_m: float, f_hz: float = _F_DEF, n: int = 1) -> float:
     """Radio de la n-ésima zona de Fresnel [m] en el punto (d1, d2)."""
-    lam = wavelength(f_hz)
-    return math.sqrt(n * lam * d1_m * d2_m / (d1_m + d2_m))
+    return _RPV.radio_fresnel(d1_m, d2_m, f_hz, n)
 
 
 # --------------------------------------------------------------------------
 # Rebote en el suelo: modelo de dos rayos
 # --------------------------------------------------------------------------
 def reflection_coefficient(theta_graze: float, eps_r: float, sigma: float,
-                           f_hz: float, pol: str = "v") -> complex:
+                           f_hz: float, pol: str = _POL_DEF) -> complex:
     """
     Coeficiente de reflexión de Fresnel para incidencia rasante.
     theta_graze: ángulo de incidencia rasante [rad] (0 = horizonte).
     eps_r, sigma: permitividad relativa y conductividad [S/m] del suelo.
     pol: 'v' (vertical) o 'h' (horizontal).
 
-    eps_r = math.inf -> CONDUCTOR PERFECTO: Gamma = +1, sin dependencia del
-    ángulo. Es el caso de referencia (cota superior del rebote) que ofrece el
-    visor junto a la tierra real; tenerlo aquí evita que cada página se escriba
-    su propio "dos rayos con suelo perfecto".
+    eps_r = math.inf -> CONDUCTOR PERFECTO: Gamma = +1.
+
+    La cuenta es del canon. El canon lleva su propia aritmética compleja en
+    tuplas (re, im) para ser bit a bit igual que el JS; aquí se devuelve
+    `complex`, que es lo que este repo publicaba y lo que usan sus llamantes.
     """
-    if math.isinf(eps_r):
-        return complex(1.0, 0.0)
-    lam = wavelength(f_hz)
-    eps = complex(eps_r, -60.0 * lam * sigma)  # permitividad compleja
-    s = math.sin(theta_graze)
-    root = cmath.sqrt(eps - math.cos(theta_graze) ** 2)
-    if pol.lower().startswith("v"):
-        return (eps * s - root) / (eps * s + root)
-    return (s - root) / (s + root)
+    re, im = _RPV.coef_reflexion(theta_graze, eps_r, sigma, f_hz, pol)
+    return complex(re, im)
 
 
-def two_ray_pl_db(d_m: float, h_t: float, h_r: float, f_hz: float = 2.45e9,
-                  eps_r: float = 15.0, sigma: float = 5e-3, pol: str = "v") -> float:
+def two_ray_pl_db(d_m: float, h_t: float, h_r: float, f_hz: float = _F_DEF,
+                  eps_r: float = _EPS_DEF, sigma: float = _SIG_DEF,
+                  pol: str = _POL_DEF) -> float:
     """
     Pérdida de trayecto [dB] sumando rayo directo + reflejado en el suelo.
     d_m: distancia HORIZONTAL Tx-Rx. h_t, h_r: alturas de antena sobre el suelo.
     Reproduce los nulos de interferencia y la pendiente d^4 lejana.
     """
-    d_m = max(d_m, 1e-3)
-    lam = wavelength(f_hz)
-    d_los = math.hypot(d_m, h_t - h_r)
-    d_ref = math.hypot(d_m, h_t + h_r)
-    theta = math.atan2(h_t + h_r, d_m)          # ángulo rasante del reflejado
-    gamma = reflection_coefficient(theta, eps_r, sigma, f_hz, pol)
-    dphi = 2 * math.pi * (d_ref - d_los) / lam  # desfase de camino
-    field = (1.0 / d_los) + gamma * cmath.exp(-1j * dphi) / d_ref
-    return -20 * math.log10((lam / (4 * math.pi)) * abs(field))
+    return _RPV.dos_rayos_db(d_m, h_t, h_r, f_hz, eps_r, sigma, pol)
 
 
 # --------------------------------------------------------------------------
@@ -109,15 +130,12 @@ def two_ray_pl_db(d_m: float, h_t: float, h_r: float, f_hz: float = 2.45e9,
 # --------------------------------------------------------------------------
 def knife_edge_loss_db(v: float) -> float:
     """Pérdida por difracción de filo de cuchillo (ITU-R P.526). v: parámetro de Fresnel."""
-    if v <= -0.78:
-        return 0.0
-    return 6.9 + 20 * math.log10(math.sqrt((v - 0.1) ** 2 + 1) + v - 0.1)
+    return _RPV.perdida_filo_db(v)
 
 
 def _v_param(h_clear: float, d1: float, d2: float, f_hz: float) -> float:
     """h_clear: altura del obstáculo SOBRE la línea de visión (+ encima)."""
-    lam = wavelength(f_hz)
-    return h_clear * math.sqrt(2 * (d1 + d2) / (lam * d1 * d2))
+    return _RPV.nu(h_clear, d1, d2, f_hz)
 
 
 def diffraction_loss_db(D_m: float, tx_elev: float, rx_elev: float,
@@ -308,10 +326,10 @@ def params_elburgo(base: LinkParams | None = None) -> LinkParams:
     return replace(b, ptx_dbm=b.ptx_dbm + EL_BURGO_BIAS_DB, sigma_db=EL_BURGO_SIGMA_DB)
 
 
-def _phi(x: float) -> float:
-    """CDF normal estándar."""
-    return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
-
+# Aquí vivía `_phi`, la normal acumulada que escalaba `p_link`. Se va con ella:
+# sin probabilidad que calcular no tenía ni un solo llamante, y código muerto en
+# un núcleo es una invitación a resucitar el número sin resucitar la calibración
+# que le falta.
 
 
 def dipole_gain_db(elev_rad: float) -> float:
@@ -327,12 +345,11 @@ def dipole_gain_db(elev_rad: float) -> float:
 
     Lo que NO modela: el latigo cuelga de la viga y bascula con la mesa, asi que
     su eje no es exactamente la vertical. Se toma vertical.
+
+    La formula la pone el canon (`ganancia_patron_db`); aqui se fija el PATRON,
+    que es lo propio de esta planta.
     """
-    c = math.cos(elev_rad)
-    if abs(c) < 1e-9:
-        return -60.0                       # el nulo del eje, acotado
-    f = math.cos((math.pi / 2) * math.sin(elev_rad)) / c
-    return 20.0 * math.log10(max(abs(f), 1e-3))
+    return _RPV.ganancia_patron_db(elev_rad, "dipolo")
 
 
 def predict_link(tx: dict, rx: dict, p: LinkParams = LinkParams(),
@@ -366,7 +383,29 @@ def predict_link(tx: dict, rx: dict, p: LinkParams = LinkParams(),
         "distance_m": round(d, 2),
         "prx_dbm": round(prx, 2),
         "margin_db": round(margin, 2),
-        "p_link": round(_phi(margin / p.sigma_db), 4),
+        # ══ LA PROBABILIDAD DE ENLACE YA NO SE PUBLICA ══════════════════════
+        #
+        # Devolvia Phi(margen / sigma_db). Se quita, y no por prudencia
+        # generica: esta MEDIDO que el numero no informaba de nada.
+        #
+        #     margen      p(s=6,0)    p(s=10,99)
+        #      -10 dB        4,8 %        18,1 %
+        #        0 dB       50,0 %        50,0 %
+        #       10 dB       95,2 %        81,9 %
+        #       47 dB      100,0 %       100,0 %
+        #
+        # Y los 52 enlaces medidos de El Burgo caen entre 47,4 y 64,0 dB de
+        # margen: ahi valia 100 % SIEMPRE (52 de 52 con el sigma por defecto,
+        # 39 de 52 con el del preset). Donde si distinguiria —de -10 a +20 dB—
+        # NO HAY MEDIDAS, porque los 52 son el arbol de encaminamiento.
+        #
+        # Y el sigma que la escalaba lo desautoriza este mismo fichero: «ni ese
+        # es una calibracion de propagacion: r = +0,16 con log(distancia)».
+        #
+        # NO SE VA EN SILENCIO: sigue en la salida, en None, con el motivo.
+        "p_link": None,
+        "p_link_motivo": "el_sigma_no_es_una_calibracion_de_propagacion",
+        "p_link_sigma_usado": p.sigma_db,
         "pl_2ray_db": round(pl_2ray, 2),
         "pl_diff_db": round(pl_diff, 2),
     }
