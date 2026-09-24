@@ -75,10 +75,28 @@ jobs:
       - name: el sincronizador se niega a anotar un commit sin publicar
         run: python3 tests/test_sincronizador.py
       # La zona de cada NCU es aritmetica sobre el layout, asi que se comprueba
-      # aqui y en milisegundos: que contenga TODO el suelo de sus seguidores y
-      # sus HSU. Lleva su mutacion dentro (`ZONAS_PUNTO=si`).
-      - name: la zona de cada NCU contiene a los suyos
+      # aqui y en milisegundos. SON DOS MITADES: que contenga a los suyos (la
+      # facil, se cumple por construccion) y que NO se trague a los ajenos. Yo
+      # solo habia escrito la primera, y por eso una envolvente que se comia el
+      # campo de la NCU de al lado salia verde -- 79 seguidores ajenos dentro en
+      # San Jose, 7 en Polvorin, 6 en Paramo. Se vio mirando la pantalla, que es
+      # como no se deben encontrar los defectos.
+      - name: la zona de cada NCU dice la verdad (las dos mitades)
         run: node tests/test_zonas_ncu.js
+      # Y SUS DOS MUTACIONES, una por mitad. Antes estaban escritas pero NADIE
+      # LAS CORRIA: una mutacion que no se ejecuta se pudre igual que un banco
+      # que no se ejecuta, y de hecho la segunda no existia. rc = 0 es «la caza».
+      - name: y sus dos mutaciones, en rojo
+        run: |
+          set +e
+          for m in ZONAS_PUNTO ZONAS_SIN_PARTIR; do
+            env "$m=si" node tests/test_zonas_ncu.js > /tmp/zon_$m.log 2>&1
+            rc=$?
+            if [ "$rc" != "0" ]; then
+              echo "la mutacion $m NO la caza el banco (rc=$rc)"; tail -20 /tmp/zon_$m.log; exit 1
+            fi
+            echo "$m: cazada"
+          done
 
   # Los tres bancos de navegador. Cada uno tarda entre cinco y quince minutos
   # dibujando por software, así que van en paralelo.

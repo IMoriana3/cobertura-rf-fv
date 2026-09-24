@@ -1671,36 +1671,114 @@ function esquinasFila(t){
   return out;
 }
 
+/* ¿CAE ESTE PUNTO DENTRO DEL POLIGONO? Rayo horizontal y paridad de cortes. */
+function dentroPol(pt,pol){
+  let d=false;
+  for(let i=0,j=pol.length-1;i<pol.length;j=i++){
+    const a=pol[i], b=pol[j];
+    if(((a.n>pt.n)!==(b.n>pt.n)) &&
+       (pt.x < (b.x-a.x)*(pt.n-a.n)/((b.n-a.n)||1e-12)+a.x)) d=!d;
+  }
+  return d;
+}
+
+/* LAS ZONAS DE UNA NCU, PARTIDAS HASTA QUE NINGUNA TRAGUE SEGUIDORES AJENOS.
+   ---------------------------------------------------------------------------
+   UNA ENVOLVENTE CONVEXA NO ES UNA PARTICION, y esto era un defecto de verdad:
+   si los seguidores de una NCU rodean a los de otra —cosa normal cuando el
+   reparto sigue el cableado y no la geometria— la envolvente de la primera se
+   come a los de la segunda y el dibujo AFIRMA algo falso. Medido antes de
+   tocar nada, contando centros ajenos dentro de cada envolvente:
+
+       San Jose    79 de 2.289 (3,5 %)   7 zonas de 21 sucias
+       Polvorin     7 de   119 (5,9 %)   1 de 2
+       Paramo       6 de   396 (1,5 %)   2 de 4
+
+   Asi que la zona se parte: si traga a alguien, se bisecta el grupo por su eje
+   mas largo y se vuelve a intentar con las dos mitades. TERMINA SIEMPRE porque
+   el caso base es un solo seguidor, cuya envolvente es su propia huella y no
+   puede contener el centro de otro. Donde la envolvente YA era honesta no
+   cambia nada: Ayora sigue con un poligono por NCU. Donde no lo era, salen
+   varios (San Jose 21 NCU -> 47 poligonos, Paramo 4 -> 17, Polvorin 2 -> 9), y
+   varios poligonos que dicen la verdad valen mas que uno que miente.
+
+   POR QUE NO LO CAZO SU BANCO: `test_zonas_ncu.js` comprobaba que la zona
+   CONTIENE a los suyos, que es la mitad facil y se cumple por construccion.
+   Nunca comprobo la otra mitad —que NO contenga a los ajenos— que es justo
+   donde estaba el fallo. La comprobacion que faltaba va ahora con el. */
+function zonasDeNCU(trks, ajenos){
+  const pila=[trks], out=[];
+  let guarda=0;
+  while(pila.length){
+    if(++guarda>50000) break;   // cinturon: nunca deberia hacer falta
+    const g=pila.pop();
+    const pts=[]; g.forEach(t=>esquinasFila(t).forEach(q=>pts.push(q)));
+    const H=envolvente(pts);
+    if(H.length<3){ out.push(H); continue; }
+    if(g.length===1 || !ajenos.some(t=>dentroPol(t,H))){ out.push(H); continue; }
+    const xs=g.map(t=>t.x), ns=g.map(t=>t.n);
+    const eje=(Math.max(...xs)-Math.min(...xs))>=(Math.max(...ns)-Math.min(...ns))?"x":"n";
+    const ord=[...g].sort((a,b)=>a[eje]-b[eje]), mit=Math.floor(ord.length/2);
+    pila.push(ord.slice(0,mit), ord.slice(mit));
+  }
+  return out.filter(H=>H.length>=3);
+}
+
 function buildZonas(){
   if(zonasG){ plantaG.remove(zonasG); zonasG.traverse(o=>{ if(o.geometry)o.geometry.dispose(); }); }
   zonasG=new THREE.Group(); zonasG.visible=$("zon")?$("zon").checked:true; plantaG.add(zonasG);
   if(!PLANTA) return;
-  const UN=PLANTA._un||unidades(), por={};
-  const mete=(k,q)=>{ if(k==null) return; (por[k]||(por[k]=[])).push(q); };
-  UN.forEach(t=>{ esquinasFila(t).forEach(q=>mete(t.ncu,q)); });
-  /* Las HSU y los repetidores, con su ámbito. Una HSU puede caer FUERA del
-     campo de su NCU —está donde el plano la puso— y entonces la zona se estira
-     hasta ella: eso es un dato, no un defecto del dibujo. */
-  (PLANTA.meteo||[]).forEach(c=>mete(c.ncu,{x:c.x,n:c.n}));
-  (PLANTA.reps||[]).forEach(c=>mete(c.ncu,{x:c.x,n:c.n}));
+  const UN=PLANTA._un||unidades();
+  const porT={};
+  UN.forEach(t=>{ if(t.ncu!=null) (porT[t.ncu]||(porT[t.ncu]=[])).push(t); });
+  /* LOS EQUIPOS NO ESTIRAN EL POLIGONO. Antes la HSU entraba en la envolvente,
+     y como puede caer LEJOS del campo de su NCU —esta donde el plano la puso—
+     la zona se estiraba hasta ella cruzando campos de otras. Su pertenencia es
+     un dato que hay que enseñar, pero no afirmando que el suelo de en medio es
+     suyo: va con un CABO desde el equipo hasta su zona. */
+  const porE={};
+  (PLANTA.meteo||[]).forEach(c=>{ if(c.ncu!=null)(porE[c.ncu]||(porE[c.ncu]=[])).push(c); });
+  (PLANTA.reps ||[]).forEach(c=>{ if(c.ncu!=null)(porE[c.ncu]||(porE[c.ncu]=[])).push(c); });
   /* GROSOR A ESCALA DE LA PLANTA. Un cordón de 0,5 m se ve en Túnez (125 m de
      campo) y desaparece en San José (2,5 km). `linewidth` no vale: WebGL lo
      ignora y pinta 1 píxel siempre, así que el borde es un TUBO de verdad. */
   let _dg=600; try{ _dg=extentPlanta().diag||600; }catch(e){}
   const R=Math.max(0.5,Math.min(3,_dg/900));
-  Object.keys(por).sort((a,b)=>a-b).forEach(k=>{
-    const H=envolvente(por[k]); if(H.length<3) return;
-    const pts=[];
-    for(let i=0;i<H.length;i++){
-      const a=H[i], b=H[(i+1)%H.length], d=Math.hypot(b.x-a.x,b.n-a.n);
-      const pasos=Math.max(1,Math.ceil(d/ZONA_PASO));
-      for(let j=0;j<pasos;j++){ const u=j/pasos, x=a.x+(b.x-a.x)*u, n=a.n+(b.n-a.n)*u;
-        pts.push(new THREE.Vector3(x,cotaEn(x,n)+ZONA_ALTO,-n)); }
-    }
-    const cur=new THREE.CatmullRomCurve3(pts,true,"catmullrom",0.0);
-    const m=new THREE.MeshBasicMaterial({color:new THREE.Color(colorAmbito("NCU "+k)),
-                                         transparent:true,opacity:0.75,depthWrite:false});
-    zonasG.add(new THREE.Mesh(new THREE.TubeGeometry(cur,pts.length,R,6,true),m));
+  const cordon=(P,col,r)=>{
+    const cur=new THREE.CatmullRomCurve3(P,false,"catmullrom",0.0);
+    const m=new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:0.75,depthWrite:false});
+    zonasG.add(new THREE.Mesh(new THREE.TubeGeometry(cur,Math.max(2,P.length),r,6,false),m));
+  };
+  Object.keys(porT).sort((a,b)=>a-b).forEach(k=>{
+    const col=new THREE.Color(colorAmbito("NCU "+k));
+    const ajenos=UN.filter(t=>t.ncu!=null&&String(t.ncu)!==String(k));
+    const zonas=zonasDeNCU(porT[k],ajenos);
+    const todos=[];
+    zonas.forEach(H=>{
+      const pts=[];
+      for(let i=0;i<H.length;i++){
+        const a=H[i], b=H[(i+1)%H.length], d=Math.hypot(b.x-a.x,b.n-a.n);
+        const pasos=Math.max(1,Math.ceil(d/ZONA_PASO));
+        for(let j=0;j<pasos;j++){ const u=j/pasos, x=a.x+(b.x-a.x)*u, n=a.n+(b.n-a.n)*u;
+          pts.push(new THREE.Vector3(x,cotaEn(x,n)+ZONA_ALTO,-n)); }
+      }
+      if(pts.length<3) return;
+      const cur=new THREE.CatmullRomCurve3(pts,true,"catmullrom",0.0);
+      const m=new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:0.75,depthWrite:false});
+      zonasG.add(new THREE.Mesh(new THREE.TubeGeometry(cur,pts.length,R,6,true),m));
+      H.forEach(q=>todos.push(q));
+    });
+    /* El cabo de cada equipo al punto MAS CERCANO de la zona de su NCU. Si la
+       NCU no llego a tener poligono (una sola fila, por ejemplo) no hay a donde
+       amarrar y se deja sin cabo, que es mejor que inventar un destino. */
+    (porE[k]||[]).forEach(c=>{
+      if(!todos.length) return;
+      let mejor=todos[0], dm=Infinity;
+      todos.forEach(q=>{ const d=(q.x-c.x)*(q.x-c.x)+(q.n-c.n)*(q.n-c.n); if(d<dm){dm=d;mejor=q;} });
+      if(Math.sqrt(dm)<0.5) return;   // ya esta pegado a su zona: el cabo no aporta
+      cordon([new THREE.Vector3(c.x,cotaEn(c.x,c.n)+ZONA_ALTO,-c.n),
+              new THREE.Vector3(mejor.x,cotaEn(mejor.x,mejor.n)+ZONA_ALTO,-mejor.n)], col, R*0.6);
+    });
   });
 }
 
