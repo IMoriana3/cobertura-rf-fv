@@ -73,10 +73,41 @@ def commit_local(ruta):
         if sucio:
             sys.exit("el checkout de origen tiene cambios sin commitear: no se puede "
                      "apuntar de donde sale el dato\n" + sucio)
-        return subprocess.run(["git","-C",ruta,"rev-parse","HEAD"],
-                              capture_output=True, text=True, check=True).stdout.strip()
+        cabeza = subprocess.run(["git","-C",ruta,"rev-parse","HEAD"],
+                                capture_output=True, text=True, check=True).stdout.strip()
     except (subprocess.CalledProcessError, FileNotFoundError):
         sys.exit(f"{ruta} no parece un checkout de git de {FUENTE}")
+
+    # Y QUE ESA CABEZA ESTE EN `main`. PROCEDENCIA escribe "rama": "main" sin
+    # preguntar, asi que sincronizar desde una rama de trabajo GRABA UNA MENTIRA:
+    # un commit que no esta en main, que puede rebasarse o borrarse con la rama y
+    # deja la procedencia apuntando al vacio. Paso exactamente eso: se grabo
+    # 8ef77ba, que era de una rama, y el contenido era correcto —coincidia con
+    # main— pero la referencia no llevaba a ningun sitio permanente.
+    #
+    # Se mira contra `origin/main` si existe, que es lo que de verdad esta
+    # publicado, y si no contra `main`. Si el checkout esta desactualizado la
+    # respuesta es un fetch, no relajar el guarda: dar por bueno un commit que
+    # todavia no esta en el main publicado es el mismo defecto un dia antes.
+    if os.environ.get("PROCEDENCIA_RAMA_LIBRE") != "si":
+        for principal in ("origin/main", "main"):
+            existe = subprocess.run(["git","-C",ruta,"rev-parse","--verify","--quiet",principal],
+                                    capture_output=True, text=True)
+            if existe.returncode:
+                continue
+            dentro = subprocess.run(["git","-C",ruta,"merge-base","--is-ancestor",cabeza,principal],
+                                    capture_output=True, text=True)
+            if dentro.returncode:
+                sys.exit(f"la cabeza de {ruta} ({cabeza[:12]}) no esta en {principal}: "
+                         f"sincronizar desde una rama grabaria en PROCEDENCIA un commit "
+                         f"que no esta publicado.\n"
+                         f"  git -C {ruta} fetch origin main && "
+                         f"git -C {ruta} checkout origin/main")
+            break
+        else:
+            sys.exit(f"{ruta} no tiene ni `origin/main` ni `main`: no se puede comprobar "
+                     f"que el commit que se va a grabar este publicado")
+    return cabeza
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
