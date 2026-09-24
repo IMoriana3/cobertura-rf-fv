@@ -3,3 +3,13 @@ __pycache__/
 node_modules/
 package.json
 package-lock.json
+
+# LA INSTRUMENTACION DE UNA MEDIDA no es producto: existe para contestar UNA
+# pregunta -- «¿la pagina construye bien las zonas de NCU?» -- y la respuesta se
+# escribe donde corresponda (un banco, un comentario, el mensaje de un commit),
+# no dejando el aparato de medir tirado en el repo. Mismo criterio que
+# cobertura-zigbee, donde nacio para los terrenos «solo DEM».
+#
+# Si una resulta valer para mas que su pregunta, se promueve a tests/ o tools/
+# con su cabecera y se versiona como cualquier otra.
+_*.mjs
