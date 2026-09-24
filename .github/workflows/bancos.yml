@@ -80,6 +80,19 @@ jobs:
       - name: la zona de cada NCU contiene a los suyos
         run: node tests/test_zonas_ncu.js
 
+      # La vista en planta: QUÉ obstáculos ve cada enlace. Sin navegador —extrae
+      # el bloque CAMPO del HTML real a un `vm`— así que cuesta un segundo y va
+      # aquí. LLEVABA EN EL REPO SIN CORRER EN NINGÚN SITIO: daba 33 de 33, pero
+      # por suerte, no por vigilancia. Lo encontró el censo de abajo.
+      - name: la vista en planta ve los obstáculos que debe
+        run: node tests/test_demo_cobertura.js
+
+      # Y EL CENSO, para que eso no vuelva: cada `tests/test_*` del disco tiene
+      # que salir en algún workflow. Mira la DECLARACIÓN, no la corrida —de la
+      # corrida se ocupa `ci_al_dia.sh` de proyectos— y se cuenta a sí mismo.
+      - name: ningún banco de este repo se queda sin correr
+        run: python3 tests/test_censo_bancos.py
+
   # Los tres bancos de navegador. Cada uno tarda entre cinco y quince minutos
   # dibujando por software, así que van en paralelo.
 
