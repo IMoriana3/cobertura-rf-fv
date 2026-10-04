@@ -29,7 +29,7 @@ import tempfile
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CANON_URL = 'https://github.com/IMoriana3/siting.git'
-PISO_COPIAS = 2      # el .js del visor y el .py del nucleo: menos es no mirar
+PISO_COPIAS = 3      # el .js del visor, el .py del nucleo y la tabla de tecnologias
 PISO_MUT = 8
 
 ok = [0]

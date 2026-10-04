@@ -133,10 +133,11 @@
         </div>
       </div>
       <div><label>Radio:</label>
-        <div class="seg" id="segr">
-          <button data-p="8">XBee RR (+8 dBm)</button>
-          <button data-p="19" class="on">XBee-PRO RR (+19 dBm)</button>
-        </div>
+        <!-- SE RELLENA CON LA TABLA ANCLADA (`lib/radio_params.json`), no a mano:
+             ver `pintaMandoRadio()`. Lo que hay aquí es lo que se ve mientras
+             llega, y si no llega se queda diciéndolo en vez de ofrecer botones
+             que no corresponden a ningún dato careado. -->
+        <div class="seg" id="segr"><button disabled>cargando la tabla…</button></div>
       </div>
       <div><label>Modelo del enlace:</label>
         <div class="seg" id="segcal">
@@ -244,8 +245,104 @@ const $=id=>document.getElementById(id);
  * ==========================================================================*/
 const D=Seguidor.DIMS, ED=Equipos.DIMS, Z=window.ZigbeePV;
 let P=6, HTUBE=1.5, CHORD=D.modH, MODS=7, DNCU=12, HNCU=ED.ncuAntY, DHSU=8;
-const NROWS=6, M0=D.off, LAM=Z.wavelength(), PRV=1.25;
-const GANT=3.0, SENS=-103; let PTX=19;
+const NROWS=6, M0=D.off, PRV=1.25;
+
+/* ══════════ LA RADIO YA NO ES UNA POTENCIA: ES UNA TECNOLOGÍA ══════════════
+ *
+ * Esto era `const GANT=3.0, SENS=-103; let PTX=19;` y el mando de «Radio» sólo
+ * movía `PTX` entre 8 y 19. O sea que esta página NO TENÍA EL CONCEPTO DE
+ * TECNOLOGÍA: era un modelo de Zigbee a 2,45 GHz con un interruptor de potencia,
+ * y la frecuencia estaba escrita a mano en tres sitios —`wavelength()` sin
+ * argumento, el `2.45e9` del coeficiente de reflexión, y el `defaultParams()`
+ * del núcleo—.
+ *
+ * Y ESOS TRES NÚMEROS ERAN UNA TERCERA COPIA. Los 19 dBm, los 3 dBi y los
+ * −103 ya estaban en `defaultParams()` del canon Y en `radio_params.json` de
+ * siting. Tres copias de lo mismo sin nadie que las caree es exactamente la
+ * avería que documenta `lib/canon.lock.json` —a SolarGPTfull le costó 4,8 dB
+ * durante dos meses—, así que aquí se borran: la tabla manda.
+ *
+ * DE DÓNDE SALE LA TABLA: `lib/radio_params.json`, copia ANCLADA POR SHA256 del
+ * `radio_params.json` de siting, careada byte a byte por `tests/test_canon_pin.py`
+ * contra el repo hermano. No se teclea aquí ni un número de radio.
+ *
+ * MIENTRAS NO LLEGUE: el visor arranca con lo que trae el núcleo —que es el
+ * canon de la física, también anclado— y el mando dice que está cargando. Si la
+ * tabla no llega, el mando lo DICE en vez de ofrecer unos botones que mienten.
+ */
+let RADIOS = [];      // las tecnologías que tienen balance completo
+let RADIO  = null;    // la elegida
+let LAM    = Z.wavelength();   // se recalcula con la frecuencia de `RADIO`
+
+/* Una tecnología sólo entra en el mando si tiene LAS CINCO cosas del balance.
+   Un hueco no se rellena con un defecto: la variante no se ofrece, que es la
+   misma regla del comparador de siting. */
+function balanceCompleto(v){
+  return v && v.f_hz != null && v.ptx_dbm != null && v.gtx_dbi != null &&
+         v.grx_dbi != null && v.rx_sens_dbm != null;
+}
+function construyeRadios(j){
+  const out = [];
+  for (const [id, v] of Object.entries((j && j.tecnologias) || {})) {
+    if (id.startsWith("_") || !balanceCompleto(v)) continue;
+    out.push({
+      id,
+      nombre: v.nombre || id,
+      fHz: v.f_hz, ptxDbm: v.ptx_dbm, gtxDbi: v.gtx_dbi,
+      grxDbi: v.grx_dbi, rxSensDbm: v.rx_sens_dbm,
+      tasaBps: v.tasa_bps,
+      /* UN ESCENARIO NO ES UNA MEDIDA, y el mando tiene que decirlo. */
+      escenario: v.procedencia === "escenario_de_referencia",
+    });
+  }
+  /* de menos a más potencia radiada, que es el orden en que se leen */
+  out.sort((a,b)=>(a.ptxDbm+a.gtxDbi)-(b.ptxDbm+b.gtxDbi));
+  return out;
+}
+/* El rótulo del botón: corto, pero con la banda, que es lo que de verdad
+   distingue una tecnología de otra en esta página. */
+function rotuloRadio(r){
+  const mhz = r.fHz/1e6;
+  const banda = mhz >= 1000 ? (mhz/1000).toFixed(2).replace(".",",")+" GHz"
+                            : mhz.toFixed(1).replace(".",",")+" MHz";
+  const corto = r.nombre.split("—")[0].trim().replace(/\s*\(.*$/,"");
+  return `${corto} · ${banda} · ${r.ptxDbm>=0?"+":""}${r.ptxDbm} dBm`
+         + (r.escenario ? " ·  ref." : "");
+}
+function ponRadio(r){
+  RADIO = r;
+  LAM = Z.wavelength(r.fHz);     // la longitud de onda SIGUE a la frecuencia
+}
+
+function pintaMandoRadio(){
+  const c = document.getElementById("segr");
+  if(!c) return;
+  if(!RADIOS.length){
+    /* NO SE INVENTA UN MANDO. Si la tabla no ha llegado o no trae ninguna
+       tecnología con balance completo, se dice — y se dice POR QUÉ, que es la
+       diferencia entre un hueco y una avería. */
+    c.innerHTML = '<button disabled title="no se ha podido leer lib/radio_params.json, '+
+                  'o ninguna tecnología tiene el balance completo">sin tabla de radio</button>';
+    return;
+  }
+  c.innerHTML = RADIOS.map(r =>
+    `<button data-p="${r.id}"${r===RADIO?' class="on"':''}`+
+    ` title="${r.nombre.replace(/"/g,"&quot;")}">${rotuloRadio(r)}</button>`).join("");
+}
+
+/* LA TABLA, DE LA COPIA ANCLADA. `cache:"no-store"` por lo mismo que el resto de
+   las cargas de esta página: una copia vieja en el navegador es justo el fallo
+   silencioso que el candado existe para impedir. */
+const RADIO_PEND = fetch("lib/radio_params.json",{cache:"no-store"})
+  .then(r=>{ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
+  .then(j=>{
+    RADIOS = construyeRadios(j);
+    /* Arranca en la que el repo lleva usando: el XBee-PRO. Si no estuviera, la
+       primera de la lista — pero no se calla el cambio. */
+    const prev = RADIOS.find(r=>r.id==="zigbee_pro_24") || RADIOS[0];
+    if(prev) ponRadio(prev);
+  })
+  .catch(e=>{ RADIOS = []; console.warn("no se ha podido leer la tabla de radio:", e); });
 /* Qué modelo se usa para el margen. Por defecto el DESNUDO, y esto es un cambio
    de opinión: se puso el «calibrado» de arranque fiándose del comentario del
    núcleo, y al mirar el dato no lo sostiene. Las 49 medidas de El Burgo son
@@ -288,7 +385,15 @@ function params(){
   const p=CAL?Z.defaultParamsElBurgo():Z.defaultParams();
   /* El sesgo va SOBRE la potencia que diga el mando, no sobre los 19 dBm de
      fábrica: si no, elegir el XBee de +8 se comería la calibración. */
-  p.ptxDbm=PTX+(p.biasDb||0); p.gtxDbi=GANT; p.grxDbi=GANT; p.rxSensDbm=SENS;
+  /* TODO EL BALANCE SALE DE `RADIO`, que viene de la tabla anclada. Si la tabla
+     aún no ha llegado se dejan los del núcleo —que son el canon de la física y
+     están anclados igual—, y el mando lo dice. */
+  if(RADIO){
+    p.fHz=RADIO.fHz; p.gtxDbi=RADIO.gtxDbi; p.grxDbi=RADIO.grxDbi; p.rxSensDbm=RADIO.rxSensDbm;
+    p.ptxDbm=RADIO.ptxDbm+(p.biasDb||0);
+  }else{
+    p.ptxDbm=p.ptxDbm+(p.biasDb||0);
+  }
   p.epsR = ground==="pec" ? Infinity : 15.0;   // el núcleo entiende Infinity = conductor perfecto
   return p;
 }
@@ -339,7 +444,13 @@ function rizado(d,ha,hb,p){
 const dip=t=>{const s=Math.sin(t);return Math.abs(s)<1e-6?0:Math.abs(Math.cos(Math.PI/2*Math.cos(t))/s);};
 function pat(t,hA){
   const k=2*Math.PI/LAM, delta=2*k*hA*Math.cos(t);
-  const G=Z.reflectionCoefficient(Math.PI/2-t, ground==="pec"?Infinity:15.0, 5e-3, 2.45e9, "v");
+  /* LA FRECUENCIA, DE `RADIO` Y NO A MANO. Estaba escrita aquí como `2.45e9`, y
+     con eso el patrón del dipolo se dibujaba a 2,4 GHz aunque el mando dijera
+     868 MHz: el lóbulo sale del juego entre la altura y la longitud de onda, así
+     que a 868 son otros lóbulos y otros nulos. Un dibujo que no se entera del
+     mando es peor que no dibujar. */
+  const G=Z.reflectionCoefficient(Math.PI/2-t, ground==="pec"?Infinity:15.0, 5e-3,
+                                  RADIO?RADIO.fHz:undefined, "v");
   const c=Math.cos(-delta), s=Math.sin(-delta);
   const re=1+G.re*c-G.im*s, im=G.re*s+G.im*c;
   return dip(t)*Math.hypot(re,im);
@@ -2870,7 +2981,15 @@ function update(){
     `Donde sí distinguiría, entre −10 y +20 dB de margen, <b>no hay medidas</b>: los 52 son el árbol de encaminamiento, los enlaces que la malla eligió por funcionar. `+
     `Y el σ que la escalaba no es una calibración de propagación —su RSSI correlaciona r = +0,16 con log(d)—, así que tampoco estaba validado donde habría servido. `+
     `<b>Vuelve el día que haya un σ medido con su campaña.</b> Mientras tanto, el <b>margen en dB</b> es lo que hay, y el color de cada lectura sigue diciendo lo mismo que decía.<br>`+
-    `Tx ${PTX} dBm · Rx ${SENS} dBm · antena ${GANT} dBi en los dos extremos; dos rayos + difracción multiobstáculo (Deygout) sobre `+
+    (RADIO
+      ? `<b>${RADIO.nombre}</b> · Tx ${RADIO.ptxDbm} dBm · Rx ${RADIO.rxSensDbm} dBm · antena ${RADIO.gtxDbi} dBi en los dos extremos · `+
+        `${(RADIO.fHz/1e6).toFixed(1).replace(".",",")} MHz`+
+        (RADIO.escenario
+          ? ` — <b>escenario de referencia, NO una configuración elegida</b>: la sensibilidad es la COTA DEL CHIP, no una medida del módulo, `+
+            `y lo real queda por debajo en una cantidad que nadie cuantifica. `
+          : ` `)
+      : `(la tabla de tecnologías aún no ha llegado; se está usando la del núcleo) `)+
+    `; dos rayos + difracción multiobstáculo (Deygout) sobre `+
     `${ground==="pec"?"suelo perfecto":"tierra real"}, con el núcleo del repo (<code>web/zigbee_pv_model.js</code>). `+
     `Seguidor <code>seguidor.js</code> v${Seguidor.VERSION}, ${MODS} módulos por ala (tramo de ${SPAN().toFixed(1)} m); `+
     `NCU y HSU <code>equipos.js</code> v${Equipos.VERSION} (poste de ${ED.ncuMastH.toFixed(2)} m y torre de ${ED.hsuTowerH.toFixed(0)} m). `+
@@ -3057,7 +3176,15 @@ if(webgl){
   cargaCAD().then(()=>{ if(CAD.tcu||CAD.secc){ if(PLANTA) buildPlanta(); else buildField(); update(); } });
 
   segClick("seg",  b=>{ ground=b.dataset.g; update(); });
-  segClick("segr", b=>{ PTX=+b.dataset.p; update(); });
+  /* El mando de la radio se CONSTRUYE con la tabla, no está escrito en el HTML:
+     así una tecnología nueva aparece sola en cuanto su balance esté completo, y
+     una que se apague desaparece sola. */
+  segClick("segr", b=>{ const r=RADIOS.find(x=>x.id===b.dataset.p); if(r){ ponRadio(r); update(); } });
+  /* La tabla llega por red, así que el mando se pinta CUANDO LLEGA — y se
+     rehace el cálculo, porque hasta entonces el balance era el del núcleo. La
+     página ya se ve mientras tanto; lo que no se hace es enseñar botones antes
+     de tener con qué llenarlos. */
+  RADIO_PEND.then(()=>{ pintaMandoRadio(); update(); });
   segClick("segcal", b=>{ CAL=(b.dataset.k==="1"); update(); });
   segClick("segm", b=>{ MODS=+b.dataset.m; if(!PLANTA){ buildField(); update(); } });   // el tramo es del corte de estudio; en planta manda el layout
   segClick("segv", b=>{ frame(b.dataset.v); });

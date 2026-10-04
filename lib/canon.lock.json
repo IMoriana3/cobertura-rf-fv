@@ -15,7 +15,7 @@
   "canon": {
     "repo": "imoriana3/siting",
     "rama": "main",
-    "commit": "331ed7a57e8cbd3fa3301ced12c0a253bdd618fe",
+    "commit": "2bc082627d1b7fb4c22071e6ac3481c8547b9b4a",
     "_commit_nota": "el commit de `main` donde viven ESTOS bytes. Es procedencia, no la comprobacion: lo que se carea es el sha256 del contenido contra el canon de verdad."
   },
   "copias": [
@@ -30,6 +30,12 @@
       "alli": "radio_pv_model.py",
       "sha256": "fdbefe86f4f17e468ff3d8555e061646ea3df87ced11c4207d2bc68223c5ae0e",
       "lo_carga": "python/zigbee_pv_model.py, que esta a su lado en el sys.path"
+    },
+    {
+      "aqui": "lib/radio_params.json",
+      "alli": "radio_params.json",
+      "sha256": "1a08f679051b0846a64e9c52588f1ad886a159ce557e31721073fd5765c2b385",
+      "lo_carga": "index.html, con fetch(), para la TABLA DE TECNOLOGIAS: frecuencia, potencia, ganancias y sensibilidad de cada radio. La fisica viene de radio_pv_model.js; esto son los PARAMETROS."
     }
   ],
   "lo_que_NO_cubre": [

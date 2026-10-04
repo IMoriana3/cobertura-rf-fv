@@ -991,12 +991,30 @@ const SONDA = `(() => {
           dif.length > 0 && dif.every(v => Math.abs(v - 16.58) < 0.11), JSON.stringify(dif));
 
     /* El sesgo va sobre la potencia QUE DIGA EL MANDO. Aplicado sobre los 19 dBm
-       de fábrica, elegir el XBee de +8 se lo comía. */
-    await pulsa(page, '#segr [data-p="8"]'); await page.waitForTimeout(1200);
-    const e8 = await lee();
-    check('cambiar de radio no se come el recentrado',
-          e8.bias === -16.58 && Math.abs(e8.ptx - (8 - 16.58)) < 1e-9, 'ptx ' + e8.ptx);
-    await pulsa(page, '#segr [data-p="19"]'); await page.waitForTimeout(800);
+       de fábrica, elegir otra radio se lo comía.
+
+       EL BOTÓN CAMBIÓ EL 2026-10-04 y la regla no. El mando era `data-p="8"` /
+       `data-p="19"` —una POTENCIA escrita en el HTML— y ahora lleva el id de la
+       TECNOLOGÍA, que sale de la tabla anclada. El `+8` era el XBee estándar, y
+       esa variante NO se ofrece porque en la tabla le falta la sensibilidad: un
+       hueco no se rellena, así que no hay botón.
+
+       Se cambia a LoRa, que además prueba MÁS: cambia la potencia (13 dBm) y
+       también la banda, así que si el recentrado se comiera algo se vería
+       igual. El id y la potencia no se escriben a mano aquí: se leen de la
+       tabla, para que este banco no se convierta en otra copia. */
+    const otra = await page.evaluate(() =>
+      (typeof RADIOS !== 'undefined' ? RADIOS : []).find(r => r.id !== (RADIO && RADIO.id)) || null);
+    check('hay una segunda radio con la que probar el recentrado', !!otra,
+          JSON.stringify(otra));
+    if (otra) {
+      await pulsa(page, `#segr [data-p="${otra.id}"]`); await page.waitForTimeout(1200);
+      const e8 = await lee();
+      check('cambiar de radio no se come el recentrado',
+            e8.bias === -16.58 && Math.abs(e8.ptx - (otra.ptxDbm - 16.58)) < 1e-9,
+            'ptx ' + e8.ptx + ' · esperado ' + (otra.ptxDbm - 16.58));
+    }
+    await pulsa(page, '#segr [data-p="zigbee_pro_24"]'); await page.waitForTimeout(800);
     await pulsa(page, '#segcal [data-k="0"]'); await page.waitForTimeout(1000);
   }
 

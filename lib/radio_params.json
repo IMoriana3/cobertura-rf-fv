@@ -1,0 +1,2573 @@
+{
+  "_lee_esto_primero": [
+    "Parámetros del motor de radio (radio_pv_model.js). Versionado A PROPÓSITO:",
+    "una predicción sin saber con qué números se hizo no se puede repetir ni",
+    "discutir, y este repo ya se ha comido una vez el problema de un valor que",
+    "envejeció en silencio.",
+    "",
+    "REGLA DE ESTE FICHERO: ningún número de potencia, sensibilidad o regulación",
+    "entra sin PROCEDENCIA. Cada uno lleva su `_fuente`, y las tres únicas",
+    "procedencias válidas son: norma, datasheet del modelo exacto, o código de",
+    "este repo citado por fichero y línea. Un número sin `_fuente` es un error,",
+    "y el banco lo exige.",
+    "",
+    "NO HAY SESGO GLOBAL. El modelo antiguo (zigbee_pv_model.js, CONGELADO)",
+    "llevaba EL_BURGO_BIAS_DB para recentrar la predicción sobre lo medido. Aquí",
+    "no se traslada: ver la nota de TRASPASO sobre las dos cifras que llegaron a",
+    "convivir (−33,6 en el canon de Siting y −16,58 en cobertura-rf-fv) y por qué",
+    "ninguna de las dos es una calibración de propagación."
+  ],
+  "_procedencias": {
+    "_que_es": "LA CLASE DE CADA VALOR, LEGIBLE POR MÁQUINA. No es información nueva: es lo que el `_fuente` de cada valor YA dice, escrito en un vocabulario CERRADO para que el motor pueda rotular la salida sin leer prosa. Sacar la clase de una expresión regular sobre el `_fuente` sería poner el criterio en el sitio donde menos se mira, y además rompería el día que alguien reescriba una cita.",
+    "_por_que": "El mapa tiene que decir SIEMPRE con qué se ha pintado. Un margen en dB salido de valores que nadie ha verificado no es una predicción, y hasta hoy la pantalla no distinguía un caso del otro: pintaba las mismas cinco bandas de color con parámetros calibrados y sin ellos.",
+    "vocabulario": {
+      "medido": "medido en campo sobre este equipo o esta planta",
+      "calibrado": "ajustado contra una campaña de medidas; la campaña viaja con el valor",
+      "plano": "de un plano o documento de fabricante (DWG, DR, FTR)",
+      "datasheet": "leído del datasheet o la ficha del modelo EXACTO",
+      "norma": "de una norma o recomendación citada (ITU-R, IEC)",
+      "declarado": "alguien lo ha declarado; ni plano, ni datasheet, ni medida",
+      "heredado": "copiado del código de estos repos. NADIE lo ha verificado contra un datasheet ni contra una medida: es el valor que ya se usaba",
+      "pendiente": "no hay valor todavía (`null`)"
+    },
+    "_rotulo": "Para la pantalla se agrupan en cuatro: medido → MEDIDO · calibrado → CALIBRADO · plano/datasheet/norma → TEÓRICO · declarado/heredado → SIN VERIFICAR · pendiente → NO DISPONIBLE. Manda SIEMPRE el MÁS DÉBIL de los valores que entran en ese número, no la media ni el más fuerte.",
+    "_la_cita": {
+      "_que_es": "LA RANURA DE CITA, una por NÚMERO y no por variante. Cuatro campos: `documento`, `version`, `pagina`, `leido_el`. Vacía significa que nadie ha leído ese número de un documento — y eso se ve, en vez de deducirse de la ausencia de prosa.",
+      "campos": [
+        "documento",
+        "version",
+        "pagina",
+        "leido_el"
+      ],
+      "la_obligan": [
+        "datasheet",
+        "plano",
+        "norma"
+      ],
+      "_regla": "Un valor que se declare `datasheet`, `plano` o `norma` con la cita INCOMPLETA no es una lectura: es un `declarado` con mejor nombre. El banco lo pone rojo. Al revés no: `heredado`, `declarado` y `pendiente` no llevan cita, y no llevarla no es un defecto suyo.",
+      "_por_que_un_comentario_no_basta": [
+        "Porque ya nos pasó, y el caso está en el `_de_donde` del -103 de aquí abajo.",
+        "",
+        "Un comentario de código dice de dónde CREE quien lo escribió que sale un número.",
+        "No dice de qué documento, de qué revisión ni de qué página, así que nadie puede ir",
+        "a comprobarlo ni enterarse de que la revisión siguiente lo cambió. Por eso la clase",
+        "de esos valores es `heredado` y NO `datasheet`, por muy convencido que suene el",
+        "comentario.",
+        "",
+        "`leido_el` no es burocracia: una hoja de datos se revisa. Sin la fecha de lectura no",
+        "se sabe si la version citada era la vigente cuando se leyó."
+      ]
+    },
+    "_hoy": "Los parámetros de radio son `heredado` en bloque —salen de `defaultParams()` del modelo congelado, y el propio `_pendiente_fase_2` dice que no son lectura de datasheet—, así que hoy TODO margen de este repo sale rotulado SIN VERIFICAR. Eso no es un defecto del rótulo: es el estado real, y antes no se veía."
+  },
+  "version": "1.0.0",
+  "generado": "2026-09-20",
+  "geometria": {
+    "_que_es": "Común a TODAS las tecnologías: no depende de la radio, solo del campo.",
+    "ant_h_m": {
+      "valor": 1.5,
+      "procedencia": "heredado",
+      "_fuente": "código: Siting/index.html `RF_ANT_H=1.5` (modelo antiguo)",
+      "_ojo": [
+        "OBSOLETO como altura de antena: se conserva porque el MOTOR ANTIGUO (A) lo usa, y",
+        "el selector lo mantiene. El motor nuevo NO lo usa: la antena de la TCU sale de",
+        "`antena_tcu` de aquí abajo, que es geometría de plano y depende de alfa.",
+        "",
+        "La cita decía `index.html:2357` y hoy es la 2365. Un `_fuente` que apunta a otra",
+        "línea es un `_fuente` roto; corregido al encontrarlo."
+      ]
+    },
+    "eje_tubo_m": {
+      "valor": 1.2,
+      "procedencia": "declarado",
+      "_es_defecto_declarado": true,
+      "_rotulo": "eje estándar 1,20 m, no específico de la planta",
+      "_fuente": "ESTÁNDAR FACTIUN, indicado por Iñaki (2026-09-21). No sale de un plano ni de una medida de campo: es la altura de tubo que la casa monta por defecto.",
+      "_ojo": [
+        "DEFECTO DECLARADO, NO MEDIDA. Si la planta declara `eje_m` en `plantas_indice.json`",
+        "manda el de la planta, con su cita. Si no, se usa",
+        "este 1,20 y la salida LO ROTULA: «eje estándar 1,20 m, no específico de la planta».",
+        "",
+        "SUSTITUYE AL 2,00 QUE HABÍA. Aquel salía de `seguidor.js:31 postH`, corroborado por",
+        "`terreno.html:1242` y por `makePost` (1,747 = 2 − 0,253), pero era una constante del",
+        "DIBUJO, no un estándar de montaje. El 3D y el motor tienen que leer el mismo `eje_m`",
+        "de la planta cargada: mientras `terreno.html` siga con su 2,00 incrustado, los dos",
+        "dibujan plantas distintas.",
+        "",
+        "QUÉ DEJA A 1,20: la antena de la TCU queda a 1,20 − 0,225·cos α − 0,50, o sea 0,475 m",
+        "a α = 0 y 0,571 m a 55°. Más baja que cualquier valor usado hasta ahora.",
+        "",
+        "Y EL BORDE BAJO DEL MÓDULO se acerca al suelo: 1,20 − (c/2)·sen α. A 55° son 0,225 m",
+        "con cuerda 2,380 y 0,213 con 2,411. NO toca el suelo en el rango de trabajo, pero con",
+        "cuerda 2,411 (Fayón) cruza el cero a 84,52°, y el barrido de los bancos llega a 90°.",
+        "Con 2,380/2,382/2,384 no lo toca nunca (haría falta sen α > 1). Hay guarda.",
+        "",
+        "QUÉ MUEVE ESTA COTA, medido: NO dónde cae el canto respecto a la antena -subir o bajar",
+        "el eje mueve la banda Y la antena a la vez, así que la difracción es invariante por",
+        "traslación, 0,00e+0 dB- sino el REBOTE EN EL SUELO, que sí depende de la cota absoluta.",
+        "Eso la acopla al relieve (A3), no a la geometría del panel.",
+        "",
+        "POR QUÉ NADIE SE HA ENTERADO HASTA AHORA, Y POR QUÉ SÓLO LA RF LO NOTA. En el 3D de",
+        "Cobertura-Zigbee la altura del poste SE CANCELA. Con levantamiento, el suelo se",
+        "reconstruye como `cota_medida − HEJE` (terreno.html:1268) y encima se dibuja el poste",
+        "de longitud `postH` (1426, «el render suma el poste encima»). Como HEJE = postH + off,",
+        "el eje acaba en `cota_medida − (postH + off) + postH` = `cota_medida − off`: `postH`",
+        "DESAPARECE de la posición del seguidor. Cambiarlo no mueve los seguidores, mueve EL",
+        "SUELO bajo ellos, exactamente lo que se cambie. Y tampoco se ve, porque los postes se",
+        "dibujan de longitud variable hasta el terreno (`postRel`) y siguen llegando al suelo",
+        "con cualquier valor. El 3D es autoconsistente con cualquier `postH`.",
+        "",
+        "CONSECUENCIA: la altura del poste NO ES OBSERVABLE con nada de estos repos. El",
+        "levantamiento midió el MÓDULO, no el suelo -«y = cota MEDIDA sobre el modulo», lo dice",
+        "`<planta>_cotas.json`-; los 3.069 puntos de Ayora están TODOS sobre las mesas; el DEM",
+        "son teselas Terrarium a ~30 m y ADEMÁS se corrige con el propio levantamiento, así que",
+        "su residuo tampoco la distingue; y el 3D se cancela. Sale de un plano o de una cinta",
+        "métrica, de ningún otro sitio.",
+        "",
+        "Y POR ESO IMPORTA AQUÍ Y NO ALLÍ: lo único que la altura del poste decide de verdad es",
+        "a qué cota sobre el suelo queda la antena, que es lo que este fichero alimenta. Si el",
+        "poste real de Ayora o San José fuese 2,00 y el motor usara 1,20, la antena se modelaría",
+        "0,80 m demasiado baja, y eso sí mueve el rebote en el suelo: 4,8-5,8 dB por enlace."
+      ]
+    },
+    "antena_tcu": {
+      "_que_es": [
+        "DÓNDE ESTÁ LA ANTENA DE LA TCU, que no es una cota fija. El conector cuelga del",
+        "TUBO y gira con él; del conector baja el coax, que cuelga en vertical por su peso.",
+        "",
+        "    altura  = eje − radio_ancla·cos(alfa) − coax_caida",
+        "    lateral = radio_ancla·sen(alfa)      (perpendicular a la fila)",
+        "",
+        "LA VERTICAL SE MUEVE POCO Y LA LATERAL DECIDE: 0,225·(1−cos 30°) son 3 cm, pero",
+        "0,225·sen 30° son 11 cm, y ese desplazamiento es el que pone la antena a un lado u",
+        "otro del eje de su propia fila — o sea, por qué lado sale el rayo."
+      ],
+      "radio_ancla_m": {
+        "valor": 0.225,
+        "procedencia": "heredado",
+        "_fuente": "código: Cobertura-Zigbee/seguidor.js — `m: mT(THREE, D.tcuX-0.16, -0.225, 0)`. La X local es EL EJE DEL TUBO (`tcuX: 1.4`, «TCU desplazada a lo largo del tubo, junto al motor»), así que el radio en el plano perpendicular al giro son los 0,225 m bajo el eje.",
+        "_ojo": "el giro es `makeRotationX(−alfa)` en el marco canónico — Cobertura-Zigbee/terreno.html:1907."
+      },
+      "coax_caida_m": {
+        "valor": 0.5,
+        "procedencia": "heredado",
+        "_fuente": "código: Cobertura-Zigbee/seguidor.js — `antHang: 0.50`, «la antena CUELGA 50 cm vertical desde el conector».",
+        "_ojo": "el 3D ya lo dibuja así: `aTip = [ax, ay − hang, az]` con (ax,ay,az) el conector YA rotado — terreno.html:1925. El motor usa la misma cuenta a propósito."
+      },
+      "_holgura_bajo_su_propio_modulo": [
+        "A 0° la antena cuelga 72,5 cm por debajo del borde bajo de su módulo; a 30°, 10,0 cm.",
+        "A PARTIR DE ALFA ~ 35,1° (cuerda 2,380 m; 34,6° con 2,411) LA HOLGURA CAMBIA DE",
+        "SIGNO: el látigo queda DENTRO de la banda que barre su propio panel, entre el módulo",
+        "y el suelo. Los seguidores trabajan hasta 55–60°, así que pasa en operación.",
+        "«El rayo sale por el hueco de debajo del panel» deja de ser cierto en la mitad alta",
+        "del recorrido, justo donde el panel más tapa."
+      ]
+    },
+    "antena_ncu_m": {
+      "valor": 3.15,
+      "procedencia": "plano",
+      "_fuente": "código: Cobertura-Zigbee/equipos.js `ncuAntY: 3.15` — «CENTRO del látigo, en la cabeza del poste». Plano DR_NCU_v0 / «Montaje NCU», poste C 100×60 de 2,95 m (`ncuMastH` de equipos.js).",
+      "_ojo": "coincide con `ANTENNAS.ncu.h` de cobertura-rf-fv. Dos módulos independientes dicen lo mismo, que es la mejor señal que hay aquí."
+    },
+    "antena_hsu_m": {
+      "valor": 6.5,
+      "procedencia": "plano",
+      "_fuente": "código: Cobertura-Zigbee/equipos.js `hsuAntY: 6.50` — «CENTRO de los látigos, en su brazo». Plano FTR.24.00145_5_C / «Montaje HSU», torre de celosía autoportante de 8 m.",
+      "_ojo": [
+        "Los dos látigos van en su propio brazo a MEDIA TORRE, no en la cabeza junto al",
+        "ultrasónico. Cota confirmada en campo (ago-2026).",
+        "",
+        "OJO AL COMENTARIO DE SU PROPIA FUENTE: la cabecera de `equipos.js:15` sigue diciendo",
+        "«dos látigos de antena a ~8,3 m» mientras el código dice 6,50. El comentario se quedó",
+        "sin corregir cuando se corrigió la cota. Vale el CÓDIGO, que es el que dibuja y el",
+        "que cita el plano."
+      ]
+    },
+    "campo_cercano_lambdas": {
+      "valor": 2,
+      "procedencia": "norma",
+      "_fuente": "criterio, no medida: ITU-R P.526 supone el obstáculo lejos de los dos extremos en longitudes de onda. Por debajo no hay «filo de cuchillo», hay una antena metida debajo de una placa.",
+      "_ojo": [
+        "SUSTITUYE AL CORTE POR `t > 0,001` de `rfObstacles`, que no era físico: el 0,1 % del",
+        "enlace son 1,2 cm en un salto de 12 m y 33,8 cm en uno de 338 — proporcional al",
+        "enlace, no a lambda.",
+        "",
+        "Hoy no se notaba porque los extremos se ponían en el MOTOR, sobre el eje de la fila:",
+        "medidos 4.676 enlaces en El Burgo, 620 en Ayora, 446 en San José y 3.710 en Páramo,",
+        "CERO cruces por debajo de 10 lambdas, y el más próximo a 3,0 m (24 lambdas).",
+        "",
+        "Con la antena en su sitio, el cruce de su PROPIA fila cae a (0,225·sen alfa)/sen fi:",
+        "0,9 lambdas a 30° perpendicular y 1,3 a 45°. Dentro del campo cercano en todo el",
+        "recorrido útil.",
+        "",
+        "EL 2 NO ESTÁ MEDIDO CONTRA DATOS DE CAMPO y no se disfraza de que lo esté. Es el",
+        "orden de magnitud por debajo del cual la formulación de filo no aplica. Lo que sale",
+        "de ahí no es un dB: es un ESTADO con su motivo."
+      ]
+    },
+    "patron_antena": {
+      "valor": "dipolo",
+      "procedencia": "datasheet",
+      "_fuente": "ficha de la Jinchang JCW435700RA, 3 dBi, dipolo ~lambda/2, citada en cobertura-rf-fv python/zigbee_pv_model.py:270.",
+      "_ojo": [
+        "F(e) = cos((pi/2)·sen e)/cos e, normalizado a F(0) = 1: SOLO RESTA, nunca suma.",
+        "",
+        "A 2,45 GHz apenas mueve: 2·gEl vale −0,24 dB en el peor TCU→NCU (12 m), −1,99 en el",
+        "peor TCU→HSU (12 m) y CERO EXACTO en todo el careo de El Burgo, donde las dos",
+        "antenas van a la misma altura. Entra porque una ganancia ESCALAR no se puede llevar",
+        "a sub-GHz: en LoRa o Wi-SUN la antena es otra y hoy no había dónde declararlo.",
+        "",
+        "NO MODELA que el látigo bascula con la mesa: se toma vertical. Declarado, no omitido.",
+        "",
+        "«iso» devuelve la ganancia plana de antes, para poder carear."
+      ]
+    },
+    "cuerda_m_defecto": {
+      "valor": 2.38,
+      "procedencia": "heredado",
+      "_fuente": "código: Siting/index.html `RF_CHORD_M=2.38`",
+      "_ojo": "solo se usa si el layout de la planta no declara `bifila.cuerda`, que manda sobre esto."
+    },
+    "pitch_m_defecto": {
+      "valor": 12.0,
+      "procedencia": "heredado",
+      "_fuente": "código: Siting/index.html `RF_PITCH_M=12.0`",
+      "_ojo": "ídem: el layout manda."
+    },
+    "tracker_slew_deg_s": {
+      "valor": 0.17,
+      "procedencia": "declarado",
+      "_fuente": "código: Cobertura-Zigbee/backtracking.html:3134 `const TRACKER_SLEW=0.17` — «spec del actuador», Sunner. Corroborado aparte en SCADA/tools/tcu-toolbox/README.md:2374 (`tol/velocidad = 2/0,17 = 12 s`).",
+      "_para_que": "tiempo de giro en la latencia de stow (fase 3). Con límite ±55°: 55/0,17 = 323 s hasta el plano; 110/0,17 = 647 s de extremo a extremo."
+    },
+    "stow": {
+      "angulo_deg": null,
+      "_fuente": "PENDIENTE — no está en el repo. `Cobertura-Zigbee/ANATOMIA_BT.md:990`: «Stow: NO ENCONTRADO en la cadena de policyAngles».",
+      "_ojo": [
+        "El toolbox documenta DOS criterios de planta y hay que saber cuál aplica:",
+        "posición de seguridad en 0 (sin lado), o abanderamiento AL LÍMITE con lado",
+        "este/oeste y un límite de mediodía (SCADA/tools/tcu-toolbox/README.md:2324-2363).",
+        "La diferencia entre los dos es 323 s frente a 647 s de giro, así que no se",
+        "supone: se pregunta. `null` aquí hace que la fase 3 no pueda emitir veredicto."
+      ]
+    }
+  },
+  "tecnologias": {
+    "_que_es": "Lo que SÍ depende de la radio: balance, banda, protocolo y regulación.",
+    "zigbee_pro_24": {
+      "procedencia": "heredado",
+      "nombre": "Zigbee 2,4 GHz — TODA la planta con XBee-PRO",
+      "f_hz": 2450000000.0,
+      "ptx_dbm": 19.0,
+      "gtx_dbi": 3.0,
+      "grx_dbi": 3.0,
+      "rx_sens_dbm": -103.0,
+      "_fuente": "código: zigbee_pv_model.js `defaultParams()` (modelo CONGELADO), cuyo comentario dice: «ptxDbm: XBee-PRO RR. Estándar +8. Canal 26: máx +3. Antena Jinchang 3 dBi».",
+      "_citas": {
+        "ptx_dbm": {
+          "clase": "heredado",
+          "documento": null,
+          "version": null,
+          "pagina": null,
+          "leido_el": null,
+          "_de_donde": "comentario de `defaultParams()`: «XBee-PRO RR. Estándar +8». Distingue PRO de estándar, así que al menos dice de cuál habla."
+        },
+        "rx_sens_dbm": {
+          "clase": "heredado",
+          "documento": null,
+          "version": null,
+          "pagina": null,
+          "leido_el": null,
+          "_de_donde": [
+            "BUSCADO EN LOS DIEZ REPOS EL 2026-09-24, y el resultado no es el que esperábamos.",
+            "",
+            "Hay CUATRO copias del -103 —Siting/zigbee_pv_model.js, cobertura-rf-fv/web/",
+            "zigbee_pv_model.js, cobertura-rf-fv/python/zigbee_pv_model.py y un `const",
+            "SENS=-103` suelto en cobertura-rf-fv/index.html— y SOLO UNA lleva procedencia,",
+            "la del puerto Python:",
+            "",
+            "    rx_sens_dbm: float = -103.0  # XBee RR Zigbee, modo normal (1% PER)",
+            "",
+            "Dice «XBee RR», NO «XBee-PRO RR». El comentario de la potencia sí distingue las",
+            "dos variantes; el de la sensibilidad NO. Así que llamar a este número «el de la",
+            "PRO», como hace el nombre de esta variante, ya afirma más de lo que la fuente",
+            "sostiene. No es una cita: es un comentario, sin documento, versión ni página.",
+            "",
+            "Y de ahí sale por qué la variante estándar lo tiene a `null` (ver `zigbee_std_24`):",
+            "NO es que alguien olvidara copiarlo. No hay un segundo número que copiar, y el que",
+            "hay ni siquiera dice ser el de la PRO. PRO y no-PRO llevan receptores distintos, así",
+            "que con la hoja delante serán DOS números. Copiar uno al otro sería inventar."
+          ]
+        },
+        "gtx_dbi": {
+          "clase": "heredado",
+          "documento": null,
+          "version": null,
+          "pagina": null,
+          "leido_el": null,
+          "_de_donde": "comentario de `defaultParams()`: «Antena Jinchang 3 dBi». Es la antena de la TCU, la de 2,4 GHz."
+        },
+        "grx_dbi": {
+          "clase": "heredado",
+          "documento": null,
+          "version": null,
+          "pagina": null,
+          "leido_el": null,
+          "_de_donde": "la misma antena, en el otro extremo."
+        },
+        "carga_util_b": {
+          "clase": "declarado",
+          "documento": null,
+          "version": null,
+          "pagina": null,
+          "leido_el": null,
+          "_de_donde": "SCADA/collector/traffic.py map_params() -> stride 22 registros por TCU x 2 bytes. Se leen en lotes de 5 TCU (max_regs_per_read 110; limite Modbus 125). MEDIDO el 2026-09-24."
+        },
+        "periodo_s": {
+          "clase": "declarado",
+          "documento": null,
+          "version": null,
+          "pagina": null,
+          "leido_el": null,
+          "_de_donde": "SCADA/config/plants.yml -> polling.interval_s: 30, «ciclo completo de lectura por NCU». Las HSU/RSU van aparte a 10 s (meteo_interval_s). MEDIDO el 2026-09-24."
+        },
+        "tasa_serie_bps": {
+          "clase": "declarado",
+          "documento": null,
+          "version": null,
+          "pagina": null,
+          "leido_el": null,
+          "_de_donde": "Cobertura-Zigbee/tools/gen_modbus_map.mjs: «SUNNER_TCU_ModbusMap v6, FW v1.4.3, por RTU a 19200 8E1, ID de fabrica 245». MEDIDO el 2026-09-24. Es LIMITE DEL SISTEMA, no de la radio: no cambia al cambiar de tecnologia."
+        },
+        "tasa_bps": {
+          "clase": "declarado",
+          "documento": null,
+          "version": null,
+          "pagina": null,
+          "leido_el": null,
+          "_de_donde": "250 kbps, la tasa PHY de 802.15.4 en 2,4 GHz (O-QPSK). DECLARADO POR INAKI el 2026-09-24, no leido del IEEE 802.15.4: por eso la clase es `declarado` y no `norma`. Cuando se cite el estandar (documento, version, pagina, fecha) pasa a `norma` y la cita se rellena."
+        },
+        "ciclo_trabajo": {
+          "clase": "leido",
+          "documento": "ETSI EN 300 328 V2.2.2 (2019-07), clausulas 4.3.2.2 a 4.3.2.6",
+          "version": "V2.2.2 (2019-07)",
+          "pagina": "29-35",
+          "leido_el": "2026-10-03",
+          "_de_donde": "Resuelto. A 2,4 GHz el ciclo solo aplica a equipo NO adaptativo; Zigbee hace CSMA/CA. Ver `regimen_regulatorio_eu`."
+        }
+      },
+      "_pendiente_fase_2": "El encargo pide Ptx y sensibilidad del DATASHEET DEL MODELO EXACTO, citado. Esto de aquí es el valor que ya usaba el repo, no una lectura de datasheet: se sustituye en la fase 2 y hasta entonces la variante va rotulada como heredada, no como verificada.",
+      "canal": {
+        "valor": null,
+        "procedencia": "pendiente",
+        "_ojo": [
+          "ESTE `null` PUEDE TUMBAR LA VARIANTE ENTERA, y por eso está aquí y no en un comentario.",
+          "",
+          "El propio comentario del modelo congelado dice «Canal 26: máx +3». El canal 26 es el",
+          "último de la banda de 2,4 GHz y cae en el borde superior, donde la máscara de emisión",
+          "obliga a bajar la potencia: el XBee-PRO que aquí se declara a +19 dBm quedaría en +3.",
+          "DIECISÉIS dB de diferencia según el canal — más que cualquier otra cosa que este JSON",
+          "discuta.",
+          "",
+          "EL CANAL LO MARCA EL GATEWAY ZIGBEE. Dicho por Iñaki el 2026-10-03, y es lo que decide",
+          "DÓNDE VIVE ESTE DATO. El coordinador forma la red y fija el canal; los routers y los",
+          "dispositivos finales entran en el que haya. Dos consecuencias, y la segunda es la que",
+          "importa:",
+          "",
+          "  1. PARA LEERLO BASTA PREGUNTAR AL COORDINADOR. No hay que recorrer las 215 TCU.",
+          "     Y `Cobertura-Zigbee/zigbee_inventario.ps1` YA LO CAPTURA —comprobado línea a línea",
+          "     el 2026-10-03, y de paso se corrige una afirmación de más que estuvo escrita aquí",
+          "     un rato: NO es verdad que el script no lo recoja—. Lo recoge por dos vías:",
+          "",
+          "       · al gateway le manda `query_setting` y `query_state` y VUELCA LA RESPUESTA EN",
+          "         CRUDO al dump (`$crudo`, líneas 108-113). Los ajustes del coordinador, `CH` y",
+          "         `ID` incluidos, están ahí enteros.",
+          "       · a cada nodo le manda los mismos y APLANA la respuesta a columnas con un",
+          "         recorrido genérico del XML (`Aplana`, línea 82), así que lo que el",
+          "         dispositivo publique sale como `ajuste_*` sin necesidad de nombrarlo.",
+          "",
+          "     O sea que lo que falta NO ES CÓDIGO: es UNA EJECUCIÓN. En el repo hermano no hay",
+          "     ningún volcado de inventario —comprobado el 2026-10-03—, y el script corre en el",
+          "     PC de planta con PowerShell 5.1, sin instalar nada y sin admin. Ese es el bloque",
+          "     8a.",
+          "",
+          "  2. HAY UN CANAL POR GATEWAY, NO UNO POR PLANTA. Medido en los layouts del repo",
+          "     hermano el 2026-10-03: San José declara 21 NCU, Ayora 16, Panbianco 12,",
+          "     Benante 6, Páramo 4, El Burgo 2, Polvorín 2, y Bagnarelli, Fayón y Túnez 1.",
+          "     Así que puede haber tantos canales como gateways, y el golpe de 16 dB del canal",
+          "     26 caería sobre la SUBRED DE ESE GATEWAY, no sobre la planta entera. Donde este",
+          "     fichero decía «en toda la planta» estaba mal planteado.",
+          "",
+          "     Y de ahí sale lo que de verdad cambia: EL VEREDICTO DE LEGALIDAD ES POR GATEWAY.",
+          "     En una planta de 21 coordinadores podría haber gateways que cumplen y gateways",
+          "     que no, a la vez. Una sola celda por tecnología no puede decir eso sin elegir qué",
+          "     publica.",
+          "",
+          "LO QUE ESTE CAMPO ES, ENTONCES: un parámetro de ESCENARIO —«evalúa esta variante en el",
+          "canal X»—, no la configuración de una instalación. Coincide con la instalación sólo si",
+          "todos los gateways comparten canal, y eso NO SE SABE: en Zigbee cada coordinador puede",
+          "elegir el suyo al formar la red, y si están fijados a uno común es una decisión de",
+          "despliegue que no consta en estos repos. PREGUNTADO A IÑAKI EL 2026-10-03.",
+          "",
+          "Las NCU de los layouts traen `x`, `n` y `name` y NADA MÁS: hoy no hay sitio donde",
+          "guardar un canal por gateway. Cuando se lea, hay que decidir si va al layout de cada",
+          "planta (que es donde viven las NCU) y no aquí, porque esto son tecnologías y no",
+          "instalaciones.",
+          "",
+          "MIENTRAS SEA `null`, la variante PRO va rotulada como NO VERIFICADA y su margen es una",
+          "cota superior, no una predicción. No se supone el canal: se lee."
+        ]
+      },
+      "carga_util_b": 44,
+      "periodo_s": 30,
+      "tasa_serie_bps": 19200,
+      "tasa_bps": 250000,
+      "regimen_regulatorio_eu": {
+        "_RESUELTO_EL": "2026-10-03. Zigbee es NO-FHSS (DSSS), asi que le aplica la clausula 4.3.2, no la 4.3.1.",
+        "banda_hz": [
+          2400000000.0,
+          2483500000.0
+        ],
+        "potencia_max_dbm_eirp": 20,
+        "_potencia_cita": {
+          "documento": "ETSI EN 300 328 — Sistemas de transmision de banda ancha en 2,4 GHz con modulacion de banda ancha",
+          "version": "V2.2.2 (2019-07)",
+          "clausula": "4.3.2.2.3",
+          "pagina": 29,
+          "leido_el": "2026-10-03",
+          "leido_por": "esta sesion, del PDF de etsi.org",
+          "sha256_del_pdf": "35211bae77e40e835908d1b8757e82bbbb8895aee71d5e0a0a22131d4101a376"
+        },
+        "densidad_espectral_max_dbm_por_mhz": 10,
+        "_densidad_cita": {
+          "documento": "ETSI EN 300 328 — Sistemas de transmision de banda ancha en 2,4 GHz con modulacion de banda ancha",
+          "version": "V2.2.2 (2019-07)",
+          "clausula": "4.3.2.3.3",
+          "pagina": 29,
+          "leido_el": "2026-10-03",
+          "leido_por": "esta sesion, del PDF de etsi.org",
+          "sha256_del_pdf": "35211bae77e40e835908d1b8757e82bbbb8895aee71d5e0a0a22131d4101a376"
+        },
+        "_LA_VENTANA_ES_DE_UN_SEGUNDO": [
+          "DIFERENCIA DE FONDO CON 868, y no es un detalle: aqui el ciclo de trabajo se",
+          "define sobre un periodo de observacion de UN SEGUNDO (4.3.2.4.2), mientras que",
+          "en EN 300 220-1 (5.4.1) son UNA HORA. Son restricciones de naturaleza distinta:",
+          "alla un presupuesto a largo plazo, aqui una ocupacion instantanea.",
+          "Comparar «1 %» de una banda con «10 %» de la otra sin decir sobre que ventana",
+          "es mezclar dos magnitudes que solo comparten el simbolo de porcentaje."
+        ],
+        "ciclo_trabajo": {
+          "_aplicabilidad": "SOLO a equipo NO ADAPTATIVO, o a adaptativo operando en modo no adaptativo (4.3.2.4.1). Zigbee hace CSMA/CA, que es LBT: es adaptativo.",
+          "tobs_s": 1,
+          "tx_sequence_max_ms": 10,
+          "tx_gap_min_ms": 3.5,
+          "_tx_gap": "El hueco posterior ha de igualar la duracion de la secuencia que lo precede, con un minimo de 3,5 ms.",
+          "_cita": {
+            "documento": "ETSI EN 300 328 — Sistemas de transmision de banda ancha en 2,4 GHz con modulacion de banda ancha",
+            "version": "V2.2.2 (2019-07)",
+            "clausula": "4.3.2.4.3",
+            "pagina": 30,
+            "leido_el": "2026-10-03",
+            "leido_por": "esta sesion, del PDF de etsi.org",
+            "sha256_del_pdf": "35211bae77e40e835908d1b8757e82bbbb8895aee71d5e0a0a22131d4101a376"
+          }
+        },
+        "medium_utilization": {
+          "formula": "MU = (Pout / 100 mW) x DC",
+          "max_pct": 10,
+          "_aplicabilidad": "NO aplica a equipo adaptativo salvo que opere en modo no adaptativo. Y NO aplica a equipo con potencia declarada por debajo de 10 dBm e.i.r.p.",
+          "_LO_QUE_SIGNIFICA": "Cambia con la potencia: a 20 dBm (100 mW) el ciclo queda acotado al 10 %; a 10 dBm (10 mW) la formula da DC <= 100 %, o sea sin restriccion practica; y por debajo de 10 dBm el requisito NO APLICA. La norma compra tiempo con potencia.",
+          "_cita": {
+            "documento": "ETSI EN 300 328 — Sistemas de transmision de banda ancha en 2,4 GHz con modulacion de banda ancha",
+            "version": "V2.2.2 (2019-07)",
+            "clausula": "4.3.2.5",
+            "pagina": 31,
+            "leido_el": "2026-10-03",
+            "leido_por": "esta sesion, del PDF de etsi.org",
+            "sha256_del_pdf": "35211bae77e40e835908d1b8757e82bbbb8895aee71d5e0a0a22131d4101a376"
+          }
+        },
+        "adaptividad_lbt": {
+          "cca_min_us": 18,
+          "channel_occupancy_min_ms": 1,
+          "channel_occupancy_max_ms": 10,
+          "idle_period_min_pct_del_cot": 5,
+          "umbral_cca_dbm_por_mhz_a_20dbm": -70,
+          "umbral_cca_relajacion": "TL = -70 dBm/MHz + 10 x log10(100 mW / Pout), con Pout en mW e.i.r.p.",
+          "_cita": {
+            "documento": "ETSI EN 300 328 — Sistemas de transmision de banda ancha en 2,4 GHz con modulacion de banda ancha",
+            "version": "V2.2.2 (2019-07)",
+            "clausula": "4.3.2.6.3.2.2",
+            "pagina": 32,
+            "leido_el": "2026-10-03",
+            "leido_por": "esta sesion, del PDF de etsi.org",
+            "sha256_del_pdf": "35211bae77e40e835908d1b8757e82bbbb8895aee71d5e0a0a22131d4101a376"
+          }
+        },
+        "senalizacion_de_control_corta": {
+          "_que_es": "Transmisiones de control y gestion que el equipo adaptativo puede enviar SIN ESCUCHAR el canal.",
+          "max_pct": 10,
+          "ventana_ms": 50,
+          "_POR_QUE_IMPORTA_AQUI": "UNA ORDEN DE STOW ES EXACTAMENTE ESTO: control, corto, raro. A 2,4 GHz tiene via regulatoria propia, sin CCA previa, hasta el 10 % en cualquier ventana de 50 ms. Es la contrapartida de lo que en 868 se resuelve con clase C multicast.",
+          "_cita": {
+            "documento": "ETSI EN 300 328 — Sistemas de transmision de banda ancha en 2,4 GHz con modulacion de banda ancha",
+            "version": "V2.2.2 (2019-07)",
+            "clausula": "4.3.2.6.4.2",
+            "pagina": 35,
+            "leido_el": "2026-10-03",
+            "leido_por": "esta sesion, del PDF de etsi.org",
+            "sha256_del_pdf": "35211bae77e40e835908d1b8757e82bbbb8895aee71d5e0a0a22131d4101a376"
+          }
+        },
+        "_LO_QUE_ESTO_NO_DICE": "No dice cada cuanto puede hablar la flota: eso lo decide la contienda del medio y el disenyo de la red, no la norma. La norma acota la ocupacion instantanea y la potencia, y para el equipo adaptativo NO fija presupuesto acumulado."
+      }
+    },
+    "zigbee_std_24": {
+      "procedencia": "heredado",
+      "nombre": "Zigbee 2,4 GHz — TODA la planta con XBee estándar (no PRO)",
+      "f_hz": 2450000000.0,
+      "ptx_dbm": 8.0,
+      "gtx_dbi": 3.0,
+      "grx_dbi": 3.0,
+      "rx_sens_dbm": null,
+      "_fuente": "código: el mismo comentario de `defaultParams()` dice «Estándar +8» para la potencia.",
+      "_pendiente_fase_2": "La SENSIBILIDAD del estándar NO aparece en el código y no se inventa: `null` hasta leerla del datasheet. Con `null` esta variante no emite margen.",
+      "_citas": {
+        "ptx_dbm": {
+          "clase": "heredado",
+          "documento": null,
+          "version": null,
+          "pagina": null,
+          "leido_el": null,
+          "_de_donde": "comentario de `defaultParams()`: «Estándar +8»."
+        },
+        "rx_sens_dbm": {
+          "clase": "pendiente",
+          "documento": null,
+          "version": null,
+          "pagina": null,
+          "leido_el": null,
+          "_de_donde": "NO existe en el código, y por eso está a `null`. La tentación es copiar aquí el -103 de la PRO «porque la hoja de datos es la misma». La hoja puede ser la misma y el NÚMERO no lo es: PRO y no-PRO llevan receptores distintos y la hoja los lista por separado. Además el -103 ni siquiera dice ser el de la PRO (ver `zigbee_pro_24._citas.rx_sens_dbm._de_donde`). Se lee, no se hereda de al lado."
+        },
+        "gtx_dbi": {
+          "clase": "heredado",
+          "documento": null,
+          "version": null,
+          "pagina": null,
+          "leido_el": null,
+          "_de_donde": "la misma antena de TCU que la PRO: «Jinchang 3 dBi»."
+        },
+        "grx_dbi": {
+          "clase": "heredado",
+          "documento": null,
+          "version": null,
+          "pagina": null,
+          "leido_el": null,
+          "_de_donde": "la misma antena, en el otro extremo."
+        },
+        "carga_util_b": {
+          "clase": "declarado",
+          "documento": null,
+          "version": null,
+          "pagina": null,
+          "leido_el": null,
+          "_de_donde": "SCADA/collector/traffic.py map_params() -> stride 22 registros por TCU x 2 bytes. Se leen en lotes de 5 TCU (max_regs_per_read 110; limite Modbus 125). MEDIDO el 2026-09-24."
+        },
+        "periodo_s": {
+          "clase": "declarado",
+          "documento": null,
+          "version": null,
+          "pagina": null,
+          "leido_el": null,
+          "_de_donde": "SCADA/config/plants.yml -> polling.interval_s: 30, «ciclo completo de lectura por NCU». Las HSU/RSU van aparte a 10 s (meteo_interval_s). MEDIDO el 2026-09-24."
+        },
+        "tasa_serie_bps": {
+          "clase": "declarado",
+          "documento": null,
+          "version": null,
+          "pagina": null,
+          "leido_el": null,
+          "_de_donde": "Cobertura-Zigbee/tools/gen_modbus_map.mjs: «SUNNER_TCU_ModbusMap v6, FW v1.4.3, por RTU a 19200 8E1, ID de fabrica 245». MEDIDO el 2026-09-24. Es LIMITE DEL SISTEMA, no de la radio: no cambia al cambiar de tecnologia."
+        },
+        "tasa_bps": {
+          "clase": "declarado",
+          "documento": null,
+          "version": null,
+          "pagina": null,
+          "leido_el": null,
+          "_de_donde": "250 kbps, la tasa PHY de 802.15.4 en 2,4 GHz (O-QPSK). DECLARADO POR INAKI el 2026-09-24, no leido del IEEE 802.15.4: por eso la clase es `declarado` y no `norma`. Cuando se cite el estandar (documento, version, pagina, fecha) pasa a `norma` y la cita se rellena."
+        },
+        "ciclo_trabajo": {
+          "clase": "leido",
+          "documento": "ETSI EN 300 328 V2.2.2 (2019-07), clausulas 4.3.2.2 a 4.3.2.6",
+          "version": "V2.2.2 (2019-07)",
+          "pagina": "29-35",
+          "leido_el": "2026-10-03",
+          "_de_donde": "Resuelto. A 2,4 GHz el ciclo solo aplica a equipo NO adaptativo; Zigbee hace CSMA/CA. Ver `regimen_regulatorio_eu`."
+        }
+      },
+      "carga_util_b": 44,
+      "periodo_s": 30,
+      "tasa_serie_bps": 19200,
+      "tasa_bps": 250000,
+      "regimen_regulatorio_eu": {
+        "_RESUELTO_EL": "2026-10-03. Zigbee es NO-FHSS (DSSS), asi que le aplica la clausula 4.3.2, no la 4.3.1.",
+        "banda_hz": [
+          2400000000.0,
+          2483500000.0
+        ],
+        "potencia_max_dbm_eirp": 20,
+        "_potencia_cita": {
+          "documento": "ETSI EN 300 328 — Sistemas de transmision de banda ancha en 2,4 GHz con modulacion de banda ancha",
+          "version": "V2.2.2 (2019-07)",
+          "clausula": "4.3.2.2.3",
+          "pagina": 29,
+          "leido_el": "2026-10-03",
+          "leido_por": "esta sesion, del PDF de etsi.org",
+          "sha256_del_pdf": "35211bae77e40e835908d1b8757e82bbbb8895aee71d5e0a0a22131d4101a376"
+        },
+        "densidad_espectral_max_dbm_por_mhz": 10,
+        "_densidad_cita": {
+          "documento": "ETSI EN 300 328 — Sistemas de transmision de banda ancha en 2,4 GHz con modulacion de banda ancha",
+          "version": "V2.2.2 (2019-07)",
+          "clausula": "4.3.2.3.3",
+          "pagina": 29,
+          "leido_el": "2026-10-03",
+          "leido_por": "esta sesion, del PDF de etsi.org",
+          "sha256_del_pdf": "35211bae77e40e835908d1b8757e82bbbb8895aee71d5e0a0a22131d4101a376"
+        },
+        "_LA_VENTANA_ES_DE_UN_SEGUNDO": [
+          "DIFERENCIA DE FONDO CON 868, y no es un detalle: aqui el ciclo de trabajo se",
+          "define sobre un periodo de observacion de UN SEGUNDO (4.3.2.4.2), mientras que",
+          "en EN 300 220-1 (5.4.1) son UNA HORA. Son restricciones de naturaleza distinta:",
+          "alla un presupuesto a largo plazo, aqui una ocupacion instantanea.",
+          "Comparar «1 %» de una banda con «10 %» de la otra sin decir sobre que ventana",
+          "es mezclar dos magnitudes que solo comparten el simbolo de porcentaje."
+        ],
+        "ciclo_trabajo": {
+          "_aplicabilidad": "SOLO a equipo NO ADAPTATIVO, o a adaptativo operando en modo no adaptativo (4.3.2.4.1). Zigbee hace CSMA/CA, que es LBT: es adaptativo.",
+          "tobs_s": 1,
+          "tx_sequence_max_ms": 10,
+          "tx_gap_min_ms": 3.5,
+          "_tx_gap": "El hueco posterior ha de igualar la duracion de la secuencia que lo precede, con un minimo de 3,5 ms.",
+          "_cita": {
+            "documento": "ETSI EN 300 328 — Sistemas de transmision de banda ancha en 2,4 GHz con modulacion de banda ancha",
+            "version": "V2.2.2 (2019-07)",
+            "clausula": "4.3.2.4.3",
+            "pagina": 30,
+            "leido_el": "2026-10-03",
+            "leido_por": "esta sesion, del PDF de etsi.org",
+            "sha256_del_pdf": "35211bae77e40e835908d1b8757e82bbbb8895aee71d5e0a0a22131d4101a376"
+          }
+        },
+        "medium_utilization": {
+          "formula": "MU = (Pout / 100 mW) x DC",
+          "max_pct": 10,
+          "_aplicabilidad": "NO aplica a equipo adaptativo salvo que opere en modo no adaptativo. Y NO aplica a equipo con potencia declarada por debajo de 10 dBm e.i.r.p.",
+          "_LO_QUE_SIGNIFICA": "Cambia con la potencia: a 20 dBm (100 mW) el ciclo queda acotado al 10 %; a 10 dBm (10 mW) la formula da DC <= 100 %, o sea sin restriccion practica; y por debajo de 10 dBm el requisito NO APLICA. La norma compra tiempo con potencia.",
+          "_cita": {
+            "documento": "ETSI EN 300 328 — Sistemas de transmision de banda ancha en 2,4 GHz con modulacion de banda ancha",
+            "version": "V2.2.2 (2019-07)",
+            "clausula": "4.3.2.5",
+            "pagina": 31,
+            "leido_el": "2026-10-03",
+            "leido_por": "esta sesion, del PDF de etsi.org",
+            "sha256_del_pdf": "35211bae77e40e835908d1b8757e82bbbb8895aee71d5e0a0a22131d4101a376"
+          }
+        },
+        "adaptividad_lbt": {
+          "cca_min_us": 18,
+          "channel_occupancy_min_ms": 1,
+          "channel_occupancy_max_ms": 10,
+          "idle_period_min_pct_del_cot": 5,
+          "umbral_cca_dbm_por_mhz_a_20dbm": -70,
+          "umbral_cca_relajacion": "TL = -70 dBm/MHz + 10 x log10(100 mW / Pout), con Pout en mW e.i.r.p.",
+          "_cita": {
+            "documento": "ETSI EN 300 328 — Sistemas de transmision de banda ancha en 2,4 GHz con modulacion de banda ancha",
+            "version": "V2.2.2 (2019-07)",
+            "clausula": "4.3.2.6.3.2.2",
+            "pagina": 32,
+            "leido_el": "2026-10-03",
+            "leido_por": "esta sesion, del PDF de etsi.org",
+            "sha256_del_pdf": "35211bae77e40e835908d1b8757e82bbbb8895aee71d5e0a0a22131d4101a376"
+          }
+        },
+        "senalizacion_de_control_corta": {
+          "_que_es": "Transmisiones de control y gestion que el equipo adaptativo puede enviar SIN ESCUCHAR el canal.",
+          "max_pct": 10,
+          "ventana_ms": 50,
+          "_POR_QUE_IMPORTA_AQUI": "UNA ORDEN DE STOW ES EXACTAMENTE ESTO: control, corto, raro. A 2,4 GHz tiene via regulatoria propia, sin CCA previa, hasta el 10 % en cualquier ventana de 50 ms. Es la contrapartida de lo que en 868 se resuelve con clase C multicast.",
+          "_cita": {
+            "documento": "ETSI EN 300 328 — Sistemas de transmision de banda ancha en 2,4 GHz con modulacion de banda ancha",
+            "version": "V2.2.2 (2019-07)",
+            "clausula": "4.3.2.6.4.2",
+            "pagina": 35,
+            "leido_el": "2026-10-03",
+            "leido_por": "esta sesion, del PDF de etsi.org",
+            "sha256_del_pdf": "35211bae77e40e835908d1b8757e82bbbb8895aee71d5e0a0a22131d4101a376"
+          }
+        },
+        "_LO_QUE_ESTO_NO_DICE": "No dice cada cuanto puede hablar la flota: eso lo decide la contienda del medio y el disenyo de la red, no la norma. La norma acota la ocupacion instantanea y la potencia, y para el equipo adaptativo NO fija presupuesto acumulado."
+      }
+    },
+    "_las_dos_de_sub_giga": [
+      "LoRa Y Wi-SUN ENTRAN DECLARADAS Y APAGADAS, a propósito.",
+      "",
+      "El comparador de tecnologías (punto 6 del visor) necesita tres columnas, y una",
+      "columna que no existe no se puede comparar ni decir que falta. Así que las dos",
+      "están aquí, con la misma forma que las de Zigbee, y con TODO lo de radio a",
+      "`null`: ni potencia, ni sensibilidad, ni plan de canal.",
+      "",
+      "NO ES PEREZA NI PRUDENCIA GENÉRICA: es que no se han podido leer. El encargo",
+      "pide «Ptx, sensibilidad y plan de canal de un módulo de referencia CITADO, y la",
+      "regulación verificada contra la norma». Desde este entorno la red no llega ni a",
+      "las webs de fabricante ni a etsi.org, así que cualquier cifra que pusiera aquí",
+      "saldría de la memoria y no de un documento — que es exactamente lo que este",
+      "fichero existe para impedir.",
+      "",
+      "Con los `null` puestos, el comparador NO calcula esas columnas: publica qué",
+      "falta y de qué documento sale. En cuanto lleguen los datasheets se rellenan",
+      "estos campos y las columnas se encienden solas, sin tocar una línea de código."
+    ],
+    "lora_eu868": {
+      "procedencia": "escenario_de_referencia",
+      "nombre": "LoRa EU868 — ESCENARIO DE REFERENCIA (SF12/BW125, techo legal). NO es una configuracion elegida",
+      "f_hz": 868100000.0,
+      "ptx_dbm": 13.0,
+      "gtx_dbi": 3.0,
+      "grx_dbi": 3.0,
+      "rx_sens_dbm": -137.0,
+      "canal": {
+        "valor": "M",
+        "procedencia": "escenario_de_referencia",
+        "_que_es": [
+          "A 868 MHz «canal» no es un numero de canal 802.15.4: es LA SUB-BANDA, porque es",
+          "ella la que fija el limite. La M son 868,000-868,600 MHz a 25 mW e.r.p., y es",
+          "donde cae la f_hz de este escenario.",
+          "",
+          "Se rellena para que la fila de legalidad pueda calcularse. NO significa que la",
+          "instalacion use esa sub-banda: no hay instalacion."
+        ]
+      },
+      "candidatos": {
+        "_que_es": [
+          "LOS MÓDULOS ENTRE LOS QUE HAY QUE ELEGIR, y la elección NO es un detalle:",
+          "cambia el veredicto. Un SX1262 a 22 dBm y un módulo a 14 dBm no dan el mismo",
+          "resultado, y presentar «LoRa» como si fuera UNA cosa esconde esos ocho dB.",
+          "",
+          "Por eso el comparador corre la tabla DOS VECES —con el mejor candidato de cada",
+          "tecnología y con el peor— y publica en qué criterios el veredicto cambia. Si",
+          "cambia, ESO es el resultado.",
+          "",
+          "Cada candidato necesita, CITADO: Ptx, sensibilidad POR MODO (SF y ancho de banda",
+          "en LoRa; modo PHY en Wi-SUN), plan de canal, consumo en transmisión, y si el",
+          "módulo trae certificación EU. Sin la cita —documento, página y fecha de lectura—",
+          "no entra."
+        ],
+        "_estado": "UN CANDIDATO DE MONTAJE (modulo RF-LoRa-868 de RF Solutions) y, APARTE, la COTA SUPERIOR del chip que lleva dentro (Semtech SX1272, Rev. 3.1 marzo 2017) en `cota_superior_del_chip`. Las dos fichas van separadas A PROPOSITO: el modulo NO publica sensibilidad por SF y su «-130 dBm» de portada no lleva modo ni criterio, asi que queda a null. El chip publica SOLO los extremos SF6 y SF12 de cada BW; los SF 7-11 no estan en la Rev. 3.1 y no se interpolan. Las cifras del chip las leyo el propietario del PDF original: esta sesion no ha visto ese documento.",
+        "_la_red_2026_09_24": [
+          "MEDIDO hoy, host a host, y ha cambiado a mitad de sesión: el 2026-09-20 estaban",
+          "denegados todos; ahora `digi.com`, `semtech.com`, `ti.com` y `silabs.com` dan 200",
+          "—se descargó una hoja de 10,4 MB para comprobarlo, y la cadena de redirecciones",
+          "acaba en `docs.digi.com`—. `microchip.com` y `etsi.org` abren el túnel y devuelven",
+          "403 DE SU PROPIO servidor, que es anti-bot y no la lista de salida. `st.com` y",
+          "`mouser.es` dan timeout a los 20 s, con h2 y con HTTP/1.1.",
+          "",
+          "Se apunta la fecha porque este campo se queda viejo solo: decir «la red no llega»",
+          "sin decir cuándo se probó es lo mismo que no decir nada."
+        ],
+        "_quien_elige": "El módulo lo elige el cliente, no este repo: hay que simular lo que se montaría de verdad. Aquí van los candidatos con sus números; la elección es suya.",
+        "lista": [
+          {
+            "fabricante": "RF Solutions",
+            "modelo": "RF-LoRa (RF-LoRa-868-SO / RF-LoRa-868 / RF-LoRa-915-SO)",
+            "procedencia": "datasheet_de_MODULO",
+            "_ESTO_ES_UN_MODULO_NO_EL_CHIP": [
+              "Esta ficha sale de la hoja del MODULO de RF Solutions, no de la del chip.",
+              "El modulo integra un Semtech SX1272 (p. 1 y p. 4). La hoja del SX1272/73",
+              "NO se ha leido: el proxy deniega semtech.my.salesforce.com con 403 en el",
+              "CONNECT, y el enlace que trae esta misma hoja acaba en un formulario.",
+              "",
+              "Y EL PROPIO FABRICANTE DEL MODULO AVISA DE POR QUE NO SON LO MISMO,",
+              "literal, p. 4: «Many RF Module manufacturers simply reproduce the IC",
+              "manufacturers data characteristics where in practice the Module RF",
+              "performance is considerably lower.»",
+              "",
+              "Asi que ninguna cifra de aqui se puede presentar como medida del chip, ni",
+              "al reves. Si algun dia entra una ficha del SX1272, va APARTE."
+            ],
+            "referencias": [
+              {
+                "parte": "RF-LoRa-868-SO",
+                "descripcion": "868 MHz, encapsulado SMT",
+                "_cita": {
+                  "documento": "RF LoRa — LongRange Transceiver (RF Solutions Ltd)",
+                  "version": "DS-RF-LoRa-5 (PDF creado 2016-08-09; la hoja no declara revision ni fecha en su texto)",
+                  "pagina": 2,
+                  "leido_el": "2026-10-03"
+                }
+              },
+              {
+                "parte": "RF-LoRa-868",
+                "descripcion": "868 MHz, encapsulado DIP",
+                "_cita": {
+                  "documento": "RF LoRa — LongRange Transceiver (RF Solutions Ltd)",
+                  "version": "DS-RF-LoRa-5 (PDF creado 2016-08-09; la hoja no declara revision ni fecha en su texto)",
+                  "pagina": 2,
+                  "leido_el": "2026-10-03"
+                }
+              },
+              {
+                "parte": "RF-LoRa-915-SO",
+                "descripcion": "915 MHz",
+                "_cita": {
+                  "documento": "RF LoRa — LongRange Transceiver (RF Solutions Ltd)",
+                  "version": "DS-RF-LoRa-5 (PDF creado 2016-08-09; la hoja no declara revision ni fecha en su texto)",
+                  "pagina": 2,
+                  "leido_el": "2026-10-03"
+                }
+              }
+            ],
+            "banda_declarada_hz": null,
+            "_banda_motivo": "La hoja NO trae tabla de rango de frecuencia. Solo referencias preajustadas a 868 y 915 MHz (p. 2). Un preajuste de referencia no es un rango declarado, y no se convierte en uno aqui.",
+            "ptx_dbm": {
+              "pa_boost_dbm": 20,
+              "pa_boost_condicion": "«+20 dBm at 100 mW constant RF output vs. V supply», vineta de portada.",
+              "pa_alta_eficiencia_dbm": 14,
+              "pa_alta_eficiencia_condicion": "«+14 dBm high efficiency PA», vineta de portada.",
+              "_ojo": "Son VINETAS DE PORTADA, no una tabla de caracterizacion con min/typ/max ni temperatura. Lo unico tabulado que las respalda son las corrientes de Tx por nivel de potencia (ver consumo).",
+              "_cita": {
+                "documento": "RF LoRa — LongRange Transceiver (RF Solutions Ltd)",
+                "version": "DS-RF-LoRa-5 (PDF creado 2016-08-09; la hoja no declara revision ni fecha en su texto)",
+                "pagina": 1,
+                "leido_el": "2026-10-03"
+              }
+            },
+            "rx_sens_por_modo": [],
+            "_sensibilidad_estado": {
+              "hay_tabla": false,
+              "motivo": "LA HOJA DEL MODULO NO TRAE NINGUNA TABLA DE SENSIBILIDAD. Ni una rejilla SF x BW, ni una sola fila con su criterio. Las 10 paginas se han leido enteras.",
+              "unico_numero_de_portada": -130,
+              "unidad": "dBm",
+              "literal": "«High sensitivity: down to -130 dBm»",
+              "por_que_NO_se_usa": "Un numero sin SF, sin ancho de banda y sin criterio de medida no entra en un balance de enlace: es justo lo que la regla de este fichero prohibe. Queda anotado como titular, no como parametro.",
+              "_cita": {
+                "documento": "RF LoRa — LongRange Transceiver (RF Solutions Ltd)",
+                "version": "DS-RF-LoRa-5 (PDF creado 2016-08-09; la hoja no declara revision ni fecha en su texto)",
+                "pagina": 1,
+                "leido_el": "2026-10-03"
+              }
+            },
+            "consumo": {
+              "_condiciones_lora": "Vcc 3,3 V; 25 degC; Fxosc 32 MHz; Frf = 915 MHz; SF 12; CR 4/6; PER 1 % con CRC; Pout +13 dBm; carga util 10 octetos; preambulo 12 simbolos. OJO: 915 MHz, NO 868.",
+              "rx_lora_ma": [
+                {
+                  "lna_boost": false,
+                  "bw_hz": 125000,
+                  "ma": 9.7
+                },
+                {
+                  "lna_boost": false,
+                  "bw_hz": 250000,
+                  "ma": 10.5
+                },
+                {
+                  "lna_boost": false,
+                  "bw_hz": 500000,
+                  "ma": 12
+                },
+                {
+                  "lna_boost": true,
+                  "bw_hz": 125000,
+                  "ma": 10.8
+                },
+                {
+                  "lna_boost": true,
+                  "bw_hz": 250000,
+                  "ma": 11.6
+                },
+                {
+                  "lna_boost": true,
+                  "bw_hz": 500000,
+                  "ma": 13
+                }
+              ],
+              "_lna_boost": "La hoja SI distingue LnaBoost, y cuesta ~1,1 mA. Lo que NO dice es cuanta sensibilidad compra: no hay tabla de sensibilidad con la que cruzarlo.",
+              "tx_lora_ma": [
+                {
+                  "dbm": 13,
+                  "ma": 28,
+                  "pin": "RFO"
+                },
+                {
+                  "dbm": 7,
+                  "ma": 18,
+                  "pin": "RFO"
+                },
+                {
+                  "dbm": 17,
+                  "ma": 90,
+                  "pin": "PA_BOOST"
+                }
+              ],
+              "tx_dc_ma": [
+                {
+                  "dbm": 20,
+                  "ma": 125,
+                  "pin": "PA_BOOST"
+                },
+                {
+                  "dbm": 17,
+                  "ma": 90,
+                  "pin": "PA_BOOST"
+                },
+                {
+                  "dbm": 13,
+                  "ma": 28,
+                  "pin": "PA_BOOST"
+                },
+                {
+                  "dbm": 7,
+                  "ma": 18,
+                  "pin": "PA_BOOST"
+                }
+              ],
+              "rx_ma": 10,
+              "reposo": {
+                "shutdown_na": 30,
+                "standby_na": 50,
+                "ready_ma": 2,
+                "spi_activo_ma": 1.35,
+                "tune_rx_ma": 6.5,
+                "tune_tx_ma": 6.9,
+                "_nota": "De la tabla DC (p. 6). La tabla FSK (p. 7) da ademas sleep 0,1 uA e idle 1,5 uA, con SUS condiciones, que no son las de LoRa."
+              },
+              "_ERRATA_DE_LA_HOJA": "En la tabla FSK de la p. 7, las cuatro filas de IDDT dicen todas «RFOP=+20dBm» para 125/90/28/18 mA. La tabla DC de la p. 6 da esas mismas cuatro corrientes a +20/+17/+13/+7 dBm. Es una errata del documento. Se anota; no se corrige en silencio.",
+              "_cita": {
+                "documento": "RF LoRa — LongRange Transceiver (RF Solutions Ltd)",
+                "version": "DS-RF-LoRa-5 (PDF creado 2016-08-09; la hoja no declara revision ni fecha en su texto)",
+                "pagina": 6,
+                "leido_el": "2026-10-03"
+              },
+              "_IDENTICO_AL_DEL_CHIP": "OBSERVADO al carear las dos fichas: las corrientes de LoRa del modulo coinciden DIGITO A DIGITO con las del SX1272 (9,7/10,5/12 y 10,8/11,6/13 mA; 28/18/90 mA). O sea que esta hoja de modulo REPRODUCE los datos del integrado — exactamente la practica de la que ella misma avisa en su p. 4. Se trata como cifra heredada del chip, no como medida del modulo."
+            },
+            "alcance_medido_por_el_fabricante": {
+              "los_km": 12.05,
+              "nlos_km": 3,
+              "condiciones": "Brighton-Shoreham Seafront, linea de vista. Transmisor sobre contenedor de plastico a 4 pies; receptor en el salpicadero de un vehiculo a 5 pies. Antena: un simple trozo de hilo, SIN plano de masa. 25 degC, 3,3 Vdc, seco, HR 45 %.",
+              "literal_del_limite": "«we ran out of land to test a LOS beyond 12Km, so the maximum range is further than tested here»",
+              "_por_que_NO_es_un_parametro": "Es un ensayo de campo del fabricante con su propio montaje, no una cifra de hoja. No alimenta el motor; sirve de orden de magnitud y de contraste.",
+              "_cita": {
+                "documento": "RF LoRa — LongRange Transceiver (RF Solutions Ltd)",
+                "version": "DS-RF-LoRa-5 (PDF creado 2016-08-09; la hoja no declara revision ni fecha en su texto)",
+                "pagina": 8,
+                "leido_el": "2026-10-03"
+              }
+            },
+            "plan_de_canal": null,
+            "_plan_de_canal_motivo": "Sale de ETSI EN 300 220-2 y CEPT/ERC 70-03, que siguen sin leerse. La hoja no da plan de canal.",
+            "certificacion_eu": null,
+            "_certificacion_motivo": "La hoja dice «The RF-LoRa Module is CE compliant. Providing that certain procedures are followed» (p. 1), sin numero de norma ni informe. Una frase condicional no es una declaracion de conformidad, asi que el campo queda a null.",
+            "papel": "CANDIDATO DE MONTAJE — es el modulo que se montaria. Confirmado por el propietario.",
+            "chip_que_integra": "Semtech SX1272 (SF 6-12), NO el SX1273 (SF 6-9). Ficha del chip aparte, como cota superior.",
+            "alimentacion_v": {
+              "min": 1.8,
+              "typ": 3.3,
+              "max": 3.6,
+              "_ojo": "La p. 6 trae DOS tablas distintas: «DC Characteristics» da 1,8/3,3/3,6 V y «Recommended Operating Conditions» da 2,2-3,7 V. No es lo mismo un rango de funcionamiento que uno recomendado; van las dos.",
+              "recomendado_min": 2.2,
+              "recomendado_max": 3.7,
+              "_cita": {
+                "documento": "RF LoRa — LongRange Transceiver (RF Solutions Ltd)",
+                "version": "DS-RF-LoRa-5 (la hoja no declara fecha; el PDF se creo 2016-08-09)",
+                "pagina": 6,
+                "leido_el": "2026-10-03",
+                "leido_por": "Inaki, del PDF original. NO lo leyo esta sesion para estas filas; el PDF del modulo si se vio aqui el 2026-10-03 y las paginas 1, 6, 7 y 8 concuerdan."
+              }
+            },
+            "presupuesto_enlace_db": {
+              "valor": 157,
+              "_condicion": "«157 dB maximum link budget», vineta de portada, sin desglose.",
+              "_cita": {
+                "documento": "RF LoRa — LongRange Transceiver (RF Solutions Ltd)",
+                "version": "DS-RF-LoRa-5 (la hoja no declara fecha; el PDF se creo 2016-08-09)",
+                "pagina": 1,
+                "leido_el": "2026-10-03",
+                "leido_por": "Inaki, del PDF original. NO lo leyo esta sesion para estas filas; el PDF del modulo si se vio aqui el 2026-10-03 y las paginas 1, 6, 7 y 8 concuerdan."
+              }
+            },
+            "tasa_max_bps": {
+              "valor": 300000,
+              "_condicion": "«Programmable bit rate up to 300 kbps», vineta de portada.",
+              "_cita": {
+                "documento": "RF LoRa — LongRange Transceiver (RF Solutions Ltd)",
+                "version": "DS-RF-LoRa-5 (la hoja no declara fecha; el PDF se creo 2016-08-09)",
+                "pagina": 1,
+                "leido_el": "2026-10-03",
+                "leido_por": "Inaki, del PDF original. NO lo leyo esta sesion para estas filas; el PDF del modulo si se vio aqui el 2026-10-03 y las paginas 1, 6, 7 y 8 concuerdan."
+              }
+            }
+          }
+        ]
+      },
+      "_que_falta": {
+        "modulo_de_referencia": "Ninguno elegido. Hace falta UNO, nombrado, no «un módulo LoRa».",
+        "ptx_dbm": "del datasheet del módulo, con la página.",
+        "rx_sens_dbm": "del datasheet, Y CON SU SF Y SU ANCHO DE BANDA: en LoRa la sensibilidad no es un número, es una tabla. Sin decir a qué SF se declara, el dato no significa nada.",
+        "plan_de_canal": "sub-bandas de EU868 con su e.r.p. máxima y su ciclo de trabajo, de la norma (ETSI EN 300 220-2 / CEPT ERC REC 70-03), no de memoria.",
+        "f_hz": "sale del plan de canal, así que depende de lo anterior."
+      },
+      "_lo_que_si_esta_razonado": "`FASE3_LATENCIA_STOW.md` §3: clase C multicast —el nodo escucha siempre, la orden llega sin esperar ventana— y el ciclo de trabajo del 1 % limita al EMISOR, no al receptor: para una orden de stow (rara, corta, unidireccional) no muerde; para los reintentos sí. Eso es arquitectura, no balance, y no necesita datasheet.",
+      "_ojo_sub_giga": "A 868 MHz la longitud de onda es ~2,8 veces la de 2,45 GHz, así que el radio de Fresnel es ~1,7 veces mayor: LA MISMA GEOMETRÍA DESPEJA MENOS. El canon ya lo calcula bien (`radioFresnel` depende de λ), pero es la razón por la que una calibración hecha a 2,4 GHz NO se traslada.",
+      "_citas": {
+        "_que_es": "Una ranura por número, VACÍA. Ninguno de estos se ha leído de un documento.",
+        "_una_variante_por_SF": [
+          "LA SENSIBILIDAD DE LoRa NO ES UN NÚMERO, ES UNA TABLA: cambia con el factor de",
+          "ensanchado (SF) y con el ancho de banda. Así que cuando lleguen las hojas, cada SF",
+          "que el datasheet declare entra como UNA VARIANTE PROPIA —`lora_eu868_sf7`,",
+          "`_sf9`, `_sf12`…— con su `ptx_dbm`, su `rx_sens_dbm` y su cita.",
+          "",
+          "Se meten TODOS los que declare la hoja, no una selección: el comparador tiene que",
+          "enseñar el RANGO COMPLETO de cada tecnología. Si el orden entre tecnologías cambia",
+          "según el SF, eso ES el resultado y hay que verlo, no esconderlo eligiendo un SF."
+        ],
+        "ptx_dbm": {
+          "clase": "pendiente",
+          "documento": null,
+          "version": null,
+          "pagina": null,
+          "leido_el": null,
+          "_de_donde": "de la hoja del módulo, con su condición (a qué tensión y con qué PA)."
+        },
+        "rx_sens_dbm": {
+          "clase": "pendiente",
+          "documento": null,
+          "version": null,
+          "pagina": null,
+          "leido_el": null,
+          "_de_donde": "de la hoja, POR SF Y ANCHO DE BANDA. Un solo número sin decir a qué SF se declara no significa nada."
+        },
+        "f_hz": {
+          "clase": "pendiente",
+          "documento": null,
+          "version": null,
+          "pagina": null,
+          "leido_el": null,
+          "_de_donde": "del plan de canal, que sale de la normativa (EN 300 220-2 / ERC 70-03), no del módulo."
+        },
+        "gtx_dbi": {
+          "clase": "pendiente",
+          "documento": null,
+          "version": null,
+          "pagina": null,
+          "leido_el": null,
+          "_de_donde": "HUECO DECLARADO: la antena de 3 dBi que hay en el modelo es la de la TCU, de 2,4 GHz. A 868 MHz hace falta OTRA antena y nadie la ha elegido. No se reutiliza el 3: una antena de otra banda no da la misma ganancia."
+        },
+        "grx_dbi": {
+          "clase": "pendiente",
+          "documento": null,
+          "version": null,
+          "pagina": null,
+          "leido_el": null,
+          "_de_donde": "el mismo hueco, en el otro extremo."
+        },
+        "erp_max_dbm": {
+          "clase": "pendiente",
+          "documento": null,
+          "version": null,
+          "pagina": null,
+          "leido_el": null,
+          "_de_donde": "de ERC 70-03, anexo de 863-870 MHz. Es normativa, no módulo."
+        },
+        "ciclo_trabajo": {
+          "clase": "leido",
+          "documento": "ETSI EN 300 220-2 V3.2.1 (2018-06), Tabla B.1 (normativa) + EN 300 220-1 V3.1.1, 5.4.1 y Tabla 48",
+          "version": "V3.2.1 (2018-06) y V3.1.1 (2017-02)",
+          "pagina": "21-22, 28, 58",
+          "leido_el": "2026-10-03",
+          "_de_donde": "Resuelto. Depende de la sub-banda --cinco regimenes-- y admite acceso educado como alternativa. Ver `ciclo_trabajo_eu`."
+        },
+        "norma": {
+          "clase": "pendiente",
+          "documento": null,
+          "version": null,
+          "pagina": null,
+          "leido_el": null,
+          "_de_donde": "ETSI EN 300 220-2, con su versión."
+        },
+        "carga_util_b": {
+          "clase": "declarado",
+          "documento": null,
+          "version": null,
+          "pagina": null,
+          "leido_el": null,
+          "_de_donde": "SCADA/collector/traffic.py map_params() -> stride 22 registros por TCU x 2 bytes. Se leen en lotes de 5 TCU (max_regs_per_read 110; limite Modbus 125). MEDIDO el 2026-09-24."
+        },
+        "periodo_s": {
+          "clase": "declarado",
+          "documento": null,
+          "version": null,
+          "pagina": null,
+          "leido_el": null,
+          "_de_donde": "SCADA/config/plants.yml -> polling.interval_s: 30, «ciclo completo de lectura por NCU». Las HSU/RSU van aparte a 10 s (meteo_interval_s). MEDIDO el 2026-09-24."
+        },
+        "tasa_serie_bps": {
+          "clase": "declarado",
+          "documento": null,
+          "version": null,
+          "pagina": null,
+          "leido_el": null,
+          "_de_donde": "Cobertura-Zigbee/tools/gen_modbus_map.mjs: «SUNNER_TCU_ModbusMap v6, FW v1.4.3, por RTU a 19200 8E1, ID de fabrica 245». MEDIDO el 2026-09-24. Es LIMITE DEL SISTEMA, no de la radio: no cambia al cambiar de tecnologia."
+        },
+        "tasa_bps": {
+          "clase": "pendiente",
+          "documento": null,
+          "version": null,
+          "pagina": null,
+          "leido_el": null,
+          "_de_donde": "de la hoja del modulo, POR SF: en LoRa la tasa util cambia con el factor de ensanchado y el ancho de banda, igual que la sensibilidad. Cada SF entra como variante propia con SU tasa."
+        }
+      },
+      "carga_util_b": 44,
+      "periodo_s": 30,
+      "tasa_serie_bps": 19200,
+      "tasa_bps": 293,
+      "cota_superior_del_chip": {
+        "fabricante": "Semtech",
+        "modelo": "SX1272",
+        "papel": "COTA SUPERIOR — es el chip que va dentro del modulo, no un candidato de montaje",
+        "procedencia": "datasheet_de_CHIP",
+        "_jerarquia": [
+          "Esta ficha NO es un candidato: es el techo de lo que el modulo podria dar.",
+          "El candidato de montaje es RF-LoRa-868. La hoja del modulo avisa (p. 4) de que",
+          "«in practice the Module RF performance is considerably lower» que la del",
+          "integrado, y NADIE cuantifica cuanto. Asi que estas cifras acotan por arriba y",
+          "no se copian a la ficha del modulo."
+        ],
+        "banda_declarada_hz": [
+          860000000.0,
+          1020000000.0
+        ],
+        "variante": {
+          "sf_min": 6,
+          "sf_max": 12,
+          "_ojo_sx1273": "La hoja separa DOS variantes: SX1272 con SF 6-12 (-117 a -137 dBm) y SX1273 con SF 6-9 (-117 a -130 dBm). El modulo integra el SX1272. No son intercambiables.",
+          "_cita": {
+            "documento": "SX1272/73 Datasheet — 860 MHz to 1020 MHz Low Power Long Range Transceiver (Semtech)",
+            "version": "Rev. 3.1, marzo de 2017",
+            "pagina": 11,
+            "leido_el": "2026-10-03",
+            "leido_por": "Inaki, del PDF original. ESTA SESION NO HA VISTO ESTE DOCUMENTO: el proxy deniega semtech.my.salesforce.com con 403 en el CONNECT. Toda cifra de esta ficha es lectura suya, no careo propio."
+          }
+        },
+        "ptx_dbm": {
+          "pa_boost_dbm": 20,
+          "rfo_dbm": 13,
+          "_condicion": "+20 y +17 dBm por PA_BOOST; +13 y +7 dBm por el pin RFO.",
+          "_cita": {
+            "documento": "SX1272/73 Datasheet — 860 MHz to 1020 MHz Low Power Long Range Transceiver (Semtech)",
+            "version": "Rev. 3.1, marzo de 2017",
+            "pagina": 11,
+            "leido_el": "2026-10-03",
+            "leido_por": "Inaki, del PDF original. ESTA SESION NO HA VISTO ESTE DOCUMENTO: el proxy deniega semtech.my.salesforce.com con 403 en el CONNECT. Toda cifra de esta ficha es lectura suya, no careo propio."
+          }
+        },
+        "rx_sens_por_modo": [
+          {
+            "modo_declarado_por_el_fabricante": "LoRa, SF6, BW 125 kHz",
+            "sf": 6,
+            "bw_hz": 125000,
+            "tasa_bps": 9380,
+            "cr": null,
+            "sens_dbm": -122,
+            "criterio": null,
+            "_criterio_motivo": "LA HOJA NO LO PUBLICA. Comprobado sobre el documento (Inaki, 2026-10-03): la tabla de sensibilidad LoRa de la Rev. 3.1 NO declara criterio de medida junto a la tabla. El unico criterio que la hoja declara es el del modo FSK, que es OTRA MAGNITUD y no sirve para estas filas. No es un dato pendiente de preguntar: es una ausencia del fabricante, y por eso el campo queda a null en vez de esperar. CONSECUENCIA, en FASE3_LATENCIA_STOW.md 3.1: con el campo ausente, el margen de 1,9 dB a 37.500 bps frente a Wi-SUN NO DECIDE --si fuese 10% PER gana LoRa por 1,9 dB; si fuese un BER comparable al de TI, la correccion de 2-3 dB lo invierte y gana Wi-SUN por 0,1 a 1,1--. El margen de 16 dB a 293 bps si se sostiene en los dos escenarios (16 dB con BER, 18-19 con PER).",
+            "_cita": {
+              "documento": "SX1272/73 Datasheet — 860 MHz to 1020 MHz Low Power Long Range Transceiver (Semtech)",
+              "version": "Rev. 3.1, marzo de 2017",
+              "pagina": 27,
+              "leido_el": "2026-10-03",
+              "leido_por": "Inaki, del PDF original. ESTA SESION NO HA VISTO ESTE DOCUMENTO: el proxy deniega semtech.my.salesforce.com con 403 en el CONNECT. Toda cifra de esta ficha es lectura suya, no careo propio."
+            }
+          },
+          {
+            "modo_declarado_por_el_fabricante": "LoRa, SF12, BW 125 kHz",
+            "sf": 12,
+            "bw_hz": 125000,
+            "tasa_bps": 293,
+            "cr": null,
+            "sens_dbm": -137,
+            "criterio": null,
+            "_criterio_motivo": "LA HOJA NO LO PUBLICA. Comprobado sobre el documento (Inaki, 2026-10-03): la tabla de sensibilidad LoRa de la Rev. 3.1 NO declara criterio de medida junto a la tabla. El unico criterio que la hoja declara es el del modo FSK, que es OTRA MAGNITUD y no sirve para estas filas. No es un dato pendiente de preguntar: es una ausencia del fabricante, y por eso el campo queda a null en vez de esperar. CONSECUENCIA, en FASE3_LATENCIA_STOW.md 3.1: con el campo ausente, el margen de 1,9 dB a 37.500 bps frente a Wi-SUN NO DECIDE --si fuese 10% PER gana LoRa por 1,9 dB; si fuese un BER comparable al de TI, la correccion de 2-3 dB lo invierte y gana Wi-SUN por 0,1 a 1,1--. El margen de 16 dB a 293 bps si se sostiene en los dos escenarios (16 dB con BER, 18-19 con PER).",
+            "_cita": {
+              "documento": "SX1272/73 Datasheet — 860 MHz to 1020 MHz Low Power Long Range Transceiver (Semtech)",
+              "version": "Rev. 3.1, marzo de 2017",
+              "pagina": 27,
+              "leido_el": "2026-10-03",
+              "leido_por": "Inaki, del PDF original. ESTA SESION NO HA VISTO ESTE DOCUMENTO: el proxy deniega semtech.my.salesforce.com con 403 en el CONNECT. Toda cifra de esta ficha es lectura suya, no careo propio."
+            }
+          },
+          {
+            "modo_declarado_por_el_fabricante": "LoRa, SF6, BW 250 kHz",
+            "sf": 6,
+            "bw_hz": 250000,
+            "tasa_bps": 18750,
+            "cr": null,
+            "sens_dbm": -119,
+            "criterio": null,
+            "_criterio_motivo": "LA HOJA NO LO PUBLICA. Comprobado sobre el documento (Inaki, 2026-10-03): la tabla de sensibilidad LoRa de la Rev. 3.1 NO declara criterio de medida junto a la tabla. El unico criterio que la hoja declara es el del modo FSK, que es OTRA MAGNITUD y no sirve para estas filas. No es un dato pendiente de preguntar: es una ausencia del fabricante, y por eso el campo queda a null en vez de esperar. CONSECUENCIA, en FASE3_LATENCIA_STOW.md 3.1: con el campo ausente, el margen de 1,9 dB a 37.500 bps frente a Wi-SUN NO DECIDE --si fuese 10% PER gana LoRa por 1,9 dB; si fuese un BER comparable al de TI, la correccion de 2-3 dB lo invierte y gana Wi-SUN por 0,1 a 1,1--. El margen de 16 dB a 293 bps si se sostiene en los dos escenarios (16 dB con BER, 18-19 con PER).",
+            "_cita": {
+              "documento": "SX1272/73 Datasheet — 860 MHz to 1020 MHz Low Power Long Range Transceiver (Semtech)",
+              "version": "Rev. 3.1, marzo de 2017",
+              "pagina": 27,
+              "leido_el": "2026-10-03",
+              "leido_por": "Inaki, del PDF original. ESTA SESION NO HA VISTO ESTE DOCUMENTO: el proxy deniega semtech.my.salesforce.com con 403 en el CONNECT. Toda cifra de esta ficha es lectura suya, no careo propio."
+            }
+          },
+          {
+            "modo_declarado_por_el_fabricante": "LoRa, SF12, BW 250 kHz",
+            "sf": 12,
+            "bw_hz": 250000,
+            "tasa_bps": 586,
+            "cr": null,
+            "sens_dbm": -134,
+            "criterio": null,
+            "_criterio_motivo": "LA HOJA NO LO PUBLICA. Comprobado sobre el documento (Inaki, 2026-10-03): la tabla de sensibilidad LoRa de la Rev. 3.1 NO declara criterio de medida junto a la tabla. El unico criterio que la hoja declara es el del modo FSK, que es OTRA MAGNITUD y no sirve para estas filas. No es un dato pendiente de preguntar: es una ausencia del fabricante, y por eso el campo queda a null en vez de esperar. CONSECUENCIA, en FASE3_LATENCIA_STOW.md 3.1: con el campo ausente, el margen de 1,9 dB a 37.500 bps frente a Wi-SUN NO DECIDE --si fuese 10% PER gana LoRa por 1,9 dB; si fuese un BER comparable al de TI, la correccion de 2-3 dB lo invierte y gana Wi-SUN por 0,1 a 1,1--. El margen de 16 dB a 293 bps si se sostiene en los dos escenarios (16 dB con BER, 18-19 con PER).",
+            "_cita": {
+              "documento": "SX1272/73 Datasheet — 860 MHz to 1020 MHz Low Power Long Range Transceiver (Semtech)",
+              "version": "Rev. 3.1, marzo de 2017",
+              "pagina": 27,
+              "leido_el": "2026-10-03",
+              "leido_por": "Inaki, del PDF original. ESTA SESION NO HA VISTO ESTE DOCUMENTO: el proxy deniega semtech.my.salesforce.com con 403 en el CONNECT. Toda cifra de esta ficha es lectura suya, no careo propio."
+            }
+          },
+          {
+            "modo_declarado_por_el_fabricante": "LoRa, SF6, BW 500 kHz",
+            "sf": 6,
+            "bw_hz": 500000,
+            "tasa_bps": 37500,
+            "cr": null,
+            "sens_dbm": -116,
+            "criterio": null,
+            "_criterio_motivo": "LA HOJA NO LO PUBLICA. Comprobado sobre el documento (Inaki, 2026-10-03): la tabla de sensibilidad LoRa de la Rev. 3.1 NO declara criterio de medida junto a la tabla. El unico criterio que la hoja declara es el del modo FSK, que es OTRA MAGNITUD y no sirve para estas filas. No es un dato pendiente de preguntar: es una ausencia del fabricante, y por eso el campo queda a null en vez de esperar. CONSECUENCIA, en FASE3_LATENCIA_STOW.md 3.1: con el campo ausente, el margen de 1,9 dB a 37.500 bps frente a Wi-SUN NO DECIDE --si fuese 10% PER gana LoRa por 1,9 dB; si fuese un BER comparable al de TI, la correccion de 2-3 dB lo invierte y gana Wi-SUN por 0,1 a 1,1--. El margen de 16 dB a 293 bps si se sostiene en los dos escenarios (16 dB con BER, 18-19 con PER).",
+            "_cita": {
+              "documento": "SX1272/73 Datasheet — 860 MHz to 1020 MHz Low Power Long Range Transceiver (Semtech)",
+              "version": "Rev. 3.1, marzo de 2017",
+              "pagina": 27,
+              "leido_el": "2026-10-03",
+              "leido_por": "Inaki, del PDF original. ESTA SESION NO HA VISTO ESTE DOCUMENTO: el proxy deniega semtech.my.salesforce.com con 403 en el CONNECT. Toda cifra de esta ficha es lectura suya, no careo propio."
+            }
+          },
+          {
+            "modo_declarado_por_el_fabricante": "LoRa, SF12, BW 500 kHz",
+            "sf": 12,
+            "bw_hz": 500000,
+            "tasa_bps": 1172,
+            "cr": null,
+            "sens_dbm": -131,
+            "criterio": null,
+            "_criterio_motivo": "LA HOJA NO LO PUBLICA. Comprobado sobre el documento (Inaki, 2026-10-03): la tabla de sensibilidad LoRa de la Rev. 3.1 NO declara criterio de medida junto a la tabla. El unico criterio que la hoja declara es el del modo FSK, que es OTRA MAGNITUD y no sirve para estas filas. No es un dato pendiente de preguntar: es una ausencia del fabricante, y por eso el campo queda a null en vez de esperar. CONSECUENCIA, en FASE3_LATENCIA_STOW.md 3.1: con el campo ausente, el margen de 1,9 dB a 37.500 bps frente a Wi-SUN NO DECIDE --si fuese 10% PER gana LoRa por 1,9 dB; si fuese un BER comparable al de TI, la correccion de 2-3 dB lo invierte y gana Wi-SUN por 0,1 a 1,1--. El margen de 16 dB a 293 bps si se sostiene en los dos escenarios (16 dB con BER, 18-19 con PER).",
+            "_cita": {
+              "documento": "SX1272/73 Datasheet — 860 MHz to 1020 MHz Low Power Long Range Transceiver (Semtech)",
+              "version": "Rev. 3.1, marzo de 2017",
+              "pagina": 27,
+              "leido_el": "2026-10-03",
+              "leido_por": "Inaki, del PDF original. ESTA SESION NO HA VISTO ESTE DOCUMENTO: el proxy deniega semtech.my.salesforce.com con 403 en el CONNECT. Toda cifra de esta ficha es lectura suya, no careo propio."
+            }
+          },
+          {
+            "modo_declarado_por_el_fabricante": "LoRa, SF12, BW 125 kHz, CR 4/5",
+            "sf": 12,
+            "bw_hz": 125000,
+            "tasa_bps": 293,
+            "cr": "4/5",
+            "sens_dbm": -136,
+            "criterio": null,
+            "_criterio_motivo": "LA HOJA NO LO PUBLICA. Comprobado sobre el documento (Inaki, 2026-10-03): la tabla de sensibilidad LoRa de la Rev. 3.1 NO declara criterio de medida junto a la tabla. El unico criterio que la hoja declara es el del modo FSK, que es OTRA MAGNITUD y no sirve para estas filas. No es un dato pendiente de preguntar: es una ausencia del fabricante, y por eso el campo queda a null en vez de esperar. CONSECUENCIA, en FASE3_LATENCIA_STOW.md 3.1: con el campo ausente, el margen de 1,9 dB a 37.500 bps frente a Wi-SUN NO DECIDE --si fuese 10% PER gana LoRa por 1,9 dB; si fuese un BER comparable al de TI, la correccion de 2-3 dB lo invierte y gana Wi-SUN por 0,1 a 1,1--. El margen de 16 dB a 293 bps si se sostiene en los dos escenarios (16 dB con BER, 18-19 con PER).",
+            "_cita": {
+              "documento": "SX1272/73 Datasheet — 860 MHz to 1020 MHz Low Power Long Range Transceiver (Semtech)",
+              "version": "Rev. 3.1, marzo de 2017",
+              "pagina": 26,
+              "leido_el": "2026-10-03",
+              "leido_por": "Inaki, del PDF original. ESTA SESION NO HA VISTO ESTE DOCUMENTO: el proxy deniega semtech.my.salesforce.com con 403 en el CONNECT. Toda cifra de esta ficha es lectura suya, no careo propio."
+            }
+          },
+          {
+            "modo_declarado_por_el_fabricante": "LoRa, SF12, BW 250 kHz, CR 4/5",
+            "sf": 12,
+            "bw_hz": 250000,
+            "tasa_bps": 586,
+            "cr": "4/5",
+            "sens_dbm": -133,
+            "criterio": null,
+            "_criterio_motivo": "LA HOJA NO LO PUBLICA. Comprobado sobre el documento (Inaki, 2026-10-03): la tabla de sensibilidad LoRa de la Rev. 3.1 NO declara criterio de medida junto a la tabla. El unico criterio que la hoja declara es el del modo FSK, que es OTRA MAGNITUD y no sirve para estas filas. No es un dato pendiente de preguntar: es una ausencia del fabricante, y por eso el campo queda a null en vez de esperar. CONSECUENCIA, en FASE3_LATENCIA_STOW.md 3.1: con el campo ausente, el margen de 1,9 dB a 37.500 bps frente a Wi-SUN NO DECIDE --si fuese 10% PER gana LoRa por 1,9 dB; si fuese un BER comparable al de TI, la correccion de 2-3 dB lo invierte y gana Wi-SUN por 0,1 a 1,1--. El margen de 16 dB a 293 bps si se sostiene en los dos escenarios (16 dB con BER, 18-19 con PER).",
+            "_cita": {
+              "documento": "SX1272/73 Datasheet — 860 MHz to 1020 MHz Low Power Long Range Transceiver (Semtech)",
+              "version": "Rev. 3.1, marzo de 2017",
+              "pagina": 26,
+              "leido_el": "2026-10-03",
+              "leido_por": "Inaki, del PDF original. ESTA SESION NO HA VISTO ESTE DOCUMENTO: el proxy deniega semtech.my.salesforce.com con 403 en el CONNECT. Toda cifra de esta ficha es lectura suya, no careo propio."
+            }
+          },
+          {
+            "modo_declarado_por_el_fabricante": "LoRa, SF12, BW 500 kHz, CR 4/5",
+            "sf": 12,
+            "bw_hz": 500000,
+            "tasa_bps": 1172,
+            "cr": "4/5",
+            "sens_dbm": -130,
+            "criterio": null,
+            "_criterio_motivo": "LA HOJA NO LO PUBLICA. Comprobado sobre el documento (Inaki, 2026-10-03): la tabla de sensibilidad LoRa de la Rev. 3.1 NO declara criterio de medida junto a la tabla. El unico criterio que la hoja declara es el del modo FSK, que es OTRA MAGNITUD y no sirve para estas filas. No es un dato pendiente de preguntar: es una ausencia del fabricante, y por eso el campo queda a null en vez de esperar. CONSECUENCIA, en FASE3_LATENCIA_STOW.md 3.1: con el campo ausente, el margen de 1,9 dB a 37.500 bps frente a Wi-SUN NO DECIDE --si fuese 10% PER gana LoRa por 1,9 dB; si fuese un BER comparable al de TI, la correccion de 2-3 dB lo invierte y gana Wi-SUN por 0,1 a 1,1--. El margen de 16 dB a 293 bps si se sostiene en los dos escenarios (16 dB con BER, 18-19 con PER).",
+            "_cita": {
+              "documento": "SX1272/73 Datasheet — 860 MHz to 1020 MHz Low Power Long Range Transceiver (Semtech)",
+              "version": "Rev. 3.1, marzo de 2017",
+              "pagina": 26,
+              "leido_el": "2026-10-03",
+              "leido_por": "Inaki, del PDF original. ESTA SESION NO HA VISTO ESTE DOCUMENTO: el proxy deniega semtech.my.salesforce.com con 403 en el CONNECT. Toda cifra de esta ficha es lectura suya, no careo propio."
+            }
+          }
+        ],
+        "consumo": {
+          "rx_lora_ma": [
+            {
+              "lna_boost": false,
+              "bw_hz": 125000,
+              "ma": 9.7
+            },
+            {
+              "lna_boost": false,
+              "bw_hz": 250000,
+              "ma": 10.5
+            },
+            {
+              "lna_boost": false,
+              "bw_hz": 500000,
+              "ma": 12
+            },
+            {
+              "lna_boost": true,
+              "bw_hz": 125000,
+              "ma": 10.8
+            },
+            {
+              "lna_boost": true,
+              "bw_hz": 250000,
+              "ma": 11.6
+            },
+            {
+              "lna_boost": true,
+              "bw_hz": 500000,
+              "ma": 13
+            }
+          ],
+          "rx_fsk_ma": {
+            "lna_boost_off": 10.5,
+            "lna_boost_on": 11.2
+          },
+          "tx_ma": [
+            {
+              "dbm": 20,
+              "ma": 125,
+              "pin": "PA_BOOST"
+            },
+            {
+              "dbm": 17,
+              "ma": 90,
+              "pin": "PA_BOOST"
+            },
+            {
+              "dbm": 13,
+              "ma": 28,
+              "pin": "RFO"
+            },
+            {
+              "dbm": 7,
+              "ma": 18,
+              "pin": "RFO"
+            }
+          ],
+          "_cita": {
+            "documento": "SX1272/73 Datasheet — 860 MHz to 1020 MHz Low Power Long Range Transceiver (Semtech)",
+            "version": "Rev. 3.1, marzo de 2017",
+            "pagina": 19,
+            "leido_el": "2026-10-03",
+            "leido_por": "Inaki, del PDF original. ESTA SESION NO HA VISTO ESTE DOCUMENTO: el proxy deniega semtech.my.salesforce.com con 403 en el CONNECT. Toda cifra de esta ficha es lectura suya, no careo propio."
+          }
+        },
+        "otros": {
+          "rechazo_cocanal_gmsk_db": 25,
+          "rssi_formula": "RSSI(dBm) = -139 + Rssi, con LnaBoost activado. La constante -139 varia con el front-end.",
+          "_cita": {
+            "documento": "SX1272/73 Datasheet — 860 MHz to 1020 MHz Low Power Long Range Transceiver (Semtech)",
+            "version": "Rev. 3.1, marzo de 2017",
+            "pagina": 87,
+            "leido_el": "2026-10-03",
+            "leido_por": "Inaki, del PDF original. ESTA SESION NO HA VISTO ESTE DOCUMENTO: el proxy deniega semtech.my.salesforce.com con 403 en el CONNECT. Toda cifra de esta ficha es lectura suya, no careo propio."
+          }
+        },
+        "plan_de_canal": null,
+        "_plan_de_canal_motivo": "La hoja REMITE a ERC 70-03 para las tolerancias de cristal por sub-banda europea (p. 27) pero NO publica el plan de canal. Sigue dependiendo de ETSI EN 300 220-2 y CEPT/ERC 70-03.",
+        "certificacion_eu": null,
+        "_alcance_de_la_tabla": "SOLO LOS EXTREMOS. La Rev. 3.1 publica SF6 y SF12 de cada ancho de banda, no una fila por SF. LOS SF 7 A 11 NO ESTAN PUBLICADOS y NO SE INTERPOLAN: una interpolacion aqui seria un numero inventado con pinta de medido.",
+        "_criterio_ausente_en_la_hoja": "LA HOJA NO LO PUBLICA. Comprobado sobre el documento (Inaki, 2026-10-03): la tabla de sensibilidad LoRa de la Rev. 3.1 NO declara criterio de medida junto a la tabla. El unico criterio que la hoja declara es el del modo FSK, que es OTRA MAGNITUD y no sirve para estas filas. No es un dato pendiente de preguntar: es una ausencia del fabricante, y por eso el campo queda a null en vez de esperar. CONSECUENCIA, en FASE3_LATENCIA_STOW.md 3.1: con el campo ausente, el margen de 1,9 dB a 37.500 bps frente a Wi-SUN NO DECIDE --si fuese 10% PER gana LoRa por 1,9 dB; si fuese un BER comparable al de TI, la correccion de 2-3 dB lo invierte y gana Wi-SUN por 0,1 a 1,1--. El margen de 16 dB a 293 bps si se sostiene en los dos escenarios (16 dB con BER, 18-19 con PER)."
+      },
+      "ciclo_trabajo_eu": {
+        "_RESUELTO_EL": "2026-10-03, con la norma en la mano. Antes estaba a null por falta de documento.",
+        "_NO_HAY_UN_SOLO_VALOR": [
+          "NO existe «el ciclo de trabajo de 868». La Tabla B.1 (NORMATIVA) de EN 300 220-2",
+          "da CINCO regimenes distintos entre 863 y 870 MHz: 0,1 %, 1 %, 10 %, sin requisito,",
+          "y en todos ellos la ALTERNATIVA del acceso educado. Cualquier calculo que suponga",
+          "«el 1 %» sin decir en que sub-banda esta suponiendo de mas."
+        ],
+        "sub_bandas": [
+          {
+            "banda": "K",
+            "rango": "863 MHz a 865 MHz",
+            "rango_hz": [
+              863000000.0,
+              865000000.0
+            ],
+            "_rango_hz": "DERIVADO del campo `rango` de esta misma sub-banda, que es el texto de la norma citada abajo. No es una lectura nueva: es el mismo dato en forma que una maquina pueda comparar con `f_hz`. Derivado el 2026-10-03.",
+            "erp_max_mw": 25,
+            "acceso_al_canal": "<= 0,1 % de ciclo de trabajo o acceso educado",
+            "banda_decision_2017_1483_UE": "46a",
+            "_cita": {
+              "documento": "ETSI EN 300 220-2 — SRD 25 MHz a 1 000 MHz, Parte 2: norma armonizada para equipo no especifico",
+              "version": "V3.2.1 (2018-06), REN/ERM-TG28-535",
+              "pagina": 21,
+              "leido_el": "2026-10-03",
+              "leido_por": "esta sesion, del PDF de etsi.org",
+              "sha256_del_pdf": "df54e88af3879f143d1d22cfbe3cc90657b0fecd85c2afb054f1ba79c67ec2e3"
+            }
+          },
+          {
+            "banda": "L",
+            "rango": "865 MHz a 868 MHz",
+            "rango_hz": [
+              865000000.0,
+              868000000.0
+            ],
+            "_rango_hz": "DERIVADO del campo `rango` de esta misma sub-banda, que es el texto de la norma citada abajo. No es una lectura nueva: es el mismo dato en forma que una maquina pueda comparar con `f_hz`. Derivado el 2026-10-03.",
+            "erp_max_mw": 25,
+            "acceso_al_canal": "<= 1 % de ciclo de trabajo o acceso educado",
+            "banda_decision_2017_1483_UE": "47",
+            "_cita": {
+              "documento": "ETSI EN 300 220-2 — SRD 25 MHz a 1 000 MHz, Parte 2: norma armonizada para equipo no especifico",
+              "version": "V3.2.1 (2018-06), REN/ERM-TG28-535",
+              "pagina": 21,
+              "leido_el": "2026-10-03",
+              "leido_por": "esta sesion, del PDF de etsi.org",
+              "sha256_del_pdf": "df54e88af3879f143d1d22cfbe3cc90657b0fecd85c2afb054f1ba79c67ec2e3"
+            }
+          },
+          {
+            "banda": "M",
+            "rango": "868,000 MHz a 868,600 MHz",
+            "rango_hz": [
+              868000000.0,
+              868600000.0
+            ],
+            "_rango_hz": "DERIVADO del campo `rango` de esta misma sub-banda, que es el texto de la norma citada abajo. No es una lectura nueva: es el mismo dato en forma que una maquina pueda comparar con `f_hz`. Derivado el 2026-10-03.",
+            "erp_max_mw": 25,
+            "acceso_al_canal": "<= 1 % de ciclo de trabajo o acceso educado",
+            "banda_decision_2017_1483_UE": "48",
+            "_cita": {
+              "documento": "ETSI EN 300 220-2 — SRD 25 MHz a 1 000 MHz, Parte 2: norma armonizada para equipo no especifico",
+              "version": "V3.2.1 (2018-06), REN/ERM-TG28-535",
+              "pagina": 21,
+              "leido_el": "2026-10-03",
+              "leido_por": "esta sesion, del PDF de etsi.org",
+              "sha256_del_pdf": "df54e88af3879f143d1d22cfbe3cc90657b0fecd85c2afb054f1ba79c67ec2e3"
+            }
+          },
+          {
+            "banda": "N",
+            "rango": "868,700 MHz a 869,200 MHz",
+            "rango_hz": [
+              868700000.0,
+              869200000.0
+            ],
+            "_rango_hz": "DERIVADO del campo `rango` de esta misma sub-banda, que es el texto de la norma citada abajo. No es una lectura nueva: es el mismo dato en forma que una maquina pueda comparar con `f_hz`. Derivado el 2026-10-03.",
+            "erp_max_mw": 25,
+            "acceso_al_canal": "<= 0,1 % de ciclo de trabajo o acceso educado",
+            "banda_decision_2017_1483_UE": "50",
+            "_cita": {
+              "documento": "ETSI EN 300 220-2 — SRD 25 MHz a 1 000 MHz, Parte 2: norma armonizada para equipo no especifico",
+              "version": "V3.2.1 (2018-06), REN/ERM-TG28-535",
+              "pagina": 22,
+              "leido_el": "2026-10-03",
+              "leido_por": "esta sesion, del PDF de etsi.org",
+              "sha256_del_pdf": "df54e88af3879f143d1d22cfbe3cc90657b0fecd85c2afb054f1ba79c67ec2e3"
+            }
+          },
+          {
+            "banda": "P",
+            "rango": "869,400 MHz a 869,650 MHz",
+            "rango_hz": [
+              869400000.0,
+              869650000.0
+            ],
+            "_rango_hz": "DERIVADO del campo `rango` de esta misma sub-banda, que es el texto de la norma citada abajo. No es una lectura nueva: es el mismo dato en forma que una maquina pueda comparar con `f_hz`. Derivado el 2026-10-03.",
+            "erp_max_mw": 500,
+            "acceso_al_canal": "<= 10 % de ciclo de trabajo o acceso educado",
+            "banda_decision_2017_1483_UE": "54",
+            "_cita": {
+              "documento": "ETSI EN 300 220-2 — SRD 25 MHz a 1 000 MHz, Parte 2: norma armonizada para equipo no especifico",
+              "version": "V3.2.1 (2018-06), REN/ERM-TG28-535",
+              "pagina": 22,
+              "leido_el": "2026-10-03",
+              "leido_por": "esta sesion, del PDF de etsi.org",
+              "sha256_del_pdf": "df54e88af3879f143d1d22cfbe3cc90657b0fecd85c2afb054f1ba79c67ec2e3"
+            }
+          },
+          {
+            "banda": "P",
+            "rango": "869,700 MHz a 870,000 MHz",
+            "rango_hz": [
+              869700000.0,
+              870000000.0
+            ],
+            "_rango_hz": "DERIVADO del campo `rango` de esta misma sub-banda, que es el texto de la norma citada abajo. No es una lectura nueva: es el mismo dato en forma que una maquina pueda comparar con `f_hz`. Derivado el 2026-10-03.",
+            "erp_max_mw": 5,
+            "acceso_al_canal": "sin requisito",
+            "banda_decision_2017_1483_UE": "56a",
+            "_cita": {
+              "documento": "ETSI EN 300 220-2 — SRD 25 MHz a 1 000 MHz, Parte 2: norma armonizada para equipo no especifico",
+              "version": "V3.2.1 (2018-06), REN/ERM-TG28-535",
+              "pagina": 22,
+              "leido_el": "2026-10-03",
+              "leido_por": "esta sesion, del PDF de etsi.org",
+              "sha256_del_pdf": "df54e88af3879f143d1d22cfbe3cc90657b0fecd85c2afb054f1ba79c67ec2e3"
+            }
+          },
+          {
+            "banda": "Q",
+            "rango": "869,700 MHz a 870,000 MHz",
+            "rango_hz": [
+              869700000.0,
+              870000000.0
+            ],
+            "_rango_hz": "DERIVADO del campo `rango` de esta misma sub-banda, que es el texto de la norma citada abajo. No es una lectura nueva: es el mismo dato en forma que una maquina pueda comparar con `f_hz`. Derivado el 2026-10-03.",
+            "erp_max_mw": 25,
+            "acceso_al_canal": "<= 1 % de ciclo de trabajo o acceso educado",
+            "banda_decision_2017_1483_UE": "56b",
+            "_cita": {
+              "documento": "ETSI EN 300 220-2 — SRD 25 MHz a 1 000 MHz, Parte 2: norma armonizada para equipo no especifico",
+              "version": "V3.2.1 (2018-06), REN/ERM-TG28-535",
+              "pagina": 22,
+              "leido_el": "2026-10-03",
+              "leido_por": "esta sesion, del PDF de etsi.org",
+              "sha256_del_pdf": "df54e88af3879f143d1d22cfbe3cc90657b0fecd85c2afb054f1ba79c67ec2e3"
+            }
+          }
+        ],
+        "tobs_s": 3600,
+        "_tobs": "«Unless otherwise specified, Tobs is 1 hour and the observation bandwidth Fobs is the operational frequency band.» EN 300 220-1, 5.4.1. O sea: 1 % = 36 s de aire por hora; 0,1 % = 3,6 s/h; 10 % = 360 s/h.",
+        "_cita_definicion": {
+          "documento": "ETSI EN 300 220-1 — SRD 25 MHz a 1 000 MHz, Parte 1: parametros tecnicos y metodos de medida",
+          "version": "V3.1.1 (2017-02)",
+          "pagina": 28,
+          "leido_el": "2026-10-03",
+          "leido_por": "esta sesion, del PDF de etsi.org",
+          "sha256_del_pdf": "42e0b9924e63c64f4e0606b716635946e2b36f7c5ced5dbf128222d02c022178"
+        },
+        "acceso_educado": {
+          "_que_es": "LBT + AFA. SUSTITUYE al ciclo de trabajo, no se suma: EN 300 220-2, 4.3.3.0, literal: «Duty cycle applies to all transmitters EXCEPT EUT with polite spectrum access (described in clause 4.5) where permitted in annex B, table B.1». Y 4.5.2.0: «...instead of duty cycle where permitted by table B.1».",
+          "cca_min_us": 160,
+          "dead_time_max_ms": 5,
+          "ton_max_s_transmision_unica": 1,
+          "ton_max_s_dialogo_o_sondeo": 4,
+          "tcum_on_max_s_por_hora": 100,
+          "tcum_on_ancho_hz": 200000,
+          "toff_min_misma_frecuencia_ms": 100,
+          "_nota_3_de_la_norma": "«Longer accumulated transmission time is possible by implementing more AFA channels.» O sea que el presupuesto escala con canales.",
+          "_LO_QUE_ESTO_PROHIBE": "Ton Max = 1 s para una transmision unica EXCLUYE los modos LoRa mas largos: con 44 octetos y CR 4/5, SF12/BW125 (2.138 ms), SF12/BW250 (1.069 ms) y SF11/BW125 (1.151 ms) NO son legales bajo acceso educado. Bajo ciclo de trabajo si lo son, pero a 17, 34 y 31 mensajes por hora.",
+          "_cita": {
+            "documento": "ETSI EN 300 220-1 — SRD 25 MHz a 1 000 MHz, Parte 1: parametros tecnicos y metodos de medida",
+            "version": "V3.1.1 (2017-02)",
+            "pagina": 58,
+            "leido_el": "2026-10-03",
+            "leido_por": "esta sesion, del PDF de etsi.org",
+            "sha256_del_pdf": "42e0b9924e63c64f4e0606b716635946e2b36f7c5ced5dbf128222d02c022178"
+          }
+        },
+        "_LIMITE_QUE_NO_SE_RESUELVE": "El presupuesto educado es «por cada 200 kHz de espectro». Una senal LoRa de 250 o 500 kHz ocupa MAS de una de esas porciones, y la norma no dice como se reparte. No se interpreta aqui.",
+        "_LO_QUE_SIGUE_FALTANDO": "CEPT/ERC 70-03, que da el estado de implementacion por pais y es referencia informativa del Anexo C. ecodocdb.dk devuelve 403 en el CONNECT del proxy."
+      },
+      "_plan_de_canal_sigue_pendiente": "La Tabla B.1 da SUB-BANDAS, potencia maxima y ancho ocupado maximo. Eso NO es un plan de canal: faltan la rejilla y las frecuencias centrales. `plan_de_canal` sigue a null a proposito, y lo que se ha llenado es `ciclo_trabajo_eu`, que es otra cosa.",
+      "_ESCENARIO_DE_REFERENCIA": [
+        "═══ ESTO NO ES UN DATO DE PROYECTO. ES UN SUPUESTO, Y SE RETIRA DE UNA LINEA ═══",
+        "",
+        "Puesto el 2026-10-04 a peticion de Inaki, para poder VER las columnas encendidas",
+        "y juzgar si el escenario tiene sentido. Nadie ha elegido modulo: lo que hay aqui",
+        "es un punto de trabajo CONSTRUIDO a partir de lo que si esta leido y citado, y",
+        "cada numero dice de donde sale.",
+        "",
+        "  f_hz          868,1 MHz   sub-banda M. ELEGIDA, no leida: es el canal clasico",
+        "                            de 868 y cae dentro de 868,0-868,6.",
+        "  ptx_dbm       13 dBm      DERIVADO DEL LIMITE, no del catalogo. Ver abajo.",
+        "  gtx/grx_dbi   3 dBi       LA MISMA ANTENA QUE EL CASO ZIGBEE, a proposito: si",
+        "                            se cambiara tambien la antena, la comparacion entre",
+        "                            tecnologias mezclaria dos cambios.",
+        "  rx_sens_dbm   -137 dBm    COTA SUPERIOR DEL CHIP SX1272 en SF12/BW125, NO una",
+        "                            medida del modulo. La hoja del modulo no publica",
+        "                            sensibilidad, y RF Solutions avisa en su pagina 4 de",
+        "                            que «in practice the Module RF performance is",
+        "                            considerably lower». Lo real esta por debajo en una",
+        "                            cantidad que NADIE CUANTIFICA.",
+        "  tasa_bps      293         la que la hoja del chip da para ese modo.",
+        "",
+        "═══ POR QUE 13 dBm Y NO LOS 14 DE LA HOJA ═══",
+        "",
+        "El modulo publica dos potencias: 20 dBm en PA boost y 14 dBm en PA de alta",
+        "eficiencia. Con la antena de 3 dBi, los 14 dan 17 dBm e.i.r.p., y el limite de",
+        "la sub-banda M son 25 mW e.r.p. = 13,98 dBm e.r.p. = 16,13 dBm e.i.r.p.",
+        "",
+        "    14 + 3 = 17,00 dBm e.i.r.p.  contra  16,13 de limite  ->  0,87 dB DE MAS",
+        "",
+        "O sea que EL PUNTO DEL CATALOGO, CON ESTA ANTENA, NO ES LEGAL. Para cumplir hay",
+        "que bajar la conducida a <= 13,13 dBm o quedarse con una antena de <= 2,13 dBi.",
+        "Aqui se toma 13 dBm, que da 16,0 e.i.r.p. y deja 0,13 dB de margen.",
+        "",
+        "Y ESO ES UN RESULTADO, no un ajuste incomodo: a 2,4 GHz el techo son 20 dBm",
+        "e.i.r.p. y a 868 son 16,13, o sea 3,87 dB MENOS. En sub-giga una antena de",
+        "ganancia hay que compensarla bajando la potencia conducida, y a 2,4 GHz no",
+        "aprieta igual. El salto de banda no es solo alcance y ritmo: tambien es techo",
+        "radiado.",
+        "",
+        "═══ QUE NO SE PUEDE CONCLUIR DE AQUI ═══",
+        "",
+        "  · que LoRa «da» esta cobertura. Da la que daria un enlace con la sensibilidad",
+        "    del CHIP, que es la mejor posible y no la del modulo;",
+        "  · que SF12 sea la eleccion correcta. Es el modo donde los 16 dB de ventaja",
+        "    sobre Wi-SUN aguantan (ver §3.1) y por eso sirve de referencia, pero a 293",
+        "    bps: con 44 B cada 30 s eso es 1,2 s de aire por TCU y por ciclo, que a 215",
+        "    TCU no cabe. El escenario es para VER el alcance, no para proponer la red;",
+        "  · que la sub-banda M sea la que se usaria. Hay siete, con limites de 5 a 500 mW.",
+        "",
+        "PARA RETIRARLO: poner a null f_hz, ptx_dbm, gtx_dbi, grx_dbi, rx_sens_dbm,",
+        "tasa_bps y canal.valor. Las columnas se apagan solas, igual que estaban."
+      ]
+    },
+    "wisun_fan_863": {
+      "procedencia": "pendiente",
+      "nombre": "Wi-SUN FAN 863-870 MHz — PREDICCIÓN, sin campaña y sin datasheet leído",
+      "f_hz": null,
+      "ptx_dbm": null,
+      "gtx_dbi": null,
+      "grx_dbi": null,
+      "rx_sens_dbm": null,
+      "canal": {
+        "valor": null,
+        "procedencia": "pendiente"
+      },
+      "candidatos": {
+        "_que_es": [
+          "LOS MÓDULOS ENTRE LOS QUE HAY QUE ELEGIR, y la elección NO es un detalle:",
+          "cambia el veredicto. Un SX1262 a 22 dBm y un módulo a 14 dBm no dan el mismo",
+          "resultado, y presentar «Wi-SUN» como si fuera UNA cosa esconde esos ocho dB.",
+          "",
+          "Por eso el comparador corre la tabla DOS VECES —con el mejor candidato de cada",
+          "tecnología y con el peor— y publica en qué criterios el veredicto cambia. Si",
+          "cambia, ESO es el resultado.",
+          "",
+          "Cada candidato necesita, CITADO: Ptx, sensibilidad POR MODO (SF y ancho de banda",
+          "en LoRa; modo PHY en Wi-SUN), plan de canal, consumo en transmisión, y si el",
+          "módulo trae certificación EU. Sin la cita —documento, página y fecha de lectura—",
+          "no entra."
+        ],
+        "_estado": "CUATRO CANDIDATOS LEIDOS DE SU HOJA el 2026-09-24. Ninguno elegido: la eleccion es del cliente. OJO AL COMPARAR: las sensibilidades NO son homogeneas entre fabricantes ni dentro de la misma tabla de TI. Por eso cada fila lleva `criterio` y `modo_declarado_por_el_fabricante`, y son OBLIGATORIOS.",
+        "_la_red_2026_09_24": [
+          "MEDIDO hoy, host a host, y ha cambiado a mitad de sesión: el 2026-09-20 estaban",
+          "denegados todos; ahora `digi.com`, `semtech.com`, `ti.com` y `silabs.com` dan 200",
+          "—se descargó una hoja de 10,4 MB para comprobarlo, y la cadena de redirecciones",
+          "acaba en `docs.digi.com`—. `microchip.com` y `etsi.org` abren el túnel y devuelven",
+          "403 DE SU PROPIO servidor, que es anti-bot y no la lista de salida. `st.com` y",
+          "`mouser.es` dan timeout a los 20 s, con h2 y con HTTP/1.1.",
+          "",
+          "Se apunta la fecha porque este campo se queda viejo solo: decir «la red no llega»",
+          "sin decir cuándo se probó es lo mismo que no decir nada."
+        ],
+        "_quien_elige": "El módulo lo elige el cliente, no este repo: hay que simular lo que se montaría de verdad. Aquí van los candidatos con sus números; la elección es suya.",
+        "lista": [
+          {
+            "fabricante": "Silicon Labs",
+            "modelo": "EFR32FG25",
+            "procedencia": "datasheet",
+            "banda_declarada_hz": [
+              863000000.0,
+              876000000.0
+            ],
+            "ptx_dbm": {
+              "typ": 14.6,
+              "min": 13.2,
+              "max": 15.9,
+              "condicion": "Tabla 4.16 «868 MHz Band +14 dBm»: VREGVDD=AVDD=PAVDD=3,3 V, dispositivos de 16 dBm, red de adaptacion 868/915/920, RF 868,3 MHz. FRANGE 863-870 MHz.",
+              "nota_de_la_hoja": "Nota 2: la potencia para 863-870 MHz esta NORMALMENTE LIMITADA a +14 dBm (25 mW).",
+              "_cita": {
+                "documento": "EFR32FG25 Gecko Wireless SoC Family Data Sheet",
+                "version": "Rev. 1.2",
+                "pagina": 47,
+                "leido_el": "2026-09-24"
+              }
+            },
+            "rx_sens_por_modo": [
+              {
+                "modo_declarado_por_el_fabricante": "Wi-SUN FSK #1a = (0, 1, 36), mi = 0,5, sin FEC",
+                "tasa_bps": 50000,
+                "fec": false,
+                "sens_dbm": -110.8,
+                "criterio": "10% PER, sin interferente",
+                "_cita": {
+                  "documento": "EFR32FG25 Gecko Wireless SoC Family Data Sheet",
+                  "version": "Rev. 1.2",
+                  "pagina": 92,
+                  "leido_el": "2026-09-24"
+                }
+              },
+              {
+                "modo_declarado_por_el_fabricante": "Wi-SUN FSK #2a = (0, 3, 37), mi = 0,5, sin FEC",
+                "tasa_bps": 100000,
+                "fec": false,
+                "sens_dbm": -108.0,
+                "criterio": "10% PER, sin interferente",
+                "_cita": {
+                  "documento": "EFR32FG25 Gecko Wireless SoC Family Data Sheet",
+                  "version": "Rev. 1.2",
+                  "pagina": 92,
+                  "leido_el": "2026-09-24"
+                }
+              },
+              {
+                "modo_declarado_por_el_fabricante": "Wi-SUN FSK #1a = (1, 1, 36), mi = 0,5, con FEC",
+                "tasa_bps": 50000,
+                "fec": true,
+                "sens_dbm": -114.1,
+                "criterio": "10% PER, sin interferente",
+                "_cita": {
+                  "documento": "EFR32FG25 Gecko Wireless SoC Family Data Sheet",
+                  "version": "Rev. 1.2",
+                  "pagina": 92,
+                  "leido_el": "2026-09-24"
+                }
+              },
+              {
+                "modo_declarado_por_el_fabricante": "Wi-SUN FSK #2a = (1, 3, 37), mi = 0,5, con FEC",
+                "tasa_bps": 100000,
+                "fec": true,
+                "sens_dbm": -110.2,
+                "criterio": "10% PER, sin interferente",
+                "_cita": {
+                  "documento": "EFR32FG25 Gecko Wireless SoC Family Data Sheet",
+                  "version": "Rev. 1.2",
+                  "pagina": 92,
+                  "leido_el": "2026-09-24"
+                }
+              },
+              {
+                "modo_declarado_por_el_fabricante": "Wi-SUN FSK #3 = (1, 5, 37), mi = 0,5, con FEC",
+                "tasa_bps": 150000,
+                "fec": true,
+                "sens_dbm": -108.8,
+                "criterio": "10% PER, sin interferente",
+                "_cita": {
+                  "documento": "EFR32FG25 Gecko Wireless SoC Family Data Sheet",
+                  "version": "Rev. 1.2",
+                  "pagina": 92,
+                  "leido_el": "2026-09-24"
+                }
+              },
+              {
+                "modo_declarado_por_el_fabricante": "SUN OFDM Opt4 MCS0, cabecera MCS0, PL = 20 octetos",
+                "tasa_bps": null,
+                "fec": null,
+                "sens_dbm": -115.6,
+                "criterio": "10% PER, sin interferente",
+                "_cita": {
+                  "documento": "EFR32FG25 Gecko Wireless SoC Family Data Sheet",
+                  "version": "Rev. 1.2",
+                  "pagina": 101,
+                  "leido_el": "2026-09-24"
+                }
+              },
+              {
+                "modo_declarado_por_el_fabricante": "SUN OFDM Opt4 MCS2",
+                "tasa_bps": null,
+                "fec": null,
+                "sens_dbm": -113.2,
+                "criterio": "10% PER, sin interferente",
+                "_cita": {
+                  "documento": "EFR32FG25 Gecko Wireless SoC Family Data Sheet",
+                  "version": "Rev. 1.2",
+                  "pagina": 101,
+                  "leido_el": "2026-09-24"
+                }
+              },
+              {
+                "modo_declarado_por_el_fabricante": "SUN OFDM Opt4 MCS4",
+                "tasa_bps": null,
+                "fec": null,
+                "sens_dbm": -110.1,
+                "criterio": "10% PER, sin interferente",
+                "_cita": {
+                  "documento": "EFR32FG25 Gecko Wireless SoC Family Data Sheet",
+                  "version": "Rev. 1.2",
+                  "pagina": 101,
+                  "leido_el": "2026-09-24"
+                }
+              },
+              {
+                "modo_declarado_por_el_fabricante": "SUN OFDM Opt4 MCS5",
+                "tasa_bps": null,
+                "fec": null,
+                "sens_dbm": -107.4,
+                "criterio": "10% PER, sin interferente",
+                "_cita": {
+                  "documento": "EFR32FG25 Gecko Wireless SoC Family Data Sheet",
+                  "version": "Rev. 1.2",
+                  "pagina": 101,
+                  "leido_el": "2026-09-24"
+                }
+              },
+              {
+                "modo_declarado_por_el_fabricante": "SUN OFDM Opt4 MCS6",
+                "tasa_bps": null,
+                "fec": null,
+                "sens_dbm": -103.8,
+                "criterio": "10% PER, sin interferente",
+                "_cita": {
+                  "documento": "EFR32FG25 Gecko Wireless SoC Family Data Sheet",
+                  "version": "Rev. 1.2",
+                  "pagina": 101,
+                  "leido_el": "2026-09-24"
+                }
+              }
+            ],
+            "consumo": {
+              "_estado": "NO LEIDO. La hoja lo trae (seccion 4.6, corriente de radio) pero no se ha extraido en esta sesion."
+            },
+            "plan_de_canal": null,
+            "certificacion_eu": null,
+            "_que_falta": {
+              "plan_de_canal": "NO sale de esta hoja: sale de ETSI/CEPT, pendiente. La hoja solo da rangos de frecuencia de ENSAYO, no el plan.",
+              "certificacion_eu": "La hoja cita EN 300 220-1 v3.1.1 para limites de emisiones espurias (p.47), pero eso NO es una declaracion de conformidad del modulo.",
+              "consumo": "por extraer de la seccion 4.6"
+            }
+          },
+          {
+            "fabricante": "Silicon Labs",
+            "modelo": "EFR32FG28",
+            "procedencia": "datasheet",
+            "banda_declarada_hz": [
+              863000000.0,
+              876000000.0
+            ],
+            "ptx_dbm": {
+              "_ojo": "DOS VARIANTES QUE NO SON INTERCAMBIABLES, y la de 20 dBm NO cubre la banda general.",
+              "variante_14dbm": {
+                "typ": 14.3,
+                "min": 13.1,
+                "max": 15.2,
+                "frange_hz": [
+                  863000000.0,
+                  869200000.0
+                ],
+                "condicion": "Tabla 4.18 «868 MHz Band +14 dBm»: PAVDD conectado a la salida del DC-DC. POUT = +14 dBm a 868,3 MHz.",
+                "_cita": {
+                  "documento": "EFR32FG28 Wireless SoC Family Data Sheet",
+                  "version": "Rev. 1.1",
+                  "pagina": 49,
+                  "leido_el": "2026-09-24"
+                }
+              },
+              "variante_20dbm": {
+                "typ": 20.5,
+                "min": 18.6,
+                "max": 21.6,
+                "frange_hz": [
+                  869400000.0,
+                  869650000.0
+                ],
+                "condicion": "Tabla 4.17 «868 MHz Band +20 dBm»: PAVDD = 3,3 V, dispositivos de 20 dBm. POUT = +20 dBm a 869,5 MHz.",
+                "_ojo": "EL RANGO DECLARADO SON 869,4-869,65 MHz, la sub-banda estrecha de alta potencia. NO son 863-870. Aplicar estos 20 dBm a un balance en la banda general se regala ~6 dB que la hoja no da.",
+                "_cita": {
+                  "documento": "EFR32FG28 Wireless SoC Family Data Sheet",
+                  "version": "Rev. 1.1",
+                  "pagina": 48,
+                  "leido_el": "2026-09-24"
+                }
+              }
+            },
+            "rx_sens_por_modo": [
+              {
+                "modo_declarado_por_el_fabricante": "Wi-SUN FSK #1a = (0, 1, 36), mi = 0,5, sin FEC",
+                "tasa_bps": 50000,
+                "fec": false,
+                "sens_dbm": -110.4,
+                "criterio": "10% PER, sin interferente",
+                "_cita": {
+                  "documento": "EFR32FG28 Wireless SoC Family Data Sheet",
+                  "version": "Rev. 1.1",
+                  "pagina": 81,
+                  "leido_el": "2026-09-24"
+                }
+              },
+              {
+                "modo_declarado_por_el_fabricante": "Wi-SUN FSK #2a = (0, 3, 37), mi = 0,5, sin FEC",
+                "tasa_bps": 100000,
+                "fec": false,
+                "sens_dbm": -108.0,
+                "criterio": "10% PER, sin interferente",
+                "_cita": {
+                  "documento": "EFR32FG28 Wireless SoC Family Data Sheet",
+                  "version": "Rev. 1.1",
+                  "pagina": 81,
+                  "leido_el": "2026-09-24"
+                }
+              },
+              {
+                "modo_declarado_por_el_fabricante": "Wi-SUN FSK #1a = (1, 1, 36), mi = 0,5, con FEC",
+                "tasa_bps": 50000,
+                "fec": true,
+                "sens_dbm": -113.7,
+                "criterio": "10% PER, sin interferente",
+                "_cita": {
+                  "documento": "EFR32FG28 Wireless SoC Family Data Sheet",
+                  "version": "Rev. 1.1",
+                  "pagina": 81,
+                  "leido_el": "2026-09-24"
+                }
+              },
+              {
+                "modo_declarado_por_el_fabricante": "Wi-SUN FSK #2a = (1, 3, 37), mi = 0,5, con FEC",
+                "tasa_bps": 100000,
+                "fec": true,
+                "sens_dbm": -110.1,
+                "criterio": "10% PER, sin interferente",
+                "_cita": {
+                  "documento": "EFR32FG28 Wireless SoC Family Data Sheet",
+                  "version": "Rev. 1.1",
+                  "pagina": 81,
+                  "leido_el": "2026-09-24"
+                }
+              },
+              {
+                "modo_declarado_por_el_fabricante": "Wi-SUN FSK #3 = (1, 5, 37), mi = 0,5, con FEC",
+                "tasa_bps": 150000,
+                "fec": true,
+                "sens_dbm": -108.4,
+                "criterio": "10% PER, sin interferente",
+                "_cita": {
+                  "documento": "EFR32FG28 Wireless SoC Family Data Sheet",
+                  "version": "Rev. 1.1",
+                  "pagina": 81,
+                  "leido_el": "2026-09-24"
+                }
+              }
+            ],
+            "consumo": {
+              "_estado": "NO LEIDO. La hoja lo trae (seccion 4.6) pero no se ha extraido en esta sesion."
+            },
+            "plan_de_canal": null,
+            "certificacion_eu": null,
+            "_que_falta": {
+              "plan_de_canal": "de ETSI/CEPT, pendiente.",
+              "certificacion_eu": "no leida.",
+              "consumo": "por extraer de la seccion 4.6"
+            }
+          },
+          {
+            "fabricante": "Texas Instruments",
+            "modelo": "CC1312R7",
+            "procedencia": "datasheet",
+            "banda_declarada_hz": [
+              861000000.0,
+              1054000000.0
+            ],
+            "_ojo_modo": "ESTA HOJA NO DICE «Wi-SUN» EN NINGUNA DE SUS TABLAS DE RF. Declara modos 802.15.4 2-GFSK por tasa y desviacion. Se parecen a los PHY de Wi-SUN FAN, pero NO estan etiquetados como tales por el fabricante, y eso va en el campo modo_declarado_por_el_fabricante de cada fila.",
+            "ptx_dbm": {
+              "typ": 13,
+              "condicion": "«Max output power», 868 MHz y 915 MHz. Seccion 7.11.",
+              "boost_dbm": 14,
+              "boost_condicion": "«Max output power, boost mode».",
+              "rango_programable_db": 34,
+              "_cita": {
+                "documento": "CC1312R7 SimpleLink High-Performance Sub-1 GHz Wireless MCU",
+                "version": "SWRS254A (MAY 2021, rev. NOV 2021)",
+                "pagina": 16,
+                "leido_el": "2026-09-24"
+              }
+            },
+            "rx_sens_por_modo": [
+              {
+                "modo_declarado_por_el_fabricante": "802.15.4 2-GFSK, +/-25 kHz de desviacion, 100 kHz de ancho de banda de Rx",
+                "tasa_bps": 50000,
+                "fec": null,
+                "sens_dbm": -110,
+                "criterio": "BER = 1e-2",
+                "_cita": {
+                  "documento": "CC1312R7 SimpleLink High-Performance Sub-1 GHz Wireless MCU",
+                  "version": "SWRS254A (MAY 2021, rev. NOV 2021)",
+                  "pagina": 13,
+                  "leido_el": "2026-09-24"
+                }
+              },
+              {
+                "modo_declarado_por_el_fabricante": "802.15.4 2-GFSK, +/-25 kHz de desviacion, 137 kHz de ancho de banda de Rx",
+                "tasa_bps": 100000,
+                "fec": null,
+                "sens_dbm": -103,
+                "criterio": "1% PER, carga util de 127 octetos",
+                "_cita": {
+                  "documento": "CC1312R7 SimpleLink High-Performance Sub-1 GHz Wireless MCU",
+                  "version": "SWRS254A (MAY 2021, rev. NOV 2021)",
+                  "pagina": 13,
+                  "leido_el": "2026-09-24"
+                }
+              },
+              {
+                "modo_declarado_por_el_fabricante": "802.15.4 2-GFSK, +/-50 kHz de desviacion, 311 kHz de ancho de banda de Rx",
+                "tasa_bps": 200000,
+                "fec": null,
+                "sens_dbm": -103,
+                "criterio": "BER = 1e-2",
+                "_cita": {
+                  "documento": "CC1312R7 SimpleLink High-Performance Sub-1 GHz Wireless MCU",
+                  "version": "SWRS254A (MAY 2021, rev. NOV 2021)",
+                  "pagina": 13,
+                  "leido_el": "2026-09-24"
+                }
+              },
+              {
+                "modo_declarado_por_el_fabricante": "2-GFSK, 2,5 kbps",
+                "tasa_bps": 2500,
+                "fec": null,
+                "sens_dbm": -121,
+                "criterio": "BER = 1e-2",
+                "_cita": {
+                  "documento": "CC1312R7 SimpleLink High-Performance Sub-1 GHz Wireless MCU",
+                  "version": "SWRS254A (MAY 2021, rev. NOV 2021)",
+                  "pagina": 13,
+                  "leido_el": "2026-09-24"
+                }
+              },
+              {
+                "modo_declarado_por_el_fabricante": "2-GFSK, 5 kbps",
+                "tasa_bps": 5000,
+                "fec": null,
+                "sens_dbm": -119,
+                "criterio": "BER = 1e-2",
+                "_cita": {
+                  "documento": "CC1312R7 SimpleLink High-Performance Sub-1 GHz Wireless MCU",
+                  "version": "SWRS254A (MAY 2021, rev. NOV 2021)",
+                  "pagina": 13,
+                  "leido_el": "2026-09-24"
+                }
+              }
+            ],
+            "consumo": {
+              "rx_ma": 5.4,
+              "rx_condicion": "Radio receive current, 868 MHz",
+              "tx_ma_por_potencia": {
+                "0_dbm": 8.0,
+                "10_dbm": 14.3,
+                "14_dbm": 24.9
+              },
+              "tx_condicion": "868 MHz, disenyo de referencia CC1312-R7EM-XD7793, Tc = 25 C, VDDS = 3,6 V con DC/DC activo.",
+              "sleep": "NO LEIDO con su unidad: la fila de shutdown de la p.10 no se extrajo limpia.",
+              "_cita": {
+                "documento": "CC1312R7 SimpleLink High-Performance Sub-1 GHz Wireless MCU",
+                "version": "SWRS254A (MAY 2021, rev. NOV 2021)",
+                "pagina": 11,
+                "leido_el": "2026-09-24"
+              }
+            },
+            "plan_de_canal": null,
+            "certificacion_eu": null,
+            "_que_falta": {
+              "plan_de_canal": "de ETSI/CEPT, pendiente.",
+              "certificacion_eu": "la hoja cita ETSI EN 300 220 para medir emisiones conducidas (p.13); eso NO es una declaracion de conformidad.",
+              "sleep": "por releer la p.10 con su unidad.",
+              "modos_wisun": "el fabricante NO publica sensibilidad por modo PHY de Wi-SUN FAN en esta hoja."
+            }
+          },
+          {
+            "fabricante": "Texas Instruments",
+            "modelo": "CC1352P7",
+            "procedencia": "datasheet",
+            "banda_declarada_hz": [
+              861000000.0,
+              1054000000.0
+            ],
+            "_ojo_modo": "Igual que el CC1312R7: la hoja NO etiqueta sus modos como Wi-SUN.",
+            "ptx_dbm": {
+              "typ": 13,
+              "condicion": "«Max output power, Sub-1 GHz PA», 868 MHz y 915 MHz. Seccion 7.11.",
+              "boost_dbm": 14,
+              "boost_condicion": "«Max output power, boost mode Sub-1 GHz PA».",
+              "pa_alta_potencia_dbm": 20,
+              "pa_alta_potencia_ojo": "La fila «Max output power, High power PA» NO declara banda en la tabla. NO se da por buena en 868 MHz sin comprobarlo: en esta misma hoja las filas del PA de sub-1 GHz si dicen «868 MHz and 915 MHz» y esta no.",
+              "rango_programable_db": 34,
+              "_cita": {
+                "documento": "CC1352P7 SimpleLink High-Performance Multi-Band Wireless MCU With Integrated Power Amplifier",
+                "version": "SWRS251A (MAY 2021, rev. NOV 2021)",
+                "pagina": 16,
+                "leido_el": "2026-09-24"
+              }
+            },
+            "rx_sens_por_modo": [
+              {
+                "modo_declarado_por_el_fabricante": "802.15.4 2-GFSK, +/-25 kHz de desviacion, 100 kHz de ancho de banda de Rx",
+                "tasa_bps": 50000,
+                "fec": null,
+                "sens_dbm": -110,
+                "criterio": "BER = 1e-2",
+                "_cita": {
+                  "documento": "CC1352P7 SimpleLink High-Performance Multi-Band Wireless MCU With Integrated Power Amplifier",
+                  "version": "SWRS251A (MAY 2021, rev. NOV 2021)",
+                  "pagina": 13,
+                  "leido_el": "2026-09-24"
+                }
+              },
+              {
+                "modo_declarado_por_el_fabricante": "802.15.4 2-GFSK, +/-25 kHz de desviacion, 137 kHz de ancho de banda de Rx",
+                "tasa_bps": 100000,
+                "fec": null,
+                "sens_dbm": -103,
+                "criterio": "1% PER, carga util de 127 octetos",
+                "_cita": {
+                  "documento": "CC1352P7 SimpleLink High-Performance Multi-Band Wireless MCU With Integrated Power Amplifier",
+                  "version": "SWRS251A (MAY 2021, rev. NOV 2021)",
+                  "pagina": 13,
+                  "leido_el": "2026-09-24"
+                }
+              },
+              {
+                "modo_declarado_por_el_fabricante": "802.15.4 2-GFSK, +/-50 kHz de desviacion, 311 kHz de ancho de banda de Rx",
+                "tasa_bps": 200000,
+                "fec": null,
+                "sens_dbm": -103,
+                "criterio": "BER = 1e-2",
+                "_cita": {
+                  "documento": "CC1352P7 SimpleLink High-Performance Multi-Band Wireless MCU With Integrated Power Amplifier",
+                  "version": "SWRS251A (MAY 2021, rev. NOV 2021)",
+                  "pagina": 13,
+                  "leido_el": "2026-09-24"
+                }
+              },
+              {
+                "modo_declarado_por_el_fabricante": "2-GFSK, 2,5 kbps",
+                "tasa_bps": 2500,
+                "fec": null,
+                "sens_dbm": -121,
+                "criterio": "BER = 1e-2",
+                "_cita": {
+                  "documento": "CC1352P7 SimpleLink High-Performance Multi-Band Wireless MCU With Integrated Power Amplifier",
+                  "version": "SWRS251A (MAY 2021, rev. NOV 2021)",
+                  "pagina": 13,
+                  "leido_el": "2026-09-24"
+                }
+              },
+              {
+                "modo_declarado_por_el_fabricante": "2-GFSK, 5 kbps",
+                "tasa_bps": 5000,
+                "fec": null,
+                "sens_dbm": -119,
+                "criterio": "BER = 1e-2",
+                "_cita": {
+                  "documento": "CC1352P7 SimpleLink High-Performance Multi-Band Wireless MCU With Integrated Power Amplifier",
+                  "version": "SWRS251A (MAY 2021, rev. NOV 2021)",
+                  "pagina": 13,
+                  "leido_el": "2026-09-24"
+                }
+              }
+            ],
+            "consumo": {
+              "rx_ma": 5.4,
+              "rx_condicion": "Radio receive current, 868 MHz",
+              "tx": "NO LEIDO limpio: la tabla trae varias filas (868 MHz, +14 dBm, +5 dBm, +20 dBm) y no se extrajeron con su valor asociado sin ambiguedad.",
+              "sleep": "NO LEIDO con su unidad.",
+              "_cita": {
+                "documento": "CC1352P7 SimpleLink High-Performance Multi-Band Wireless MCU With Integrated Power Amplifier",
+                "version": "SWRS251A (MAY 2021, rev. NOV 2021)",
+                "pagina": 11,
+                "leido_el": "2026-09-24"
+              }
+            },
+            "plan_de_canal": null,
+            "certificacion_eu": null,
+            "_que_falta": {
+              "plan_de_canal": "de ETSI/CEPT, pendiente.",
+              "certificacion_eu": "no leida.",
+              "consumo_tx": "por releer la p.11 fila a fila.",
+              "modos_wisun": "el fabricante NO publica sensibilidad por modo PHY de Wi-SUN FAN en esta hoja."
+            }
+          }
+        ],
+        "_por_que_criterio_y_modo": [
+          "CRITERIO. Una sensibilidad a BER = 1e-2 y otra a 10% PER con 127 octetos NO son comparables:",
+          "la segunda suele ser 2-3 dB mas exigente. Un balance de enlace que las mezcle sale SESGADO sin",
+          "que se note, porque los dos numeros tienen el mismo aspecto. En la tabla de TI conviven los dos",
+          "criterios EN LA MISMA PAGINA: 50 kbps va a BER y 100 kbps a 1% PER.",
+          "",
+          "MODO DECLARADO. «802.15.4 2-GFSK 50 kbps +/-25 kHz» NO es «Wi-SUN FAN #1a» aunque los parametros",
+          "coincidan. Silicon Labs etiqueta sus modos FAN con su numero; TI no menciona Wi-SUN en sus tablas",
+          "de RF. La ficha tiene que decir CUAL se leyo, no cual se parece."
+        ]
+      },
+      "_que_falta": {
+        "modulo_de_referencia": "Ninguno elegido.",
+        "ptx_dbm": "del datasheet del módulo, con la página.",
+        "rx_sens_dbm": "del datasheet, Y CON SU MODO PHY: Wi-SUN FAN define varios (distinta tasa y distinto índice de modulación) y la sensibilidad cambia con el modo. Un solo número sin decir el modo no vale.",
+        "plan_de_canal": "el plan de 863-870 MHz con su separación de canales, su e.r.p. máxima y su ciclo de trabajo, de la norma.",
+        "f_hz": "sale del plan de canal."
+      },
+      "_lo_que_si_esta_razonado": "`FASE3_LATENCIA_STOW.md` §3: multicast por MPL, pensado justo para una orden como el stow; y malla multisalto como Zigbee, con la MISMA dependencia de la profundidad — que es el parámetro que hoy no está medido para ninguna de las tres.",
+      "_citas": {
+        "_que_es": "Una ranura por número, VACÍA. Ninguno de estos se ha leído de un documento.",
+        "_una_variante_por_modo_PHY": [
+          "Wi-SUN FAN define VARIOS modos PHY, con distinta tasa e índice de modulación, y la",
+          "sensibilidad cambia con el modo. Igual que con los SF de LoRa: cada modo que la hoja",
+          "declare entra como UNA VARIANTE PROPIA, y entran TODOS, no una selección.",
+          "Si el orden entre tecnologías cambia según el modo, eso es el resultado."
+        ],
+        "ptx_dbm": {
+          "clase": "pendiente",
+          "documento": null,
+          "version": null,
+          "pagina": null,
+          "leido_el": null,
+          "_de_donde": "de la hoja del módulo, con su condición."
+        },
+        "rx_sens_dbm": {
+          "clase": "pendiente",
+          "documento": null,
+          "version": null,
+          "pagina": null,
+          "leido_el": null,
+          "_de_donde": "de la hoja, POR MODO PHY. Un número sin el modo no vale."
+        },
+        "f_hz": {
+          "clase": "pendiente",
+          "documento": null,
+          "version": null,
+          "pagina": null,
+          "leido_el": null,
+          "_de_donde": "del plan de canal de la banda 863-870."
+        },
+        "gtx_dbi": {
+          "clase": "pendiente",
+          "documento": null,
+          "version": null,
+          "pagina": null,
+          "leido_el": null,
+          "_de_donde": "HUECO DECLARADO: los 3 dBi del modelo son de la antena de TCU a 2,4 GHz. A sub-giga hace falta otra antena, sin elegir."
+        },
+        "grx_dbi": {
+          "clase": "pendiente",
+          "documento": null,
+          "version": null,
+          "pagina": null,
+          "leido_el": null,
+          "_de_donde": "el mismo hueco, en el otro extremo."
+        },
+        "erp_max_dbm": {
+          "clase": "pendiente",
+          "documento": null,
+          "version": null,
+          "pagina": null,
+          "leido_el": null,
+          "_de_donde": "de ERC 70-03, anexo 863-870 MHz."
+        },
+        "ciclo_trabajo": {
+          "clase": "leido",
+          "documento": "ETSI EN 300 220-2 V3.2.1 (2018-06), Tabla B.1 (normativa) + EN 300 220-1 V3.1.1, 5.4.1 y Tabla 48",
+          "version": "V3.2.1 (2018-06) y V3.1.1 (2017-02)",
+          "pagina": "21-22, 28, 58",
+          "leido_el": "2026-10-03",
+          "_de_donde": "Resuelto. Depende de la sub-banda --cinco regimenes-- y admite acceso educado como alternativa. Ver `ciclo_trabajo_eu`."
+        },
+        "norma": {
+          "clase": "pendiente",
+          "documento": null,
+          "version": null,
+          "pagina": null,
+          "leido_el": null,
+          "_de_donde": "ETSI EN 300 220-2, con su versión."
+        },
+        "carga_util_b": {
+          "clase": "declarado",
+          "documento": null,
+          "version": null,
+          "pagina": null,
+          "leido_el": null,
+          "_de_donde": "SCADA/collector/traffic.py map_params() -> stride 22 registros por TCU x 2 bytes. Se leen en lotes de 5 TCU (max_regs_per_read 110; limite Modbus 125). MEDIDO el 2026-09-24."
+        },
+        "periodo_s": {
+          "clase": "declarado",
+          "documento": null,
+          "version": null,
+          "pagina": null,
+          "leido_el": null,
+          "_de_donde": "SCADA/config/plants.yml -> polling.interval_s: 30, «ciclo completo de lectura por NCU». Las HSU/RSU van aparte a 10 s (meteo_interval_s). MEDIDO el 2026-09-24."
+        },
+        "tasa_serie_bps": {
+          "clase": "declarado",
+          "documento": null,
+          "version": null,
+          "pagina": null,
+          "leido_el": null,
+          "_de_donde": "Cobertura-Zigbee/tools/gen_modbus_map.mjs: «SUNNER_TCU_ModbusMap v6, FW v1.4.3, por RTU a 19200 8E1, ID de fabrica 245». MEDIDO el 2026-09-24. Es LIMITE DEL SISTEMA, no de la radio: no cambia al cambiar de tecnologia."
+        },
+        "tasa_bps": {
+          "clase": "pendiente",
+          "documento": null,
+          "version": null,
+          "pagina": null,
+          "leido_el": null,
+          "_de_donde": "de la hoja del modulo, POR MODO PHY: Wi-SUN FAN define varios y la tasa cambia con el modo. Cada modo entra como variante propia con SU tasa."
+        }
+      },
+      "carga_util_b": 44,
+      "periodo_s": 30,
+      "tasa_serie_bps": 19200,
+      "tasa_bps": null,
+      "ciclo_trabajo_eu": {
+        "_RESUELTO_EL": "2026-10-03, con la norma en la mano. Antes estaba a null por falta de documento.",
+        "_NO_HAY_UN_SOLO_VALOR": [
+          "NO existe «el ciclo de trabajo de 868». La Tabla B.1 (NORMATIVA) de EN 300 220-2",
+          "da CINCO regimenes distintos entre 863 y 870 MHz: 0,1 %, 1 %, 10 %, sin requisito,",
+          "y en todos ellos la ALTERNATIVA del acceso educado. Cualquier calculo que suponga",
+          "«el 1 %» sin decir en que sub-banda esta suponiendo de mas."
+        ],
+        "sub_bandas": [
+          {
+            "banda": "K",
+            "rango": "863 MHz a 865 MHz",
+            "rango_hz": [
+              863000000.0,
+              865000000.0
+            ],
+            "_rango_hz": "DERIVADO del campo `rango` de esta misma sub-banda, que es el texto de la norma citada abajo. No es una lectura nueva: es el mismo dato en forma que una maquina pueda comparar con `f_hz`. Derivado el 2026-10-03.",
+            "erp_max_mw": 25,
+            "acceso_al_canal": "<= 0,1 % de ciclo de trabajo o acceso educado",
+            "banda_decision_2017_1483_UE": "46a",
+            "_cita": {
+              "documento": "ETSI EN 300 220-2 — SRD 25 MHz a 1 000 MHz, Parte 2: norma armonizada para equipo no especifico",
+              "version": "V3.2.1 (2018-06), REN/ERM-TG28-535",
+              "pagina": 21,
+              "leido_el": "2026-10-03",
+              "leido_por": "esta sesion, del PDF de etsi.org",
+              "sha256_del_pdf": "df54e88af3879f143d1d22cfbe3cc90657b0fecd85c2afb054f1ba79c67ec2e3"
+            }
+          },
+          {
+            "banda": "L",
+            "rango": "865 MHz a 868 MHz",
+            "rango_hz": [
+              865000000.0,
+              868000000.0
+            ],
+            "_rango_hz": "DERIVADO del campo `rango` de esta misma sub-banda, que es el texto de la norma citada abajo. No es una lectura nueva: es el mismo dato en forma que una maquina pueda comparar con `f_hz`. Derivado el 2026-10-03.",
+            "erp_max_mw": 25,
+            "acceso_al_canal": "<= 1 % de ciclo de trabajo o acceso educado",
+            "banda_decision_2017_1483_UE": "47",
+            "_cita": {
+              "documento": "ETSI EN 300 220-2 — SRD 25 MHz a 1 000 MHz, Parte 2: norma armonizada para equipo no especifico",
+              "version": "V3.2.1 (2018-06), REN/ERM-TG28-535",
+              "pagina": 21,
+              "leido_el": "2026-10-03",
+              "leido_por": "esta sesion, del PDF de etsi.org",
+              "sha256_del_pdf": "df54e88af3879f143d1d22cfbe3cc90657b0fecd85c2afb054f1ba79c67ec2e3"
+            }
+          },
+          {
+            "banda": "M",
+            "rango": "868,000 MHz a 868,600 MHz",
+            "rango_hz": [
+              868000000.0,
+              868600000.0
+            ],
+            "_rango_hz": "DERIVADO del campo `rango` de esta misma sub-banda, que es el texto de la norma citada abajo. No es una lectura nueva: es el mismo dato en forma que una maquina pueda comparar con `f_hz`. Derivado el 2026-10-03.",
+            "erp_max_mw": 25,
+            "acceso_al_canal": "<= 1 % de ciclo de trabajo o acceso educado",
+            "banda_decision_2017_1483_UE": "48",
+            "_cita": {
+              "documento": "ETSI EN 300 220-2 — SRD 25 MHz a 1 000 MHz, Parte 2: norma armonizada para equipo no especifico",
+              "version": "V3.2.1 (2018-06), REN/ERM-TG28-535",
+              "pagina": 21,
+              "leido_el": "2026-10-03",
+              "leido_por": "esta sesion, del PDF de etsi.org",
+              "sha256_del_pdf": "df54e88af3879f143d1d22cfbe3cc90657b0fecd85c2afb054f1ba79c67ec2e3"
+            }
+          },
+          {
+            "banda": "N",
+            "rango": "868,700 MHz a 869,200 MHz",
+            "rango_hz": [
+              868700000.0,
+              869200000.0
+            ],
+            "_rango_hz": "DERIVADO del campo `rango` de esta misma sub-banda, que es el texto de la norma citada abajo. No es una lectura nueva: es el mismo dato en forma que una maquina pueda comparar con `f_hz`. Derivado el 2026-10-03.",
+            "erp_max_mw": 25,
+            "acceso_al_canal": "<= 0,1 % de ciclo de trabajo o acceso educado",
+            "banda_decision_2017_1483_UE": "50",
+            "_cita": {
+              "documento": "ETSI EN 300 220-2 — SRD 25 MHz a 1 000 MHz, Parte 2: norma armonizada para equipo no especifico",
+              "version": "V3.2.1 (2018-06), REN/ERM-TG28-535",
+              "pagina": 22,
+              "leido_el": "2026-10-03",
+              "leido_por": "esta sesion, del PDF de etsi.org",
+              "sha256_del_pdf": "df54e88af3879f143d1d22cfbe3cc90657b0fecd85c2afb054f1ba79c67ec2e3"
+            }
+          },
+          {
+            "banda": "P",
+            "rango": "869,400 MHz a 869,650 MHz",
+            "rango_hz": [
+              869400000.0,
+              869650000.0
+            ],
+            "_rango_hz": "DERIVADO del campo `rango` de esta misma sub-banda, que es el texto de la norma citada abajo. No es una lectura nueva: es el mismo dato en forma que una maquina pueda comparar con `f_hz`. Derivado el 2026-10-03.",
+            "erp_max_mw": 500,
+            "acceso_al_canal": "<= 10 % de ciclo de trabajo o acceso educado",
+            "banda_decision_2017_1483_UE": "54",
+            "_cita": {
+              "documento": "ETSI EN 300 220-2 — SRD 25 MHz a 1 000 MHz, Parte 2: norma armonizada para equipo no especifico",
+              "version": "V3.2.1 (2018-06), REN/ERM-TG28-535",
+              "pagina": 22,
+              "leido_el": "2026-10-03",
+              "leido_por": "esta sesion, del PDF de etsi.org",
+              "sha256_del_pdf": "df54e88af3879f143d1d22cfbe3cc90657b0fecd85c2afb054f1ba79c67ec2e3"
+            }
+          },
+          {
+            "banda": "P",
+            "rango": "869,700 MHz a 870,000 MHz",
+            "rango_hz": [
+              869700000.0,
+              870000000.0
+            ],
+            "_rango_hz": "DERIVADO del campo `rango` de esta misma sub-banda, que es el texto de la norma citada abajo. No es una lectura nueva: es el mismo dato en forma que una maquina pueda comparar con `f_hz`. Derivado el 2026-10-03.",
+            "erp_max_mw": 5,
+            "acceso_al_canal": "sin requisito",
+            "banda_decision_2017_1483_UE": "56a",
+            "_cita": {
+              "documento": "ETSI EN 300 220-2 — SRD 25 MHz a 1 000 MHz, Parte 2: norma armonizada para equipo no especifico",
+              "version": "V3.2.1 (2018-06), REN/ERM-TG28-535",
+              "pagina": 22,
+              "leido_el": "2026-10-03",
+              "leido_por": "esta sesion, del PDF de etsi.org",
+              "sha256_del_pdf": "df54e88af3879f143d1d22cfbe3cc90657b0fecd85c2afb054f1ba79c67ec2e3"
+            }
+          },
+          {
+            "banda": "Q",
+            "rango": "869,700 MHz a 870,000 MHz",
+            "rango_hz": [
+              869700000.0,
+              870000000.0
+            ],
+            "_rango_hz": "DERIVADO del campo `rango` de esta misma sub-banda, que es el texto de la norma citada abajo. No es una lectura nueva: es el mismo dato en forma que una maquina pueda comparar con `f_hz`. Derivado el 2026-10-03.",
+            "erp_max_mw": 25,
+            "acceso_al_canal": "<= 1 % de ciclo de trabajo o acceso educado",
+            "banda_decision_2017_1483_UE": "56b",
+            "_cita": {
+              "documento": "ETSI EN 300 220-2 — SRD 25 MHz a 1 000 MHz, Parte 2: norma armonizada para equipo no especifico",
+              "version": "V3.2.1 (2018-06), REN/ERM-TG28-535",
+              "pagina": 22,
+              "leido_el": "2026-10-03",
+              "leido_por": "esta sesion, del PDF de etsi.org",
+              "sha256_del_pdf": "df54e88af3879f143d1d22cfbe3cc90657b0fecd85c2afb054f1ba79c67ec2e3"
+            }
+          }
+        ],
+        "tobs_s": 3600,
+        "_tobs": "«Unless otherwise specified, Tobs is 1 hour and the observation bandwidth Fobs is the operational frequency band.» EN 300 220-1, 5.4.1. O sea: 1 % = 36 s de aire por hora; 0,1 % = 3,6 s/h; 10 % = 360 s/h.",
+        "_cita_definicion": {
+          "documento": "ETSI EN 300 220-1 — SRD 25 MHz a 1 000 MHz, Parte 1: parametros tecnicos y metodos de medida",
+          "version": "V3.1.1 (2017-02)",
+          "pagina": 28,
+          "leido_el": "2026-10-03",
+          "leido_por": "esta sesion, del PDF de etsi.org",
+          "sha256_del_pdf": "42e0b9924e63c64f4e0606b716635946e2b36f7c5ced5dbf128222d02c022178"
+        },
+        "acceso_educado": {
+          "_que_es": "LBT + AFA. SUSTITUYE al ciclo de trabajo, no se suma: EN 300 220-2, 4.3.3.0, literal: «Duty cycle applies to all transmitters EXCEPT EUT with polite spectrum access (described in clause 4.5) where permitted in annex B, table B.1». Y 4.5.2.0: «...instead of duty cycle where permitted by table B.1».",
+          "cca_min_us": 160,
+          "dead_time_max_ms": 5,
+          "ton_max_s_transmision_unica": 1,
+          "ton_max_s_dialogo_o_sondeo": 4,
+          "tcum_on_max_s_por_hora": 100,
+          "tcum_on_ancho_hz": 200000,
+          "toff_min_misma_frecuencia_ms": 100,
+          "_nota_3_de_la_norma": "«Longer accumulated transmission time is possible by implementing more AFA channels.» O sea que el presupuesto escala con canales.",
+          "_LO_QUE_ESTO_PROHIBE": "Ton Max = 1 s para una transmision unica EXCLUYE los modos LoRa mas largos: con 44 octetos y CR 4/5, SF12/BW125 (2.138 ms), SF12/BW250 (1.069 ms) y SF11/BW125 (1.151 ms) NO son legales bajo acceso educado. Bajo ciclo de trabajo si lo son, pero a 17, 34 y 31 mensajes por hora.",
+          "_cita": {
+            "documento": "ETSI EN 300 220-1 — SRD 25 MHz a 1 000 MHz, Parte 1: parametros tecnicos y metodos de medida",
+            "version": "V3.1.1 (2017-02)",
+            "pagina": 58,
+            "leido_el": "2026-10-03",
+            "leido_por": "esta sesion, del PDF de etsi.org",
+            "sha256_del_pdf": "42e0b9924e63c64f4e0606b716635946e2b36f7c5ced5dbf128222d02c022178"
+          }
+        },
+        "_LIMITE_QUE_NO_SE_RESUELVE": "El presupuesto educado es «por cada 200 kHz de espectro». Una senal LoRa de 250 o 500 kHz ocupa MAS de una de esas porciones, y la norma no dice como se reparte. No se interpreta aqui.",
+        "_LO_QUE_SIGUE_FALTANDO": "CEPT/ERC 70-03, que da el estado de implementacion por pais y es referencia informativa del Anexo C. ecodocdb.dk devuelve 403 en el CONNECT del proxy."
+      },
+      "_plan_de_canal_sigue_pendiente": "La Tabla B.1 da SUB-BANDAS, potencia maxima y ancho ocupado maximo. Eso NO es un plan de canal: faltan la rejilla y las frecuencias centrales. `plan_de_canal` sigue a null a proposito, y lo que se ha llenado es `ciclo_trabajo_eu`, que es otra cosa."
+    },
+    "_el_protocolo_de_la_tcu": {
+      "_que_es": "El protocolo de la TCU no cambia porque cambie la radio, asi que estos tres campos son IGUALES en las cuatro variantes. Estan repetidos en cada una porque el comparador los lee de la variante; esta nota es donde se explica por que coinciden.",
+      "_las_dos_tasas": [
+        "SON DOS COSAS DISTINTAS Y HACEN FALTA LAS DOS:",
+        "",
+        "  tasa_bps        la CAPACIDAD DE LA RADIO. Es lo unico comparable entre",
+        "                  tecnologias, que es para lo que existe el campo.",
+        "  tasa_serie_bps  el puerto SERIE Modbus de la TCU, 19200 8E1. Es un limite",
+        "                  DEL SISTEMA: no se mueve al cambiar de radio.",
+        "",
+        "Y por eso el criterio de telemetria dice CUAL MANDA. Si el serie es mas lento",
+        "que la radio, el cuello es el serie, este numero no cambia al cambiar de",
+        "tecnologia, y la comparacion entre radios NO DECIDE NADA ahi. Eso tambien es un",
+        "resultado, y sale escrito en vez de deducirse de que las tres columnas empaten.",
+        "",
+        "Con lo de hoy: 19200 contra 250000 en Zigbee. El cuello es el serie, y por un",
+        "factor de trece."
+      ]
+    }
+  },
+  "propagacion": {
+    "_que_es": "Parámetros del medio. Pocos, y con significado físico.",
+    "eps_r_suelo": {
+      "valor": 15.0,
+      "procedencia": "heredado",
+      "_fuente": "código: zigbee_pv_model.js `defaultParams()` `epsR: 15.0`"
+    },
+    "sigma_suelo_s_m": {
+      "valor": 0.005,
+      "procedencia": "heredado",
+      "_fuente": "código: zigbee_pv_model.js `defaultParams()` `sigmaGround: 5e-3`"
+    },
+    "polarizacion": {
+      "valor": "v",
+      "procedencia": "heredado",
+      "_fuente": "código: zigbee_pv_model.js `defaultParams()` `pol: \"v\"`"
+    },
+    "sigma_db": {
+      "valor": null,
+      "procedencia": "pendiente",
+      "_fuente": "PENDIENTE — sale del JSON que publique `calibra_barrido.py` (fase 2), con su campaña de origen.",
+      "_ojo": "Sin campaña calibrada, el motor va en modo TEÓRICO y lo rotula. NO se hereda el sigma del modelo antiguo: el 6,0 de `defaultParams()` es un valor de partida, no una medida, y el 10,99 de cobertura-rf-fv sale de un ajuste cuya correlación con la distancia es r = +0,16."
+    }
+  },
+  "vegetacion": {
+    "_que_es": "Follaje atravesado por el enlace. Depende de la frecuencia, así que NO es geometría.",
+    "modelo": {
+      "valor": null,
+      "procedencia": "pendiente",
+      "_fuente": "PENDIENTE — el encargo pide «modelo de follaje estándar citado y dependiente de la frecuencia». Candidato: ITU-R P.833. No se escribe el coeficiente hasta tener la recomendación delante y la versión que se cita.",
+      "_ojo": "Con `null`, el motor trata la vegetación como NO MODELADA y lo dice en la salida, en vez de dar 0 dB callando."
+    }
+  }
+}
