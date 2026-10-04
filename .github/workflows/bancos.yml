@@ -170,6 +170,15 @@ jobs:
           # cuando no se puede bajar, la pagina lo DIGA y vuelva a las curvas.
           - { banco: test_ortofoto.js,       nombre: 'ortofoto del terreno',          tope: 20 }
           - { banco: test_imagen.js,         nombre: 'imagen (vistas de referencia)', tope: 45 }
+          # EL MANDO DE RADIO, que desde el 2026-10-04 es una TECNOLOGIA y no una
+          # potencia. Abre el visor de verdad y comprueba cuatro cosas que solo
+          # se ven corriendolo: que los botones salen de la tabla anclada y no
+          # del HTML, que una variante sin balance completo NO se ofrece, que la
+          # longitud de onda y el balance SIGUEN a la frecuencia elegida, y que
+          # un escenario de referencia va rotulado como tal y no se lee como
+          # medida. Lleva sus cuatro mutaciones dentro.
+          - { banco: test_radio_tecnologias.js, nombre: 'radio · la tecnologia manda', tope: 20,
+              mutaciones: 'ofreceHuecos lambdaNoSigue frecuenciaFija escenarioMudo' }
           # `plantas reales` ya no es UN job: hacía el trabajo de tres y se comió
           # los 45 minutos. Ahora son cuatro grupos en paralelo, y un rojo dice
           # QUÉ parte se rompió sin abrir el log. Medido aquí:
@@ -222,6 +231,24 @@ jobs:
             # con la lista de los que hay, y además el banco exige haber corrido
             # alguna comprobación — el fallo más caro es el banco que no mira.
             node tests/${{ matrix.banco }} ${{ matrix.grupo }}
+          fi
+
+      # Y SUS MUTACIONES, EN ROJO. Una mutación escrita que nadie ejecuta se
+      # pudre igual que un banco que nadie corre —está dicho arriba, para los
+      # del núcleo—, así que la matriz las corre también: sólo para las entradas
+      # que declaran `mutaciones`, y exigiendo rc = 1 en cada una. Un rc = 2 es
+      # un ancla que se quedó atrás en un refactor, y NO cuenta como cazada.
+      - name: ${{ matrix.nombre }} · mutaciones en rojo
+        if: matrix.mutaciones != ''
+        run: |
+          mal=""
+          for m in ${{ matrix.mutaciones }}; do
+            MUTA="$m" node tests/${{ matrix.banco }} > /dev/null 2>&1; rc=$?
+            if [ "$rc" != "1" ]; then mal="$mal $m(rc=$rc)"; else echo "  $m: roja, bien"; fi
+          done
+          if [ -n "$mal" ]; then
+            echo "MUTACIONES QUE NO SALIERON rc=1 (rc=2 = ancla que se quedó atrás; NO es «cazada»):$mal"
+            exit 1
           fi
 
       # Un fallo de píxeles sin la imagen es un número que no dice nada.
