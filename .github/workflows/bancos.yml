@@ -241,10 +241,25 @@ jobs:
       - name: ${{ matrix.nombre }} · mutaciones en rojo
         if: matrix.mutaciones != ''
         run: |
+          # `set +e` NO ES ADORNO, y esto costó una tirada roja. GitHub corre los
+          # `run:` con `bash --noprofile --norc -eo pipefail`, y con `-e` la
+          # PRIMERA mutación —que devuelve 1 porque ESO ES LO QUE SE LE PIDE—
+          # mata el paso antes de leer `$?`. El síntoma engaña: el paso sale rojo
+          # sin imprimir una línea, así que parece que las mutaciones fallan
+          # cuando lo que falla es el bucle. Reproducido en local con esa misma
+          # shell el 2026-10-04. El paso de mutaciones del núcleo ya lo llevaba;
+          # éste se escribió sin mirarlo.
+          set +e
           mal=""
           for m in ${{ matrix.mutaciones }}; do
-            MUTA="$m" node tests/${{ matrix.banco }} > /dev/null 2>&1; rc=$?
-            if [ "$rc" != "1" ]; then mal="$mal $m(rc=$rc)"; else echo "  $m: roja, bien"; fi
+            MUTA="$m" node tests/${{ matrix.banco }} > "/tmp/mut_$m.log" 2>&1
+            rc=$?
+            if [ "$rc" != "1" ]; then
+              mal="$mal $m(rc=$rc)"
+              echo "── $m salió rc=$rc, y tenía que salir 1:"; tail -20 "/tmp/mut_$m.log"
+            else
+              echo "  $m: roja, bien"
+            fi
           done
           if [ -n "$mal" ]; then
             echo "MUTACIONES QUE NO SALIERON rc=1 (rc=2 = ancla que se quedó atrás; NO es «cazada»):$mal"
