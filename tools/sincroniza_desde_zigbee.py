@@ -62,8 +62,15 @@ def cuales():
 def de_local(ruta, fichero):
     with open(os.path.join(ruta, fichero), "rb") as f: return f.read()
 
+def _abre(url):
+    """cobertura-zigbee es PRIVADO desde 2026-10-08: sin token, GitHub responde
+    404. En CI el secreto LECTURA_TOKEN llega por el entorno."""
+    tok = os.environ.get("LECTURA_TOKEN", "")
+    req = urllib.request.Request(url, headers={"Authorization": "token " + tok} if tok else {})
+    return urllib.request.urlopen(req, timeout=60)
+
 def de_github(ref, fichero):
-    with urllib.request.urlopen(CRUDO.format(ref=ref, fichero=fichero), timeout=60) as r:
+    with _abre(CRUDO.format(ref=ref, fichero=fichero)) as r:
         return r.read()
 
 def commit_local(ruta):
@@ -119,7 +126,7 @@ def main():
     if a.desde:
         ref = commit_local(a.desde); trae = lambda f: de_local(a.desde, f)
     else:
-        with urllib.request.urlopen(API, timeout=60) as r: ref = json.load(r)["sha"]
+        with _abre(API) as r: ref = json.load(r)["sha"]
         trae = lambda f: de_github(ref, f)
 
     ficheros, cambian = {}, []

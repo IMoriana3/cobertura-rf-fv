@@ -30,4 +30,6 @@ jobs:
         with: { python-version: '3.11' }
       # `--ver` no escribe nada y sale en rojo si hay algo que traer.
       - name: comparar con el origen
+        env:
+          LECTURA_TOKEN: ${{ secrets.LECTURA_TOKEN }}   # cobertura-zigbee es privado desde 2026-10-08
         run: python3 tools/sincroniza_desde_zigbee.py --ver
